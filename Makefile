@@ -1,19 +1,17 @@
-CC = gcc
-CFLAGS = -g -Wall -pthread
-LDFLAGS = -lm -lgmp
+TARGET = pollardsrho
 
-SRCS = $(wildcard *.c)
-HEADERS = $(wildcard *.h)
-OBJS = $(SRCS:.c=.o)
-EXEC = pollardsrho
+CXX = g++
+CXXFLAGS = -O2 -Wall -std=c++17
 
-all: $(EXEC)
+INCLUDES = -I/usr/local/include -I/usr/local/include/boost
+LIBS = /usr/local/lib/libsecp256k1.a -latomic -lboost_system -lboost_filesystem
 
-$(EXEC): $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) -o $(EXEC) $(LDFLAGS)
+SRC = pollardsrho.cpp
 
-%.o: %.c $(HEADERS)
-	$(CC) $(CFLAGS) -c $< -o $@
+all: $(TARGET)
+
+$(TARGET): $(SRC)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC) -o $(TARGET) $(LIBS)
 
 clean:
-	rm -f $(OBJS) $(EXEC)
+	rm -f $(TARGET)
