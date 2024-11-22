@@ -21,7 +21,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 
 1. Clone this repository:
     ```bash
-    ~/ git clone https://github.com/lucaselblanc/pollardsrho.git
+    ~/$ git clone https://github.com/lucaselblanc/pollardsrho.git
     ```
 
 2. Install the necessary libraries:
