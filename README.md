@@ -73,7 +73,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 
 Contributions are welcome! Feel free to open issues or submit pull requests.
 
-## Add a Star: <a href="https://github.com/singIebit/pollardsrho/stargazers"><img src="https://img.shields.io/github/stars/singIebit/pollardsrho?style=flat-square" alt="GitHub stars" style="vertical-align: bottom; width: 65px; height: auto;"></a>
+## Add a Star: <a href="https://github.com/lucaselblanc/pollardsrho/stargazers"><img src="https://img.shields.io/github/stars/lucaselblanc/pollardsrho?style=flat-square" alt="GitHub stars" style="vertical-align: bottom; width: 65px; height: auto;"></a>
 
 ## License
 
@@ -82,13 +82,13 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ---
 
 <p align="center">
-  <a href="https://github.com/singIebit">
-    <img src="https://readme-typing-svg.demolab.com?font=Georgia&size=18&duration=2000&pause=100&multiline=true&width=500&height=80&lines=No+Clip+Studio;Programmer+%7C+Student+%7C+Cyber+Security;+%7C+Android+%7C+Apps" alt="Typing SVG" />
+  <a href="https://github.com/lucaselblanc">
+    <img src="https://readme-typing-svg.demolab.com?font=Georgia&size=18&duration=2000&pause=100&multiline=true&width=500&height=80&lines=Lucas+Leblanc;Programmer+%7C+Student+%7C+Cyber+Security;+%7C+Android+%7C+Apps" alt="Typing SVG" />
   </a>
 </p>
 
-<a href="https://github.com/singIebit">
-    <img src="https://github-stats-alpha.vercel.app/api?username=singIebit&cc=22272e&tc=37BCF6&ic=fff&bc=0000">
+<a href="https://github.com/lucaselblanc">
+    <img src="https://github-stats-alpha.vercel.app/api?username=lucaselblanc&cc=22272e&tc=37BCF6&ic=fff&bc=0000">
 </a>
 
 - 🔭 I’m currently working on [Data Leak Search](https://play.google.com/store/apps/details?id=com.NoClipStudio.DataBaseSearch)
@@ -102,9 +102,9 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 <br>
 My Github Stats
 
-![](http://github-profile-summary-cards.vercel.app/api/cards/profile-details?username=singIebit&theme=dracula) 
-![](http://github-profile-summary-cards.vercel.app/api/cards/repos-per-language?username=singIebit&theme=dracula) 
-![](http://github-profile-summary-cards.vercel.app/api/cards/most-commit-language?username=singIebit&theme=dracula)
+![](http://github-profile-summary-cards.vercel.app/api/cards/profile-details?username=lucaselblanc&theme=dracula) 
+![](http://github-profile-summary-cards.vercel.app/api/cards/repos-per-language?username=lucaselblanc&theme=dracula) 
+![](http://github-profile-summary-cards.vercel.app/api/cards/most-commit-language?username=lucaselblanc&theme=dracula)
 
 <h3 align="left">Connect with me:</h3>
 <p align="left">
