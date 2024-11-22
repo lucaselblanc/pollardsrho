@@ -1,12 +1,10 @@
 # Pollard's Rho Algorithm for SECP256K1 Curve
 
-![C](https://img.shields.io/badge/language-C-blue)
-![GMP](https://img.shields.io/badge/dependency-GMP-green)
-![pthreads](https://img.shields.io/badge/dependency-pthreads-yellow)
+![C++](https://img.shields.io/badge/language-C++-blue)
 
 ## Description
 
-This repository contains a variant of Pollard's Rho algorithm for the secp256k1 elliptic curve. The objective is to subexponentially derive points on curve using the public key as a generating parameter, taking advantage of the symmetry of the curve and dealing with multithreaded calculations.
+This repository contains the implementation of Pollard's Rho algorithm for the secp256k1 elliptic curve. The goal is to generate private keys over O√n using a tortoise and many hares, similar to Pollard's Kangoroo, to run the program it is necessary to have the public key of the bitcoin wallet.
 
 ## Algorithm Complexity
 
@@ -14,8 +12,8 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 
 #### Prerequisites
 
-- GMP Library: Ensure GMP is installed on your system.
-- Pthreads: POSIX thread library for multi-threading support.
+- boost::multiprecision.
+- secp256k1.
 
 ---
 
@@ -23,42 +21,53 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 
 1. Clone this repository:
     ```bash
-    git clone https://github.com/singIebit/pollardsrho.git
-    cd pollardsrho
+    git clone https://github.com/lucaselblanc/pollardsrho.git
     ```
 
-2. Install the libgmp-dev:
+2. Install the necessary libraries:
     ```bash
     sudo apt-get update
-    sudo apt-get install libgmp-dev
+    sudo apt-get upgrade
+    sudo apt-get install libsecp256k1-dev
+    sudo apt-get install libboost-all-dev
     ```
 
 3. Compile the project:
     ```bash
-    make
+    ~/$cd pollardsrho
+    ~/pollardsrho$ make
     ```
 
 4. Run the program:
     ```bash
-    ./pollardsrho <public key> <key range> <derived points>
+    ~/pollardsrho$ ./pollardsrho <compressed public key> <key range>
     ```
 
-    Replace `<public key>` with the point \( G \) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \( k \), and the number of `<derived points>` in the curve.
+    Replace `<compressed public key>` with the point \( G \) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \( k \).
 
     Example usage:
     ```bash
-    ./pollardsrho 03633cbe3ec02b9401c5effa144c5b4d22f87940259634858fc7e59b1c09937852 130 1000000
+    ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135
     ```
 
 ## Commands
 
-- `./pollardsrho <public key> <key range> <derived points>`: Starts the search for the private key corresponding to the given public key within the specified range and derived points.
+- `./pollardsrho <compressed public key> <key range>`: Starts the search for the private key corresponding to the given public key.
 
-## Technologies Used
+## Libraries Used
 
-- C Programming Language
-- GMP (GNU Multiple Precision Arithmetic Library)
-- pthreads (POSIX Threads Library)
+- boost/multiprecision/cpp_int.hpp
+- secp256k1.h
+- iostream
+- unordered_map
+- random
+- cstring
+- sstream
+- chrono
+- thread
+- mutex
+- atomic
+- iomanip
 
 ## Contributing
 
