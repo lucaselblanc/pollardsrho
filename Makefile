@@ -1,10 +1,10 @@
 TARGET = pollardsrho
 
 CXX = g++
-CXXFLAGS = -O2 -Wall -std=c++17
+CXXFLAGS = -O3 -march=native -Wall -std=c++17 -fopenmp
 
-INCLUDES = -I/usr/local/include -I/usr/local/include/boost
-LIBS = /usr/local/lib/libsecp256k1.a -latomic -lboost_system -lboost_filesystem
+INCLUDES = -I/usr/local/include/boost
+LIBS = ./libsecp256k1.a -latomic -lboost_system -lboost_filesystem
 
 SRC = pollardsrho.cpp
 
