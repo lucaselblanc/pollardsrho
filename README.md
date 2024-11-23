@@ -44,7 +44,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
     ~/pollardsrho$ ./pollardsrho <compressed public key> <key range>
     ```
 
-    Replace `<compressed public key>` with the point \( G \) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \( k \).
+    Replace `<compressed public key>` with the point \(G\) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \(k\).
 
     Example usage:
     ```bash
