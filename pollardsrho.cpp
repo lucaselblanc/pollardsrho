@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <secp256k1.h>
 #include <unordered_map>
 #include <random>
@@ -9,6 +9,7 @@
 #include <mutex>
 #include <atomic>
 #include <iomanip>
+#include <omp.h>
 #include <boost/multiprecision/cpp_int.hpp>
 
 /* Pollard's Rho Algorithm for SECP256K1 */
@@ -163,6 +164,9 @@ public:
     }
 };
 
+/******************
+ **[MULTI-THREADS]*
+ ******************/
 uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k1_pubkey& target_pubkey, int key_range, int hares) {
     uint256_t min_scalar = (uint256_t(1) << (key_range - 1));  
     uint256_t max_scalar = (uint256_t(1) << key_range) - 1;
@@ -175,188 +179,401 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
     std::cout << "min_range: " << uint256_to_hex(min_scalar) << std::endl;
     std::cout << "max_range: " << uint256_to_hex(max_scalar) << std::endl;
 
-    //Não remover:
-    //uint256_t current_key = generate_random_private_key(min_scalar, max_scalar); 
-    Random256Generator rng(min_scalar, max_scalar);
-    uint256_t current_key = rng.generate();
-
     std::atomic<bool> search_in_progress(true);
-    std::string current_pubkey_hex_R, current_pubkey_hex_R1;
-    std::string compressed_key_hex_R, compressed_key_hex_R1;
-    std::string x_hex_R, y_hex_R, x_hex_R1, y_hex_R1;
     std::mutex pgrs;
+
+    std::string P_key;
+    uint256_t p_key = uint256_t(0);
+    uint256_t found_key = uint256_t(0);
 
     std::thread log_thread([&]() {
     try {
-         while (search_in_progress) {
+         for (uint256_t j = uint256_t(0); j < max_scalar; ++j) {
              std::this_thread::sleep_for(std::chrono::seconds(10));
              std::lock_guard<std::mutex> lock(pgrs);
-             std::cout << "\rCurrent private key: " << uint256_to_hex(current_key) << std::endl;
-             std::cout << "\rLast tested public key: " << current_pubkey_hex_R << std::endl;
-             std::cout << "\rTotal keys tested: " << keys_ps << std::endl;
+             if(search_in_progress){        
+             std::cout << "\rCurrent private key: " << uint256_to_hex(p_key) << std::endl;
+             std::cout << "\rLast tested public key: " << P_key << std::endl;
+             std::cout << "\rTotal keys tested: " << keys_ps << std::endl; }
          }
     } catch (const std::exception& e) {
          std::cerr << "Error in log_thread: " << e.what() << std::endl;
     }});
 
-    struct HareState {
-        uint256_t k1, k2;
-        secp256k1_pubkey R, R1;
-        int speed;
-    };
-
-    std::vector<HareState> hare_states(hares);
-
-    for (int i = 0; i < hares; ++i)
+    unsigned int threads = std::thread::hardware_concurrency();
+    omp_set_num_threads(threads);
+    #pragma omp parallel
     {
-        hare_states[i].R = G;
-        hare_states[i].R1 = G;
-    }
+        std::string current_pubkey_hex_R;
+        std::string current_pubkey_hex_R1;
+        std::string compressed_key_hex_R, compressed_key_hex_R1;
+        std::string x_hex_R, y_hex_R, x_hex_R1, y_hex_R1;
+        Random256Generator rng(min_scalar, max_scalar);
+        uint256_t current_key = rng.generate();
 
-    try {
-        while (true) {
-            for (int i = 0; i < hares; ++i) {
+        struct HareState {
+            uint256_t k1, k2;
+            secp256k1_pubkey R, R1;
+            int speed;
+        };
 
-                HareState& hare = hare_states[i];
-                /* Alternativa, não remover:
-                hare_states[i].k1 = generate_random_private_key(min_scalar, max_scalar);
-                hare_states[i].k2 = generate_random_private_key(min_scalar, max_scalar); */
-                hare_states[i].k1 = rng.generate();
-                hare_states[i].k2 = rng.generate();
-                hare_states[i].speed = (i == 0) ? 1 : (i + 1);
-                current_key = hare_states[i].k1;
-                keys_ps++;
+        std::vector<HareState> hare_states(hares);
+        bool found = false;
 
-                unsigned char target_pubkey_serialized[33];
-                size_t target_pubkey_len = sizeof(target_pubkey_serialized);
-                if (!secp256k1_ec_pubkey_serialize(ctx, target_pubkey_serialized, &target_pubkey_len, &target_pubkey, SECP256K1_EC_COMPRESSED)) {
-                    std::cerr << "Failed to serialize target public key!" << std::endl;
-                    throw std::runtime_error("Error serializing target public key!");
+        #pragma omp for
+        for (int i = 0; i < hares; ++i) {
+            hare_states[i].R = G;
+            hare_states[i].R1 = G;
+        }
+
+        try {
+            for (uint256_t j = uint256_t(0); j < max_scalar; ++j) {
+
+                #pragma omp for
+                for (int i = 0; i < hares; ++i) {
+
+                    HareState& hare = hare_states[i];
+                    hare.k1 = rng.generate();
+                    hare.k2 = rng.generate();
+                    hare.speed = (i == 0) ? 1 : (i + 1);
+                    current_key = hare.k1;
+                    p_key = current_key;
+                    keys_ps++;
+
+                    unsigned char target_pubkey_serialized[33];
+                    size_t target_pubkey_len = sizeof(target_pubkey_serialized);
+                    if (!secp256k1_ec_pubkey_serialize(ctx, target_pubkey_serialized, &target_pubkey_len, &target_pubkey, SECP256K1_EC_COMPRESSED)) {
+                        std::cerr << "Failed to serialize target public key!" << std::endl;
+                        throw std::runtime_error("Error serializing target public key!");
+                    }
+
+                    if (serialize(hare.R, ctx) != 0 && serialize(hare.R1, ctx) != 0) {
+                        hare.k1 = (hare.k1 + hare.speed) % (uint256_t(1) << 64);
+                        hare.k2 = (hare.k2 + hare.speed) % (uint256_t(1) << 64);
+                    }
+
+                    if (hare.k1 < min_scalar) hare.k1 += min_scalar;
+                    if (hare.k2 < min_scalar) hare.k2 += min_scalar;
+
+                    if (!secp256k1_ec_pubkey_create(ctx, &hare.R, reinterpret_cast<const unsigned char*>(&hare.k1))) {
+                        std::cerr << "Failed to create public key for hare " << i << " with k1: " << uint256_to_hex(hare.k1) << std::endl;
+                        throw std::runtime_error("Error updating public key!");
+                    }
+
+                    if (!secp256k1_ec_pubkey_create(ctx, &hare.R1, reinterpret_cast<const unsigned char*>(&hare.k2))) {
+                        std::cerr << "Failed to create public key for hare " << i << " with k2: " << uint256_to_hex(hare.k2) << std::endl;
+                        throw std::runtime_error("Error updating public key!");
+                    }
+
+                    std::string k1_hex = uint256_to_hex(hare.k1);
+                    std::tie(compressed_key_hex_R, x_hex_R, y_hex_R) = privateKeyToPublicKey(k1_hex);
+                    current_pubkey_hex_R = compressed_key_hex_R;
+                    P_key = current_pubkey_hex_R;
+
+                    std::string k2_hex = uint256_to_hex(hare.k2);
+                    std::tie(compressed_key_hex_R1, x_hex_R1, y_hex_R1) = privateKeyToPublicKey(k2_hex);
+                    current_pubkey_hex_R1 = compressed_key_hex_R1;
+
+                    if (current_pubkey_hex_R == bytesToHex(target_pubkey_serialized, target_pubkey_len)
+                        || current_pubkey_hex_R1 == bytesToHex(target_pubkey_serialized, target_pubkey_len)) {
+
+                        std::cout << "\033[32mPrivate key found by hare " << i << "!\033[0m" << std::endl;
+                        search_in_progress = false;
+
+                        if (compressed_key_hex_R == bytesToHex(target_pubkey_serialized, target_pubkey_len)) {
+                            found = true;
+                            found_key = hare.k1;
+                        }
+                        else if (compressed_key_hex_R1 == bytesToHex(target_pubkey_serialized, target_pubkey_len)) {
+                            found = true;
+                            found_key = hare.k2;
+                        }
+                    }
+
+                    //Verificar colisões não triviais, a espera de um milagre:
+                    if (!x_hex_R.empty() && !x_hex_R1.empty() && x_hex_R == x_hex_R1) {
+                        for (int j = i + 1; j < hares; ++j) {
+                            if (hare_states[i].k1 != hare_states[j].k2) {
+                                uint256_t d = 0;
+
+                                while (true) {
+                                    secp256k1_pubkey current_point = hare_states[i].R;
+                                    secp256k1_pubkey next_point;
+
+                                    unsigned char tweak[32];
+                                    unsigned char serialized_G[33];
+                                    size_t serialized_G_len = sizeof(serialized_G);
+                                    if (!secp256k1_ec_pubkey_serialize(ctx, serialized_G, &serialized_G_len, &G, SECP256K1_EC_COMPRESSED)) {
+                                        std::cerr << "Error serializing point G" << std::endl;
+                                        found_key = uint256_t(0);
+                                        break;
+                                    }
+
+                                    std::memcpy(tweak, serialized_G, 32);
+
+                                    if (!secp256k1_ec_pubkey_tweak_add(ctx, &next_point, tweak)) {
+                                        std::cerr << "Error calculating point addition" << std::endl;
+                                        break;
+                                    }
+
+                                    std::string x_current, y_current;
+                                    if (!point_to_hex(ctx, next_point, x_current, y_current)) {
+                                        std::cerr << "Failed to convert point to hex" << std::endl;
+                                        break;
+                                    }
+
+                                    //d = (x1, y1) * G + (x2,y2) * (-G)
+                                    if (x_current == x_hex_R1 && y_current == y_hex_R1) {
+                                        break;
+                                    }
+
+                                    current_point = next_point;
+                                    d++;
+
+                                    if (d >= n) {
+                                        std::cerr << "Failed to find difference between k1 and k2" << std::endl;
+                                        break;
+                                    }
+                                }
+
+                                // Verificar se d * G ≡ 0
+                                if ((d % n) == 0) {
+                                    std::cout << "\033[32mCollision between hare " << i << " and hare " << j << "!\033[0m" << std::endl;
+                                    std::cout << "hare k1: " << hare_states[i].k1 << std::endl;
+                                    std::cout << "hare k2: " << hare_states[j].k2 << std::endl;
+
+                                    search_in_progress = false;
+                                    found_key = (hare_states[j].k2 + d) % n;
+                                    break;
+                                } else {
+                                    std::cerr << "(d * G ≡ 0) is false" << std::endl;
+
+                                    search_in_progress = false;
+                                    found_key = uint256_t(0);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
 
-                if(serialize(hare.R, ctx) != 0 && serialize(hare.R1, ctx) != 0)
-                {
-                    hare.k1 = (hare.k1 + hare.speed) % (uint256_t(1) << 64);
-                    hare.k2 = (hare.k2 + hare.speed) % (uint256_t(1) << 64);
-                }
-
-                if (hare.k1 < min_scalar) hare.k1 += min_scalar;
-                if (hare.k2 < min_scalar) hare.k2 += min_scalar;
-
-                if (!secp256k1_ec_pubkey_create(ctx, &hare.R, reinterpret_cast<const unsigned char*>(&hare.k1))) {
-                    std::cerr << "Failed to create public key for hare " << i << " with k1: " << uint256_to_hex(hare.k1) << std::endl;
-                    throw std::runtime_error("Error updating public key!");
-                }
-
-                if (!secp256k1_ec_pubkey_create(ctx, &hare.R1, reinterpret_cast<const unsigned char*>(&hare.k2))) {
-                    std::cerr << "Failed to create public key for hare " << i << " with k2: " << uint256_to_hex(hare.k2) << std::endl;
-                    throw std::runtime_error("Error updating public key!");
-                }
-
-                std::string k1_hex = uint256_to_hex(hare.k1);
-                std::tie(compressed_key_hex_R, x_hex_R, y_hex_R) = privateKeyToPublicKey(k1_hex);
-                current_pubkey_hex_R = compressed_key_hex_R;
-
-                std::string k2_hex = uint256_to_hex(hare.k2);
-                std::tie(compressed_key_hex_R1, x_hex_R1, y_hex_R1) = privateKeyToPublicKey(k2_hex);
-                current_pubkey_hex_R1 = compressed_key_hex_R1;
-
-                if (current_pubkey_hex_R == bytesToHex(target_pubkey_serialized, target_pubkey_len)
-                     || current_pubkey_hex_R1 == bytesToHex(target_pubkey_serialized, target_pubkey_len)) {
-
-                     std::cout << "\033[32mPrivate key found by hare " << i << "!\033[0m" << std::endl;
-                     search_in_progress = false;
-                     if (log_thread.joinable()) log_thread.join();
-
-                     if (compressed_key_hex_R == bytesToHex(target_pubkey_serialized, target_pubkey_len)) {
-                         return hare.k1;
-                     }
-                     else if (compressed_key_hex_R1 == bytesToHex(target_pubkey_serialized, target_pubkey_len))
-                     {
-                         return hare.k2;
-                     }
-                }
-
-                //Verificar colisões não triviais, a espera de um milagre:
-                if (!x_hex_R.empty() && !x_hex_R1.empty() && x_hex_R == x_hex_R1) {
-
-                     for (int j = i + 1; j < hares; ++j) {
-
-                          if (hare_states[i].k1 != hare_states[j].k2) {
-
-                              uint256_t d = 0;
-                             
-                              while (true) {
-                                  secp256k1_pubkey current_point = hare_states[i].R;
-                                  secp256k1_pubkey next_point;
-
-                                  unsigned char tweak[32];
-
-                                  unsigned char serialized_G[33];
-                                  size_t serialized_G_len = sizeof(serialized_G);
-                                  if (!secp256k1_ec_pubkey_serialize(ctx, serialized_G, &serialized_G_len, &G, SECP256K1_EC_COMPRESSED)) {
-                                      std::cerr << "Error serializing point G" << std::endl;
-                                      return uint256_t(0);
-                                  }
-
-                                  std::memcpy(tweak, serialized_G, 32);
-
-                                  if (!secp256k1_ec_pubkey_tweak_add(ctx, &next_point, tweak)) {
-                                      std::cerr << "Error calculating point addition" << std::endl;
-                                      break;
-                                  }
-
-                                  std::string x_current, y_current;
-                                  if (!point_to_hex(ctx, next_point, x_current, y_current)) {
-                                      std::cerr << "Failed to convert point to hex" << std::endl;
-                                      break;
-                                  }
-
-                                  //d = (x1, y1) * G + (x2,y2) * (-G)
-                                  if (x_current == x_hex_R1 && y_current == y_hex_R1) {
-                                      break;
-                                  }
-
-                                  current_point = next_point;
-                                  d++;
-
-                                  if (d >= n) {
-                                      std::cerr << "Failed to find difference between k1 and k2" << std::endl;
-                                      break;
-                                  }
-                              }
-
-                              //Verify if d * G ≡ 0
-                              if ((d % n) == 0) {
-                                   std::cout << "\033[32mCollision between hare " << i << " and hare " << j << "!\033[0m" << std::endl;
-                                   std::cout << "hare k1: " << hare_states[i].k1 << std::endl;
-                                   std::cout << "hare k2: " << hare_states[j].k2 << std::endl;
-
-                                   search_in_progress = false;
-                                   if (log_thread.joinable()) log_thread.join();
-
-                                   return (hare_states[j].k2 + d) % n;
-                              }
-                              else
-                              {
-                                  std::cerr << "(d * G ≡ 0) is false" << std::endl;
-
-                                  search_in_progress = false;
-                                  if (log_thread.joinable()) log_thread.join();
-
-                                  return uint256_t(0);
-                              }
-                          }
-                     }
-                }
+                if (found) {
+                    search_in_progress = false;
+                }        
             }
         }
-    } catch (const std::exception& e) {
-        std::cerr << "Unhandled exception: " << e.what() << std::endl;
-        std::cerr.flush();
-        return uint256_t(0);
+        catch (const std::exception& e) {
+            std::cerr << "Exception in thread: " << e.what() << std::endl;
+        }
     }
+
+    if (log_thread.joinable()) log_thread.join();
+
+    return found_key;
 }
+
+/******************
+ **[SINGLE-THREAD]*
+ ******************/
+// uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k1_pubkey& target_pubkey, int key_range, int hares) {
+//     uint256_t min_scalar = (uint256_t(1) << (key_range - 1));  
+//     uint256_t max_scalar = (uint256_t(1) << key_range) - 1;
+//     uint256_t keys_ps;
+
+//     //SECP256K1 n
+//     uint256_t n = uint256_t("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
+
+//     std::cout << "key_range: " << key_range << std::endl;
+//     std::cout << "min_range: " << uint256_to_hex(min_scalar) << std::endl;
+//     std::cout << "max_range: " << uint256_to_hex(max_scalar) << std::endl;
+
+//     //Não remover:
+//     //uint256_t current_key = generate_random_private_key(min_scalar, max_scalar); 
+//     Random256Generator rng(min_scalar, max_scalar);
+//     uint256_t current_key = rng.generate();
+
+//     std::atomic<bool> search_in_progress(true);
+//     std::string current_pubkey_hex_R, current_pubkey_hex_R1;
+//     std::string compressed_key_hex_R, compressed_key_hex_R1;
+//     std::string x_hex_R, y_hex_R, x_hex_R1, y_hex_R1;
+//     std::mutex pgrs;
+
+//     std::thread log_thread([&]() {
+//     try {
+//          for (uint256_t j = uint256_t(0); j < max_scalar; ++j) {
+//              std::this_thread::sleep_for(std::chrono::seconds(10));
+//              std::lock_guard<std::mutex> lock(pgrs);
+//              if(search_in_progress){
+//                  std::cout << "\rCurrent private key: " << uint256_to_hex(current_key) << std::endl;
+//                  std::cout << "\rLast tested public key: " << current_pubkey_hex_R << std::endl;
+//                  std::cout << "\rTotal keys tested: " << keys_ps << std::endl;
+//              }
+//          }
+//     } catch (const std::exception& e) {
+//          std::cerr << "Error in log_thread: " << e.what() << std::endl;
+//     }});
+
+//     struct HareState {
+//         uint256_t k1, k2;
+//         secp256k1_pubkey R, R1;
+//         int speed;
+//     };
+
+//     std::vector<HareState> hare_states(hares);
+
+//     for (int i = 0; i < hares; ++i)
+//     {
+//         hare_states[i].R = G;
+//         hare_states[i].R1 = G;
+//     }
+
+//     try {
+//         for (uint256_t j = uint256_t(0); j < max_scalar; ++j) {
+
+//             for (int i = 0; i < hares; ++i) {
+
+//                 HareState& hare = hare_states[i];
+//                 /* Alternativa, não remover:
+//                 hare_states[i].k1 = generate_random_private_key(min_scalar, max_scalar);
+//                 hare_states[i].k2 = generate_random_private_key(min_scalar, max_scalar); */
+//                 hare_states[i].k1 = rng.generate();
+//                 hare_states[i].k2 = rng.generate();
+//                 hare_states[i].speed = (i == 0) ? 1 : (i + 1);
+//                 current_key = hare_states[i].k1;
+//                 keys_ps++;
+
+//                 unsigned char target_pubkey_serialized[33];
+//                 size_t target_pubkey_len = sizeof(target_pubkey_serialized);
+//                 if (!secp256k1_ec_pubkey_serialize(ctx, target_pubkey_serialized, &target_pubkey_len, &target_pubkey, SECP256K1_EC_COMPRESSED)) {
+//                     std::cerr << "Failed to serialize target public key!" << std::endl;
+//                     throw std::runtime_error("Error serializing target public key!");
+//                 }
+
+//                 if(serialize(hare.R, ctx) != 0 && serialize(hare.R1, ctx) != 0)
+//                 {
+//                     hare.k1 = (hare.k1 + hare.speed) % (uint256_t(1) << 64);
+//                     hare.k2 = (hare.k2 + hare.speed) % (uint256_t(1) << 64);
+//                 }
+
+//                 if (hare.k1 < min_scalar) hare.k1 += min_scalar;
+//                 if (hare.k2 < min_scalar) hare.k2 += min_scalar;
+
+//                 if (!secp256k1_ec_pubkey_create(ctx, &hare.R, reinterpret_cast<const unsigned char*>(&hare.k1))) {
+//                     std::cerr << "Failed to create public key for hare " << i << " with k1: " << uint256_to_hex(hare.k1) << std::endl;
+//                     throw std::runtime_error("Error updating public key!");
+//                 }
+
+//                 if (!secp256k1_ec_pubkey_create(ctx, &hare.R1, reinterpret_cast<const unsigned char*>(&hare.k2))) {
+//                     std::cerr << "Failed to create public key for hare " << i << " with k2: " << uint256_to_hex(hare.k2) << std::endl;
+//                     throw std::runtime_error("Error updating public key!");
+//                 }
+
+//                 std::string k1_hex = uint256_to_hex(hare.k1);
+//                 std::tie(compressed_key_hex_R, x_hex_R, y_hex_R) = privateKeyToPublicKey(k1_hex);
+//                 current_pubkey_hex_R = compressed_key_hex_R;
+
+//                 std::string k2_hex = uint256_to_hex(hare.k2);
+//                 std::tie(compressed_key_hex_R1, x_hex_R1, y_hex_R1) = privateKeyToPublicKey(k2_hex);
+//                 current_pubkey_hex_R1 = compressed_key_hex_R1;
+
+//                 if (current_pubkey_hex_R == bytesToHex(target_pubkey_serialized, target_pubkey_len)
+//                      || current_pubkey_hex_R1 == bytesToHex(target_pubkey_serialized, target_pubkey_len)) {
+
+//                      std::cout << "\033[32mPrivate key found by hare " << i << "!\033[0m" << std::endl;
+//                      search_in_progress = false;
+//                      if (log_thread.joinable()) log_thread.join();
+
+//                      if (compressed_key_hex_R == bytesToHex(target_pubkey_serialized, target_pubkey_len)) {
+//                          return hare.k1;
+//                      }
+//                      else if (compressed_key_hex_R1 == bytesToHex(target_pubkey_serialized, target_pubkey_len))
+//                      {
+//                          return hare.k2;
+//                      }
+//                 }
+
+//                 //Verificar colisões não triviais, a espera de um milagre:
+//                 if (!x_hex_R.empty() && !x_hex_R1.empty() && x_hex_R == x_hex_R1) {
+
+//                      for (int j = i + 1; j < hares; ++j) {
+
+//                           if (hare_states[i].k1 != hare_states[j].k2) {
+
+//                               uint256_t d = 0;
+                             
+//                               while (true) {
+//                                   secp256k1_pubkey current_point = hare_states[i].R;
+//                                   secp256k1_pubkey next_point;
+
+//                                   unsigned char tweak[32];
+
+//                                   unsigned char serialized_G[33];
+//                                   size_t serialized_G_len = sizeof(serialized_G);
+//                                   if (!secp256k1_ec_pubkey_serialize(ctx, serialized_G, &serialized_G_len, &G, SECP256K1_EC_COMPRESSED)) {
+//                                       std::cerr << "Error serializing point G" << std::endl;
+//                                       return uint256_t(0);
+//                                   }
+
+//                                   std::memcpy(tweak, serialized_G, 32);
+
+//                                   if (!secp256k1_ec_pubkey_tweak_add(ctx, &next_point, tweak)) {
+//                                       std::cerr << "Error calculating point addition" << std::endl;
+//                                       break;
+//                                   }
+
+//                                   std::string x_current, y_current;
+//                                   if (!point_to_hex(ctx, next_point, x_current, y_current)) {
+//                                       std::cerr << "Failed to convert point to hex" << std::endl;
+//                                       break;
+//                                   }
+
+//                                   //d = (x1, y1) * G + (x2,y2) * (-G)
+//                                   if (x_current == x_hex_R1 && y_current == y_hex_R1) {
+//                                       break;
+//                                   }
+
+//                                   current_point = next_point;
+//                                   d++;
+
+//                                   if (d >= n) {
+//                                       std::cerr << "Failed to find difference between k1 and k2" << std::endl;
+//                                       break;
+//                                   }
+//                               }
+
+//                               //Verify if d * G ≡ 0
+//                               if ((d % n) == 0) {
+//                                    std::cout << "\033[32mCollision between hare " << i << " and hare " << j << "!\033[0m" << std::endl;
+//                                    std::cout << "hare k1: " << hare_states[i].k1 << std::endl;
+//                                    std::cout << "hare k2: " << hare_states[j].k2 << std::endl;
+
+//                                    search_in_progress = false;
+//                                    if (log_thread.joinable()) log_thread.join();
+
+//                                    return (hare_states[j].k2 + d) % n;
+//                               }
+//                               else
+//                               {
+//                                   std::cerr << "(d * G ≡ 0) is false" << std::endl;
+
+//                                   search_in_progress = false;
+//                                   if (log_thread.joinable()) log_thread.join();
+
+//                                   return uint256_t(0);
+//                               }
+//                           }
+//                      }
+//                 }
+//             }
+//         }
+
+//         return uint256_t(0);
+//     } catch (const std::exception& e) {
+//         std::cerr << "Unhandled exception: " << e.what() << std::endl;
+//         std::cerr.flush();
+//         return uint256_t(0);
+//     }
+// }
 
 int main(int argc, char* argv[]) {
     //Test
@@ -390,8 +607,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    //Teste atual com 16 lebres, valores maiores seriam eficientes apenas com multi-threads.
-    auto private_key = prho(ctx, pubkey, pubkey, key_range, 16);
+    //Teste atual com 32 lebres:
+    auto private_key = prho(ctx, pubkey, pubkey, key_range, 32);
 
     std::cout << "Private Key Found: " << uint256_to_hex(private_key) << std::endl;
 
