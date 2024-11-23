@@ -13,7 +13,6 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 #### Prerequisites
 
 - boost::multiprecision.
-- secp256k1.
 
 ---
 
@@ -29,7 +28,6 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
     sudo apt-get update
     sudo apt-get upgrade
     sudo apt-get install gcc g++
-    sudo apt-get install libsecp256k1-dev
     sudo apt-get install libboost-all-dev
     ```
 
