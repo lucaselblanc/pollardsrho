@@ -100,12 +100,14 @@ bool point_to_hex(secp256k1_context* ctx, const secp256k1_pubkey& point, std::st
 int64_t modular_inverse(int64_t a, int64_t m) {
     std::cout << "Base: " << a << ", Module: " << m << std::endl;
 
-    if (m == 0) return 0;
+    a = (a % m + m) % m;
 
-    int64_t m0 = m, t, q;
-    int64_t x0 = 0, x1 = 1;
+    if (m == 0 || a == 0) return 0;
 
     if (m == 1) return 1;
+
+    int64_t m0 = m, t, q;
+    int64_t x0 = 0, x1 = 1;
 
     while (a > 1) {
 
