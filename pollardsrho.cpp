@@ -1,6 +1,7 @@
 #include <iostream>
 #include <secp256k1.h>
 #include <unordered_map>
+#include <numeric>
 #include <random>
 #include <cstring>
 #include <sstream>
@@ -100,19 +101,20 @@ bool point_to_hex(secp256k1_context* ctx, const secp256k1_pubkey& point, std::st
 int64_t modular_inverse(int64_t a, int64_t m) {
     std::cout << "Base: " << a << ", Module: " << m << std::endl;
 
-    a = (a % m + m) % m;
-
-    if (m == 0 || a == 0) return 0;
+    if (m <= 0 || a <= 0) return 0;
 
     if (m == 1) return 1;
 
+    if (std::gcd(a, m) != 1) {
+        return 0;
+    }
+
     int64_t m0 = m, t, q;
-    int64_t x0 = 0, x1 = 1;
+    int64_t x0 = 0, x1 = 1;
 
-    while (a > 1) {
+    a = (a % m + m) % m;
 
-        if (m == 0) { return 0; }
-
+    while (a > 1) {
         q = a / m;
         t = m;
         m = a % m;
@@ -121,8 +123,6 @@ int64_t modular_inverse(int64_t a, int64_t m) {
         x0 = x1 - q * x0;
         x1 = t;
     }
-
-    if (a != 1) return 0;
 
     if (x1 < 0) x1 += m0;
 
