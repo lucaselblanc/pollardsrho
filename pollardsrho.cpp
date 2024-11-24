@@ -113,12 +113,10 @@ int64_t modular_inverse(int64_t a, int64_t m) {
 
         if (m == 0) { return 0; }
 
-        q = a / m;
-
+        q = a / m;
         t = m;
         m = a % m;
-        a = t;
-
+        a = t;
         t = x0;
         x0 = x1 - q * x0;
         x1 = t;
