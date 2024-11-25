@@ -55,18 +55,13 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 
 ## Libraries Used
 
-- boost/multiprecision/cpp_int.hpp
-- secp256k1.h
-- iostream
-- unordered_map
-- random
-- cstring
-- sstream
-- chrono
-- thread
-- mutex
-- atomic
-- iomanip
+- <secp256k1.h>
+- <random>
+- <thread>
+- <mutex>
+- <atomic>
+- <omp.h>
+- <boost/multiprecision/cpp_int.hpp>
 
 ## Contributing
 
