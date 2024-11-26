@@ -69,6 +69,8 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 
 ## Add a Star: <a href="https://github.com/lucaselblanc/pollardsrho/stargazers"><img src="https://img.shields.io/github/stars/lucaselblanc/pollardsrho?style=flat-square" alt="GitHub stars" style="vertical-align: bottom; width: 65px; height: auto;"></a>
 
+## Donations: bc1pxqwuyfwvttjgttfmpt0gk0n7yzw3k7cyzzpc3rsc4lumr8ywythsj0rrhd
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
