@@ -89,7 +89,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 - 🚀 I’m looking to collaborate on: [Cyber-Security](https://play.google.com/store/apps/details?id=com.hashsuite.droid)
 
-- 📝 I regularly read: [https://nvd.nist.gov/vuln](https://nvd.nist.gov/vuln)
+- 📝 I regularly read: [https://github.com/bitcoin-core/secp256k1](https://github.com/bitcoin-core/secp256k1)
 
 - 📄 Know about my experiences: [https://www.linkedin.com/in/lucas-jhonatan-215594208](https://www.linkedin.com/in/lucas-jhonatan-215594208)
 
