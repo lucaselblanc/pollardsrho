@@ -117,7 +117,7 @@ int64_t modular_inverse(int64_t a, int64_t m) {
     return x1;
 }
 
-uint256_t serialize(const secp256k1_pubkey& point, secp256k1_context* ctx) {
+uint256_t SerializePubKey(const secp256k1_pubkey& point, secp256k1_context* ctx) {
     unsigned char serialized[33];
     size_t len = sizeof(serialized);
 
@@ -232,7 +232,7 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
                     p_key = current_key;
                     keys_ps++;
 
-                    if (serialize(hare.R, ctx) != 0 && serialize(hare.R1, ctx) != 0) {
+                    if (SerializePubKey(hare.R, ctx) != 0 && SerializePubKey(hare.R1, ctx) != 0) {
                         hare.k1 = (hare.k1 + hare.speed) % (uint256_t(1) << 64);
                         hare.k2 = (hare.k2 + hare.speed) % (uint256_t(1) << 64);
                     }
