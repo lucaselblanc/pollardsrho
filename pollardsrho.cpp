@@ -240,16 +240,6 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
                     if (hare.k1 < min_scalar) hare.k1 += min_scalar;
                     if (hare.k2 < min_scalar) hare.k2 += min_scalar;
 
-                    if (!secp256k1_ec_pubkey_create(ctx, &hare.R, reinterpret_cast<const unsigned char*>(&hare.k1))) {
-                        std::cerr << "Failed to create public key for hare " << i << " with k1: " << uint256_to_hex(hare.k1) << std::endl;
-                        throw std::runtime_error("Error updating public key!");
-                    }
-
-                    if (!secp256k1_ec_pubkey_create(ctx, &hare.R1, reinterpret_cast<const unsigned char*>(&hare.k2))) {
-                        std::cerr << "Failed to create public key for hare " << i << " with k2: " << uint256_to_hex(hare.k2) << std::endl;
-                        throw std::runtime_error("Error updating public key!");
-                    }
-
                     std::string k1_hex = uint256_to_hex(hare.k1);
                     std::tie(compressed_key_hex_R, x_hex_R, y_hex_R) = privateKeyToPublicKey(k1_hex);
                     current_pubkey_hex_R = compressed_key_hex_R;
