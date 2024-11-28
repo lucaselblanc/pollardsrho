@@ -231,7 +231,7 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
                     }
 
                     //Verificar colisões não triviais, a espera de um milagre:
-                    if (((!x_hex_R.empty() && !x_hex_R1.empty()) && (x_hex_R == x_hex_R1))) {
+                    if (!x_hex_R.empty() && !x_hex_R1.empty() && x_hex_R == x_hex_R1) {
 
                         for (int j = i + 1; j < hares; ++j) {
 
