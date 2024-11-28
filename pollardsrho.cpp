@@ -153,7 +153,6 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
              std::cout << "\rCurrent private key: " << uint256_to_hex(p_key) << std::endl;
              std::cout << "\rLast tested public key: " << P_key << std::endl;
              std::cout << "\rTotal keys tested: " << keys_ps << std::endl; }
-             keys_ps = 0;
          }
     } catch (const std::exception& e) {
          std::cerr << "Error in log_thread: " << e.what() << std::endl;
