@@ -70,19 +70,6 @@ std::tuple<std::string, std::string, std::string> privateKeyToPublicKey(
     return std::make_tuple(compressed_key_hex, x_hex, y_hex);
 }
 
-bool point_to_hex(secp256k1_context* ctx, const secp256k1_pubkey& point, std::string& x_hex, std::string& y_hex) {
-    unsigned char output[65];
-    size_t output_len = sizeof(output);
-
-    if (!secp256k1_ec_pubkey_serialize(ctx, output, &output_len, &point, SECP256K1_EC_UNCOMPRESSED)) {
-        return false;
-    }
-
-    x_hex = bytesToHex(output + 1, 32);
-    y_hex = bytesToHex(output + 33, 32);
-    return true;
-}
-
 //Tests
 int64_t modular_inverse(int64_t a, int64_t m) {
     /* 
