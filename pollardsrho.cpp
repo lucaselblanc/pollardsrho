@@ -3,6 +3,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <unordered_set>
 #include <omp.h>
 #include <boost/multiprecision/cpp_int.hpp>
 
@@ -26,6 +27,15 @@ std::string uint256_to_hex(const uint256_t& value) {
     return oss.str();
 }
 
+std::vector<unsigned char> hexToBytes(const std::string& hex) {
+    std::vector<unsigned char> bytes;
+    for (size_t i = 0; i < hex.length(); i += 2) {
+        unsigned char byte = (unsigned char) std::stoi(hex.substr(i, 2), nullptr, 16);
+        bytes.push_back(byte);
+    }
+    return bytes;
+}
+
 std::string bytesToHex(const unsigned char* bytes, size_t length) {
     std::string hex_str;
     hex_str.reserve(length * 2);
@@ -37,8 +47,16 @@ std::string bytesToHex(const unsigned char* bytes, size_t length) {
     return hex_str;
 }
 
+uint256_t bytesToUint256(const unsigned char* bytes) {
+    uint256_t value = 0;
+    for (size_t i = 0; i < 32; ++i) {
+        value = (value << 8) | bytes[i];
+    }
+    return value;
+}
+
 std::tuple<std::string, std::string, std::string> privateKeyToPublicKey(
-    const std::string& private_key_hex, secp256k1_context* ctx) {
+    const std::string& private_key_hex, secp256k1_context* ctx, const secp256k1_pubkey& G) {
 
     if (private_key_hex.size() != 64) {
         throw std::runtime_error("Invalid private key size!");
@@ -46,23 +64,28 @@ std::tuple<std::string, std::string, std::string> privateKeyToPublicKey(
 
     std::array<unsigned char, 32> private_key{};
     for (size_t i = 0; i < 32; ++i) {
-        private_key[i] = (std::stoi(private_key_hex.substr(i * 2, 2), nullptr, 16));
+        private_key[i] = std::stoi(private_key_hex.substr(i * 2, 2), nullptr, 16);
     }
 
-    secp256k1_pubkey pubkey;
-    if (!secp256k1_ec_pubkey_create(ctx, &pubkey, private_key.data())) {
+    secp256k1_pubkey result_pubkey = G;
+    if (!secp256k1_ec_pubkey_tweak_mul(ctx, &result_pubkey, private_key.data())) {
+        throw std::runtime_error("Error multiplying public key with private key!");
+    }
+
+    //Gargalo:
+    if (!secp256k1_ec_pubkey_create(ctx, &result_pubkey, private_key.data())) {
         throw std::runtime_error("Error creating public key!");
     }
 
     std::array<unsigned char, 33> pubkey_compact{};
     size_t pubkey_len = pubkey_compact.size();
-    secp256k1_ec_pubkey_serialize(ctx, pubkey_compact.data(), &pubkey_len, &pubkey, SECP256K1_EC_COMPRESSED);
+    secp256k1_ec_pubkey_serialize(ctx, pubkey_compact.data(), &pubkey_len, &result_pubkey, SECP256K1_EC_COMPRESSED);
 
     std::string compressed_key_hex = bytesToHex(pubkey_compact.data(), pubkey_len);
 
     unsigned char pubkey_full[65];
     size_t pubkey_full_len = sizeof(pubkey_full);
-    secp256k1_ec_pubkey_serialize(ctx, pubkey_full, &pubkey_full_len, &pubkey, SECP256K1_EC_UNCOMPRESSED);
+    secp256k1_ec_pubkey_serialize(ctx, pubkey_full, &pubkey_full_len, &result_pubkey, SECP256K1_EC_UNCOMPRESSED);
 
     std::string x_hex = bytesToHex(pubkey_full + 1, 32);
     std::string y_hex = bytesToHex(pubkey_full + 33, 32);
@@ -113,7 +136,7 @@ class PrivateKeyGen {
     min_low(static_cast<uint64_t>(min_scalar & 0xFFFFFFFFFFFFFFFF)),
     max_low(static_cast<uint64_t>(max_scalar & 0xFFFFFFFFFFFFFFFF)),
     min_high(static_cast<uint64_t>((min_scalar >> 64) & 0xFFFFFFFFFFFFFFFF)),
-    max_high(static_cast<uint64_t>((max_scalar >> 64) & 0xFFFFFFFFFFFFFFFF)) { }
+    max_high(static_cast<uint64_t>((max_scalar >> 64) & 0xFFFFFFFFFFFFFFFF)) {}
 
     uint256_t generate() {
         uint64_t low = std::uniform_int_distribution<uint64_t>(min_low, max_low)(gen);
@@ -131,7 +154,7 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
     uint256_t keys_ps;
 
     //SECP256K1 n
-    //uint256_t n = uint256_t("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
+    uint256_t n = uint256_t("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
 
     std::cout << "key_range: " << key_range << std::endl;
     std::cout << "min_range: " << uint256_to_hex(min_scalar) << std::endl;
@@ -172,10 +195,18 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
 
         struct HareState {
             uint256_t k1, k2;
+            secp256k1_pubkey R;//G Point
+            std::unordered_set<std::string> cicle;
             int speed;
         };
 
         std::vector<HareState> hare_states(hares);
+
+        for (int k = 0; k < hares; ++k)
+        {
+            HareState& hare = hare_states[k];
+            std::memcpy(&hare.R, &G, sizeof(secp256k1_pubkey));
+        }
 
         unsigned char target_pubkey_serialized[33];
         size_t target_pubkey_len = sizeof(target_pubkey_serialized);
@@ -205,13 +236,76 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
                     if (hare.k2 < min_scalar) hare.k2 += min_scalar;
 
                     std::string k1_hex = uint256_to_hex(hare.k1);
-                    std::tie(compressed_key_hex_R, x_hex_R, y_hex_R) = privateKeyToPublicKey(k1_hex, ctx);
+                    std::tie(compressed_key_hex_R, x_hex_R, y_hex_R) = privateKeyToPublicKey(k1_hex, ctx, hare.R);
                     current_pubkey_hex_R = compressed_key_hex_R;
                     P_key = current_pubkey_hex_R;
 
                     std::string k2_hex = uint256_to_hex(hare.k2);
-                    std::tie(compressed_key_hex_R1, x_hex_R1, y_hex_R1) = privateKeyToPublicKey(k2_hex, ctx);
+                    std::tie(compressed_key_hex_R1, x_hex_R1, y_hex_R1) = privateKeyToPublicKey(k2_hex, ctx, hare.R);
                     current_pubkey_hex_R1 = compressed_key_hex_R1;
+
+                    //Verificar colisões não triviais, a espera de um milagre:
+                    if (hare.cicle.find(current_pubkey_hex_R) != hare.cicle.end() && 
+                        hare.cicle.find(current_pubkey_hex_R1) != hare.cicle.end()) {
+
+                        /*
+                           Calcular a diferença (d) entre os pontos pubkey1 e pubkey2:
+                           d = k1 - k2 tal que P1 = k1 * G e P2 = k2 * G
+  
+                           Verificar se: (d * G ≡ 0), caso verdadeiro: found_key = (k2 + d) % n;
+                        */
+
+                        std::vector<unsigned char> pubkey_bytes_R = hexToBytes(current_pubkey_hex_R);
+                        std::vector<unsigned char> pubkey_bytes_R1 = hexToBytes(current_pubkey_hex_R1);
+
+                        secp256k1_pubkey pubkey1, pubkey2;
+
+                        if (!secp256k1_ec_pubkey_parse(ctx, &pubkey1, pubkey_bytes_R.data(), pubkey_bytes_R.size())) {}
+                        if (!secp256k1_ec_pubkey_parse(ctx, &pubkey2, pubkey_bytes_R1.data(), pubkey_bytes_R1.size())) {}
+
+                        unsigned char serialized_pubkey1[33], serialized_pubkey2[33];
+                        size_t len = 33;
+                        if (!secp256k1_ec_pubkey_serialize(ctx, serialized_pubkey1, &len, &pubkey1, SECP256K1_EC_COMPRESSED)) {}
+                        if (!secp256k1_ec_pubkey_serialize(ctx, serialized_pubkey2, &len, &pubkey2, SECP256K1_EC_COMPRESSED)) {}
+
+                        uint256_t p1 = bytesToUint256(serialized_pubkey1);
+                        uint256_t p2 = bytesToUint256(serialized_pubkey2);
+                        uint256_t d = (p1 - p2) % n;
+                        uint256_t found_key = (hare.k2 + d) % n;
+
+                        unsigned char d_bytes[32] = {0};
+                        for (int i = 0; i < 32; i++) {
+                            d_bytes[31 - i] = static_cast<unsigned char>((d >> (8 * i)).convert_to<uint64_t>() & 0xFF);
+                        }
+
+                        secp256k1_pubkey point = G;
+                        if (secp256k1_ec_pubkey_tweak_mul(ctx, &point, d_bytes)) {
+                            unsigned char point_bytes[33];
+                            secp256k1_ec_pubkey_serialize(ctx, point_bytes, &len, &point, SECP256K1_EC_COMPRESSED);
+
+                            std::vector<unsigned char> zeros(len, 0);
+                            if(memcmp(point_bytes, zeros.data(), len) == 0)
+                            {
+                                 std::cout << "\033[33mCycle detected for hare " << i << " at k1: " << uint256_to_hex(hare.k1) << "\033[0m" << std::endl;
+                                 std::cout << "\033[33mCycle detected for hare " << i << " at k2: " << uint256_to_hex(hare.k2) << "\033[0m" << std::endl;
+                                 std::cout << "A multiplicação satisfaz a equação (d * G ≡ 0)" << std::endl;
+                                 std::cout << "Private Key Found: " << uint256_to_hex(found_key) << std::endl;
+
+                                 #pragma omp critical
+                                 search_in_progress.store(false);
+                            }
+                            else
+                            {
+                                std::cout << "\033[33mCycle detected for hare " << i << " at k1: " << uint256_to_hex(hare.k1) << "\033[0m" << std::endl;
+                                std::cout << "\033[33mCycle detected for hare " << i << " at k2: " << uint256_to_hex(hare.k2) << "\033[0m" << std::endl;
+                                std::cout << "A multiplicação não satisfaz a equação (d * G ≡ 0)" << std::endl;
+                                std::cout << "Invalid Key Found: " << uint256_to_hex(found_key) << std::endl;
+                            }
+                        }
+                    } else {
+                        hare.cicle.insert(current_pubkey_hex_R);
+                        hare.cicle.insert(current_pubkey_hex_R1);
+                    }
 
                     if (current_pubkey_hex_R == bytesToHex(target_pubkey_serialized, target_pubkey_len)
                         || current_pubkey_hex_R1 == bytesToHex(target_pubkey_serialized, target_pubkey_len)) {
@@ -227,29 +321,8 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
                             std::cout << "Private Key Found: " << uint256_to_hex(found_key) << std::endl;
                         }
 
+                        #pragma omp critical
                         search_in_progress.store(false);
-                    }
-
-                    //Verificar colisões não triviais, a espera de um milagre:
-                    if (!x_hex_R.empty() && !x_hex_R1.empty() && x_hex_R == x_hex_R1) {
-
-                        for (int j = i + 1; j < hares; ++j) {
-
-                            if (hare_states[i].k1 != hare_states[j].k2) {
-
-                                /*
-                                Calcular a diferença (d) entre k1 e k2:
-                                d = (x1, y1) * G + (x2,y2) * (-G)
-                                Verificar se (d * G ≡ 0) tal que:
-                                found_key = (k2 + d) % n;
-                                */
-                                
-                                std::cout << "\033[32mCollision between hare " << i << " and hare " << j << "!\033[0m" << std::endl;
-                                std::cout << "hare k1: " << hare_states[i].k1 << std::endl;
-                                std::cout << "hare k2: " << hare_states[j].k2 << std::endl;
-                                search_in_progress.store(false);
-                            }
-                        }
                     }
                 }
 
