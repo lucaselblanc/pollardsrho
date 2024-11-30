@@ -283,10 +283,8 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
                             unsigned char point_bytes[33];
                             secp256k1_ec_pubkey_serialize(ctx, point_bytes, &len, &point, SECP256K1_EC_COMPRESSED);
 
-/*                            std::vector<unsigned char> zeros(len, 0);
+                            std::vector<unsigned char> zeros(len, 0);
 if(memcmp(point_bytes, zeros.data(), len) == 0)
-*/
-                            if(secp256k1_is_infinity(ctx, &point))
                             {
                                  std::cout << "\033[33mCycle detected for hare " << i << " at k1: " << uint256_to_hex(hare.k1) << "\033[0m" << std::endl;
                                  std::cout << "\033[33mCycle detected for hare " << i << " at k2: " << uint256_to_hex(hare.k2) << "\033[0m" << std::endl;
