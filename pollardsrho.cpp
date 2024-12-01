@@ -21,10 +21,18 @@
 
 using namespace boost::multiprecision;
 
-std::string uint256_to_hex(const uint256_t& value) {
+std::string uint256ToHex(const uint256_t& value) {
     std::ostringstream oss;
     oss << std::setw(64) << std::setfill('0') << std::hex << value;
     return oss.str();
+}
+
+uint256_t bytesToUint256(const unsigned char* bytes) {
+    uint256_t value = 0;
+    for (size_t i = 0; i < 32; ++i) {
+        value = (value << 8) | bytes[i];
+    }
+    return value;
 }
 
 std::vector<unsigned char> hexToBytes(const std::string& hex) {
@@ -47,15 +55,16 @@ std::string bytesToHex(const unsigned char* bytes, size_t length) {
     return hex_str;
 }
 
-uint256_t bytesToUint256(const unsigned char* bytes) {
-    uint256_t value = 0;
-    for (size_t i = 0; i < 32; ++i) {
-        value = (value << 8) | bytes[i];
-    }
-    return value;
-}
-
 std::tuple<std::string, std::string, std::string> privateKeyToPublicKey(
+
+    /*Gargalos principais da função:
+    secp256k1_ec_pubkey_create(ctx, &pubkey, private_key)
+    secp256k1_ec_pubkey_serialize(ctx, serialized_G, &serialized_G_len, &G, SECP256K1_EC_COMPRESSED)
+    secp256k1_ec_pubkey_tweak_mul(ctx, &result_pubkey, private_key.data()
+
+    Para melhorar a eficiência do algoritmo, essas funções da secp256k1 deveriam ser escritas manualmente
+    https://github.com/JeanLucPons/Kangaroo/tree/master/SECPK1 */
+
     const std::string& private_key_hex, secp256k1_context* ctx, const secp256k1_pubkey& G) {
 
     if (private_key_hex.size() != 64) {
@@ -72,7 +81,6 @@ std::tuple<std::string, std::string, std::string> privateKeyToPublicKey(
         throw std::runtime_error("Error multiplying public key with private key!");
     }
 
-    //Gargalo:
     if (!secp256k1_ec_pubkey_create(ctx, &result_pubkey, private_key.data())) {
         throw std::runtime_error("Error creating public key!");
     }
@@ -93,9 +101,11 @@ std::tuple<std::string, std::string, std::string> privateKeyToPublicKey(
     return std::make_tuple(compressed_key_hex, x_hex, y_hex);
 }
 
-//Tests
+/* 
+Não utilizado na implementação, apenas para testes simples:
+https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm */
 int64_t modular_inverse(int64_t a, int64_t m) {
-    /* 
+
     std::cout << "Base: " << a << ", Module: " << m << std::endl;
 
     if (m <= 0 || a <= 0) return 0;
@@ -105,12 +115,11 @@ int64_t modular_inverse(int64_t a, int64_t m) {
     if (std::gcd(a, m) != 1) {
         return 0;
     }
-    */
 
     int64_t m0 = m, t, q;
     int64_t x0 = 0, x1 = 1;
 
-    /* a = (a % m + m) % m; */
+    a = (a % m + m) % m;
 
     while (a > 1) {
         q = a / m;
@@ -148,6 +157,7 @@ class PrivateKeyGen {
 /******************
  **[MULTI-THREADS]*
  ******************/
+//https://en.wikipedia.org/wiki/Pollard%27s_rho_algorithm#Further_reading
 uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k1_pubkey& target_pubkey, int key_range, int hares) {
     uint256_t min_scalar = (uint256_t(1) << (key_range - 1));  
     uint256_t max_scalar = (uint256_t(1) << key_range) - 1;
@@ -157,8 +167,8 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
     uint256_t n = uint256_t("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
 
     std::cout << "key_range: " << key_range << std::endl;
-    std::cout << "min_range: " << uint256_to_hex(min_scalar) << std::endl;
-    std::cout << "max_range: " << uint256_to_hex(max_scalar) << std::endl;
+    std::cout << "min_range: " << uint256ToHex(min_scalar) << std::endl;
+    std::cout << "max_range: " << uint256ToHex(max_scalar) << std::endl;
 
     std::atomic<bool> search_in_progress(true);
     std::mutex pgrs;
@@ -173,7 +183,7 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
              std::this_thread::sleep_for(std::chrono::seconds(10));
              std::lock_guard<std::mutex> lock(pgrs);
              if(search_in_progress){        
-             std::cout << "\rCurrent private key: " << uint256_to_hex(p_key) << std::endl;
+             std::cout << "\rCurrent private key: " << uint256ToHex(p_key) << std::endl;
              std::cout << "\rLast tested public key: " << P_key << std::endl;
              std::cout << "\rTotal keys tested: " << keys_ps << std::endl; }
          }
@@ -235,16 +245,17 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
                     if (hare.k1 < min_scalar) hare.k1 += min_scalar;
                     if (hare.k2 < min_scalar) hare.k2 += min_scalar;
 
-                    std::string k1_hex = uint256_to_hex(hare.k1);
+                    std::string k1_hex = uint256ToHex(hare.k1);
                     std::tie(compressed_key_hex_R, x_hex_R, y_hex_R) = privateKeyToPublicKey(k1_hex, ctx, hare.R);
                     current_pubkey_hex_R = compressed_key_hex_R;
                     P_key = current_pubkey_hex_R;
 
-                    std::string k2_hex = uint256_to_hex(hare.k2);
+                    std::string k2_hex = uint256ToHex(hare.k2);
                     std::tie(compressed_key_hex_R1, x_hex_R1, y_hex_R1) = privateKeyToPublicKey(k2_hex, ctx, hare.R);
                     current_pubkey_hex_R1 = compressed_key_hex_R1;
 
-                    //Verificar colisões não triviais, a espera de um milagre:
+                    /* Verificar colisões não triviais utilizando ciclos de floyd:
+                    https://en.wikipedia.org/wiki/Cycle_detection#Floyd's_tortoise_and_hare */
                     if (hare.cicle.find(current_pubkey_hex_R) != hare.cicle.end() && 
                         hare.cicle.find(current_pubkey_hex_R1) != hare.cicle.end()) {
 
@@ -284,22 +295,22 @@ uint256_t prho(secp256k1_context* ctx, const secp256k1_pubkey& G, const secp256k
                             secp256k1_ec_pubkey_serialize(ctx, point_bytes, &len, &point, SECP256K1_EC_COMPRESSED);
 
                             std::vector<unsigned char> zeros(len, 0);
-if(memcmp(point_bytes, zeros.data(), len) == 0)
+                            if(memcmp(point_bytes, zeros.data(), len) == 0)
                             {
-                                 std::cout << "\033[33mCycle detected for hare " << i << " at k1: " << uint256_to_hex(hare.k1) << "\033[0m" << std::endl;
-                                 std::cout << "\033[33mCycle detected for hare " << i << " at k2: " << uint256_to_hex(hare.k2) << "\033[0m" << std::endl;
+                                 std::cout << "\033[33mCycle detected for hare " << i << " at k1: " << uint256ToHex(hare.k1) << "\033[0m" << std::endl;
+                                 std::cout << "\033[33mCycle detected for hare " << i << " at k2: " << uint256ToHex(hare.k2) << "\033[0m" << std::endl;
                                  std::cout << "A multiplicação satisfaz a equação (d * G ≡ 0)" << std::endl;
-                                 std::cout << "Private Key Found: " << uint256_to_hex(found_key) << std::endl;
+                                 std::cout << "Private Key Found: " << uint256ToHex(found_key) << std::endl;
 
                                  #pragma omp critical
                                  search_in_progress.store(false);
                             }
                             else
                             {
-                                std::cout << "\033[33mCycle detected for hare " << i << " at k1: " << uint256_to_hex(hare.k1) << "\033[0m" << std::endl;
-                                std::cout << "\033[33mCycle detected for hare " << i << " at k2: " << uint256_to_hex(hare.k2) << "\033[0m" << std::endl;
+                                std::cout << "\033[33mCycle detected for hare " << i << " at k1: " << uint256ToHex(hare.k1) << "\033[0m" << std::endl;
+                                std::cout << "\033[33mCycle detected for hare " << i << " at k2: " << uint256ToHex(hare.k2) << "\033[0m" << std::endl;
                                 std::cout << "A multiplicação não satisfaz a equação (d * G ≡ 0)" << std::endl;
-                                std::cout << "Invalid Key Found: " << uint256_to_hex(found_key) << std::endl;
+                                std::cout << "Invalid Key Found: " << uint256ToHex(found_key) << std::endl;
                             }
                         }
                     } else {
@@ -314,11 +325,11 @@ if(memcmp(point_bytes, zeros.data(), len) == 0)
 
                         if (compressed_key_hex_R == bytesToHex(target_pubkey_serialized, target_pubkey_len)) {
                             found_key = hare.k1;
-                            std::cout << "Private Key Found: " << uint256_to_hex(found_key) << std::endl;
+                            std::cout << "Private Key Found: " << uint256ToHex(found_key) << std::endl;
                         }
                         else if (compressed_key_hex_R1 == bytesToHex(target_pubkey_serialized, target_pubkey_len)) {
                             found_key = hare.k2;
-                            std::cout << "Private Key Found: " << uint256_to_hex(found_key) << std::endl;
+                            std::cout << "Private Key Found: " << uint256ToHex(found_key) << std::endl;
                         }
 
                         #pragma omp critical
@@ -359,15 +370,6 @@ if(memcmp(point_bytes, zeros.data(), len) == 0)
 
     return found_key;
 }
-
-/*Gargalos principais do script:
-secp256k1_ec_pubkey_create(ctx, &pubkey, private_key)
-secp256k1_ec_pubkey_serialize(ctx, serialized_G, &serialized_G_len, &G, SECP256K1_EC_COMPRESSED) 
-
-O gargalo principal dessas funções é o inverso do ponto no campo finito 
-Para melhorar a eficiência do algoritmo, essas funções da secp256k1 deveriam ser escritas manualmente
-https://github.com/JeanLucPons/Kangaroo/tree/master/SECPK1 */
-
 
 int main(int argc, char* argv[]) {
     //Test
