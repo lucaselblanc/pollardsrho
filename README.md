@@ -1,4 +1,4 @@
-# Pollard's Rho Algorithm for SECP256K1 Curve
+# Pollard's Rho Algorithm for SECP256K1 Curve (Beta)
 
 ![C++](https://img.shields.io/badge/language-C++-blue)
 
