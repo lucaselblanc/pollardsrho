@@ -96,7 +96,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 - 📝 I regularly read: [https://github.com/bitcoin-core/secp256k1](https://github.com/bitcoin-core/secp256k1)
 
-- 📄 Know about my experiences: [https://www.linkedin.com/in/lucas-jhonatan-215594208](https://www.linkedin.com/in/lucas-jhonatan-215594208)
+- 📄 Know about my experiences: [https://www.linkedin.com/in/lucas-leblanc-215594208](https://www.linkedin.com/in/lucas-leblanc-215594208)
 
 <br>
 My Github Stats
