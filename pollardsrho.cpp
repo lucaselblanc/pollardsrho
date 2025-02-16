@@ -145,7 +145,7 @@ double get_memory_gb() {
 
 double TOTAL_RAM = (get_memory_gb() / 2); // div 2 >> 50% of ram
 size_t NUM_JUMPS;
-size_t step_index = 0;
+size_t jump_index = 0;
 bool precomputed_done = false;
 
 std::vector<uint256_t> precomputed_jumps;
@@ -188,10 +188,10 @@ void f(ECPoint& R, uint256_t& k, int key_range) {
 
     if (op == 0) {
         point_add(&R, &R, &H, P);
-        k = (k + precomputed_jumps[step_index++ % NUM_JUMPS]) % key_range;
+        k = (k + precomputed_jumps[jump_index++ % NUM_JUMPS]) % key_range;
     } else {
         point_double(&R, &R, P);
-        k = (k * precomputed_jumps[step_index++ % NUM_JUMPS]) % key_range;
+        k = (k * precomputed_jumps[jump_index++ % NUM_JUMPS]) % key_range;
     }
 }
 
