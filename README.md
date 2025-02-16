@@ -46,22 +46,24 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 
     Example usage:
     ```bash
-    ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135
+    ~/pollardsrho$ ./pollardsrho 02a521a07e98f78b03fc1e039bc3a51408cd73119b5eb116e583fe57dc8db07aea 57
     ```
 
 ## Commands
 
 - `~/pollardsrho$ ./pollardsrho <compressed public key> <key range>`: Starts the search for the private key corresponding to the given public key.
+- `~/pollardsrho$ ./pollardsrho <compressed public key> <key range> --t`: Starts searching for the private key corresponding to the public key provided in test mode for ranges equal to or less than 20 bits.
 
 ## Libraries Used
 
-- secp256k1.h
+- ec.h
+- gmpxx.h
 - random
 - thread
 - mutex
 - atomic
-- unordered_set
 - omp.h
+- sys/sysinfo.h
 - boost/multiprecision/cpp_int.hpp
 
 ## Contributing
