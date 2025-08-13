@@ -1,4 +1,3 @@
-//#include "secp256k1.h"
 #include "ec.h"
 #include <gmpxx.h>
 #include <random>
@@ -120,25 +119,32 @@ void precompute_jumps(int key_range) {
     precomputed_done = true;
 }
 
-void f(ECPoint& R, uint256_t& k, int key_range) {
-    static std::mt19937 rng(std::random_device{}());
-    static std::uniform_int_distribution<int> dist_op(0, 2);
+std::atomic<size_t> jump(0);
 
-    int op = dist_op(rng);
+uint256_t f(ECPoint& R, uint256_t k, int key_range) {
+    const uint256_t mask = (uint256_t(1) << key_range) - 1;
 
-    if (op == 0) {
-        point_add(&R, &R, &G, P);
-        size_t idx = jump_index_atomic.fetch_add(1, std::memory_order_relaxed) % NUM_JUMPS;
-        k = (k + precomputed_jumps[idx]) % key_range;
-    } else if (op == 1) {
-        point_add(&R, &R, &H, P);
-        size_t idx = jump_index_atomic.fetch_add(1, std::memory_order_relaxed) % NUM_JUMPS;
-        k = (k + precomputed_jumps[idx]) % key_range;
-    } else {
-        point_double(&R, &R, P);
-        size_t idx = jump_index_atomic.fetch_add(1, std::memory_order_relaxed) % NUM_JUMPS;
-        k = (k * precomputed_jumps[idx]) % key_range;
+    unsigned long op = mpz_fdiv_ui(R.x, 3UL);
+    size_t idx = static_cast<size_t>(mpz_fdiv_ui(R.x, (unsigned long)NUM_JUMPS));
+
+    switch (op) {
+        case 0: // class 0
+            point_add(&R, &R, &G, P);
+            k = (k + precomputed_jumps[idx]) & mask;
+            break;
+
+        case 1: // class 1
+            point_add(&R, &R, &H, P);
+            k = (k + precomputed_jumps[idx]) & mask;
+            break;
+
+        default: // class 2
+            point_double(&R, &R, P);
+            k = (k << 1) & mask;
+            break;
     }
+
+    return k;
 }
 
 /*-- The algorithm is more efficient for ranges >= 57 bits, as the search is more distributed over larger ranges --*/
@@ -171,7 +177,15 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     };
 
     auto uint256_to_mpz = [](mpz_t private_key, uint256_t value) {
+        /*Retornando 0 pois futuramente esse lambda será removido,
+        por favor comente a linha: //mpz_init_set_ui(private_key, 0); 
+        e descomente o restante se for utilizar a função prho,
+        a função uint256_to_mpz é ineficiente e deve ser
+        substituída em breve, assim como o restante das funções gmp */
 
+        mpz_init_set_ui(private_key, 0);
+
+        /*
         const int limb_bits = sizeof(mp_limb_t) * 8;
         const int limb_bytes = sizeof(mp_limb_t);
 
@@ -205,6 +219,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         }
 
         private_key->_mp_size = num_limbs;
+        */
     };
 
     auto start_time = std::chrono::system_clock::now();
@@ -238,21 +253,31 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         int speed;
     };
 
-    std::vector<HareState> hare_states(hares);
-
-    unsigned int threads = std::thread::hardware_concurrency();
-    omp_set_num_threads(threads);
-
     PKG pkg(min_scalar, max_scalar);
     uint256_t current_key = pkg.generate();
 
+    std::vector<HareState> hare_states(hares);
+
+    for (int i = 0; i < hares; ++i) {
+        point_init(&hare_states[i].R);
+        mpz_set(hare_states[i].R.x, G.x);
+        mpz_set(hare_states[i].R.y, G.y);
+        hare_states[i].R.infinity = 0;
+        hare_states[i].speed = (i == 0) ? 1 : (i + 1);
+        hare_states[i].k1 = pkg.generate();
+        hare_states[i].k2 = pkg.generate();
+    }
+
+    //unsigned int threads = std::thread::hardware_concurrency();
+    //omp_set_num_threads(threads);
+
     std::thread log_thread([&]() {
         try {
-            while(search_in_progress) {
+            while(search_in_progress.load()) {
                 std::this_thread::sleep_for(std::chrono::seconds(10));
                 std::lock_guard<std::mutex> lock(pgrs);
 
-                if(search_in_progress) {
+                if(search_in_progress.load()) {
                     std::cout << "\rCurrent private key: " << uint_256_to_hex(p_key) << std::endl;
                     std::cout << "\rLast tested public key: " << P_key << std::endl;
                     std::cout << "\rTotal keys tested: " << keys_ps << std::endl;
@@ -264,26 +289,15 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         }
     });
 
-    #pragma omp parallel
-    {
-        for (int k = 0; k < hares; ++k) {
-            point_init(&hare_states[k].R);
-            mpz_set(hare_states[k].R.x, G.x);
-            mpz_set(hare_states[k].R.y, G.y);
-            hare_states[k].R.infinity = 0;
-        }
-
+    //#pragma omp parallel
+    //{
         try {
             while (search_in_progress.load()) {
 
-                #pragma omp for
+                //#pragma omp for
                 for (int i = 0; i < hares; ++i) {
 
                     HareState& hare = hare_states[i];
-                    if(hare.k1 == 0 && hare.k2 == 0) {
-                        hare.k1 = pkg.generate();
-                        hare.k2 = pkg.generate();
-                    }
 
                     hare.speed = (i == 0) ? 1 : (i + 1);
 
@@ -300,8 +314,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                         hare.k2 = (hare.k2 + hare.speed) % (uint256_t(1) << 64);
                     } else {
                         // Pollard's rho random walk
-                        f(hare.R, hare.k1, key_range);
-                        f(hare.R, hare.k2, key_range);
+                        hare.k1 = f(hare.R, hare.k1, key_range);
+                        hare.k2 = f(hare.R, hare.k2, key_range);
                     }
 
                     if (hare.k1 < min_scalar) hare.k1 += min_scalar;
@@ -328,8 +342,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     std::string current_pubkey_hex_R1 = bytes_to_hex((unsigned char*)compressed2, 33);
                     P_key = current_pubkey_hex_R;
 
-                    auto DP = [5](const ECPoint& point) -> bool {
-                        for (int i = 0; i < 5; i++) {
+                    int LSB = 5;
+                    auto DP = [LSB](const ECPoint& point) -> bool {
+                        for (int i = 0; i < LSB; i++) {
                         if (mpz_tstbit(point.x, i) != 0) return false;
                         }
                         return true;
@@ -338,8 +353,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     // Caso onde x é par:
                     if (DP(pub1) && DP(pub2) && !test_mode) {
 
-                        #pragma omp critical
-                        {
+                        //#pragma omp critical
+                        //{
                             if (mpz_cmp(pub1.x, pub2.x) == 0 && mpz_cmp(pub1.y, pub2.y) == 0 && hare.k1 != hare.k2) {
 
                                 /*
@@ -387,45 +402,45 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                                     }
                                     else
                                     {
-                                        std::cout << "K não corresponde: " << uint_256_to_hex(found_key) << std::endl;
+                                        //std::cout << "K não corresponde: " << uint_256_to_hex(found_key) << std::endl;
                                     }
 
                                     mpz_clear(d_mpz);
                                     mpz_clear(found_key_mpz);
                                 }
                             }
-                        }
+                        //}
                     }
 
                     if (memcmp(compressed1, target_pubkey.data(), 33) == 0 ||
                         memcmp(compressed2, target_pubkey.data(), 33) == 0) {
 
-                        #pragma omp critical
-                        {
+                        //#pragma omp critical
+                        //{
                             found_key = (current_pubkey_hex_R == target_pubkey_hex) ? hare.k1 : hare.k2;
                             std::cout << "\033[32mPrivate key found!\033[0m" << std::endl;
                             std::cout << "Private Key: " << uint_256_to_hex(found_key) << std::endl;
 
                             search_in_progress.store(false);
-                        }
+                        //}
                     }
 
                     mpz_clears(k1_mpz, k2_mpz, NULL);
                 }
 
-                if(!search_in_progress.load()) {
-                    #pragma omp cancel parallel
-                    #pragma omp barrier
-                }
+                //if(!search_in_progress.load()) {
+                    //#pragma omp cancel parallel
+                    //#pragma omp barrier
+                //}
             }
         }
         catch (const std::exception& e) {
-            #pragma omp cancel parallel
-            #pragma omp barrier
-            #pragma omp critical
+            //#pragma omp cancel parallel
+            //#pragma omp barrier
+            //#pragma omp critical
             std::cerr << "Exception: " << e.what() << std::endl;
         }
-    }
+    //}
 
     log_thread.join();
 
