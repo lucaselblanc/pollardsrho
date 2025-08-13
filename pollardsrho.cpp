@@ -1,3 +1,4 @@
+//#include "secp256k1.h"
 #include "ec.h"
 #include <gmpxx.h>
 #include <random>
@@ -121,20 +122,25 @@ void precompute_jumps(int key_range) {
 
 void f(ECPoint& R, uint256_t& k, int key_range) {
     static std::mt19937 rng(std::random_device{}());
-    static std::uniform_int_distribution<int> dist_op(0, 1);
+    static std::uniform_int_distribution<int> dist_op(0, 2);
 
     int op = dist_op(rng);
 
     if (op == 0) {
+        point_add(&R, &R, &G, P);
+        size_t idx = jump_index_atomic.fetch_add(1, std::memory_order_relaxed) % NUM_JUMPS;
+        k = (k + precomputed_jumps[idx]) % key_range;
+    } else if (op == 1) {
         point_add(&R, &R, &H, P);
-        k = (k + precomputed_jumps[jump_index++ % NUM_JUMPS]) % key_range;
+        size_t idx = jump_index_atomic.fetch_add(1, std::memory_order_relaxed) % NUM_JUMPS;
+        k = (k + precomputed_jumps[idx]) % key_range;
     } else {
         point_double(&R, &R, P);
-        k = (k * precomputed_jumps[jump_index++ % NUM_JUMPS]) % key_range;
+        size_t idx = jump_index_atomic.fetch_add(1, std::memory_order_relaxed) % NUM_JUMPS;
+        k = (k * precomputed_jumps[idx]) % key_range;
     }
 }
 
-//https://en.wikipedia.org/wiki/Pollard%27s_rho_algorithm#Further_reading
 /*-- The algorithm is more efficient for ranges >= 57 bits, as the search is more distributed over larger ranges --*/
 uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool test_mode) {
 
@@ -177,8 +183,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         mpz_init2(private_key, 256);
 
         mp_limb_t* limbs = mpz_limbs_write(private_key, num_limbs);
-    
         mp_limb_t carry = 0;
+
         size_t byte_index = 0;
 
         for (size_t i = 0; i < num_limbs; ++i) {
@@ -246,7 +252,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 std::this_thread::sleep_for(std::chrono::seconds(10));
                 std::lock_guard<std::mutex> lock(pgrs);
 
-                if(search_in_progress) {        
+                if(search_in_progress) {
                     std::cout << "\rCurrent private key: " << uint_256_to_hex(p_key) << std::endl;
                     std::cout << "\rLast tested public key: " << P_key << std::endl;
                     std::cout << "\rTotal keys tested: " << keys_ps << std::endl;
@@ -274,11 +280,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 for (int i = 0; i < hares; ++i) {
 
                     HareState& hare = hare_states[i];
-                    hare.k1 = pkg.generate();
-                    hare.k2 = pkg.generate();
+                    if(hare.k1 == 0 && hare.k2 == 0) {
+                        hare.k1 = pkg.generate();
+                        hare.k2 = pkg.generate();
+                    }
 
                     hare.speed = (i == 0) ? 1 : (i + 1);
-                    
+
                     current_key = hare.k1;
                     p_key = current_key;
 
@@ -291,7 +299,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                         hare.k1 = (hare.k1 + hare.speed) % (uint256_t(1) << 64);
                         hare.k2 = (hare.k2 + hare.speed) % (uint256_t(1) << 64);
                     } else {
-                        // Random walk
+                        // Pollard's rho random walk
                         f(hare.R, hare.k1, key_range);
                         f(hare.R, hare.k2, key_range);
                     }
@@ -302,7 +310,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     ECPoint pub1, pub2;
                     point_init(&pub1);
                     point_init(&pub2);
-                    
+
                     mpz_t k1_mpz, k2_mpz;
                     mpz_init(k1_mpz);
                     mpz_init(k2_mpz);
@@ -315,13 +323,16 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     char compressed1[33], compressed2[33];
                     get_compressed_public_key(compressed1, &pub1);
                     get_compressed_public_key(compressed2, &pub2);
-                    
+
                     std::string current_pubkey_hex_R = bytes_to_hex((unsigned char*)compressed1, 33);
                     std::string current_pubkey_hex_R1 = bytes_to_hex((unsigned char*)compressed2, 33);
                     P_key = current_pubkey_hex_R;
 
-                    auto DP = [](const ECPoint& point) -> bool {
-                        return (mpz_tstbit(point.x, 0) == 0); // bit menos significativo é '0' (par), DP é ≈ 50%.
+                    auto DP = [5](const ECPoint& point) -> bool {
+                        for (int i = 0; i < 5; i++) {
+                        if (mpz_tstbit(point.x, i) != 0) return false;
+                        }
+                        return true;
                     };
 
                     // Caso onde x é par:
@@ -334,10 +345,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                                 /*
                                     Calcular a diferença (d) entre os pontos pubkey1 e pubkey2:
                                     d = k1 - k2 tal que P1 = k1 * G e P2 = k2 * G
-    
+
                                     Verificar se: (d * G ≡ 0), caso verdadeiro: found_key = (k2 + d) % n;
                                 */
-                             
+
                                 mpz_class N_mpz(N);
                                 uint256_t N_uint(N_mpz.get_str());
 
@@ -366,7 +377,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                                     get_compressed_public_key(compressed, &verify_point);
 
                                     if (memcmp(compressed, target_pubkey.data(), 33) == 0) {
-                                        
+
                                         std::cout << "\033[33mDP detected for hare " << i << " at k1: " << uint_256_to_hex(hare.k1) << "\033[0m" << std::endl;
                                         std::cout << "\033[33mDP detected for hare " << i << " at k2: " << uint_256_to_hex(hare.k2) << "\033[0m" << std::endl;
                                         std::cout << "A multiplicação satisfaz a equação (d * G ≡ 0)" << std::endl;
@@ -399,8 +410,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                         }
                     }
 
-                    point_clear(&pub1);
-                    point_clear(&pub2);
                     mpz_clears(k1_mpz, k2_mpz, NULL);
                 }
 
@@ -419,10 +428,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     }
 
     log_thread.join();
-
-    for (auto& hare : hare_states) {
-        point_clear(&hare.R);
-    }
 
     auto end_time = std::chrono::system_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
@@ -443,7 +448,7 @@ int main(int argc, char* argv[]) {
     init_secp256k1();
 
     NUM_JUMPS = (get_memory_bytes() / 2) / 32; // div 2 >> 50% of ram
-    
+
     std::string pub_key_hex(argv[1]);
     int key_range = std::stoi(argv[2]);
     bool test_mode = (argc == 4 && std::string(argv[3]) == "--t");
@@ -468,8 +473,8 @@ int main(int argc, char* argv[]) {
         oss << std::setw(64) << std::setfill('0') << std::hex << value;
         return oss.str();
     };
-    
+
     std::cout << "Chave privada encontrada: " << uint_256_to_hex(found_key) << std::endl;
-    
+
     return 0;
 }
