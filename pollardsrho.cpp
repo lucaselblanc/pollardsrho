@@ -329,7 +329,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
                         #pragma omp critical
                         {
-                            if (&pub1.x == &pub2.x && hare.k1 != hare.k2) {
+                            if (mpz_cmp(pub1.x, pub2.x) == 0 && mpz_cmp(pub1.y, pub2.y) == 0 && hare.k1 != hare.k2) {
 
                                 /*
                                     Calcular a diferença (d) entre os pontos pubkey1 e pubkey2:
