@@ -10,6 +10,8 @@
  * Written by Lucas Leblanc              *
 ******************************************/
 
+/* --- AINDA EM TESTES --- */
+
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
