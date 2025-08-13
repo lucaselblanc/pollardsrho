@@ -211,40 +211,6 @@ __device__ void montgomery_reduce_p(unsigned int *result, const unsigned int *in
     }
 }
 
-__device__ void montgomery_reduce_n(unsigned int *result, const unsigned int *input_high, const unsigned int *input_low) {
-    unsigned int temp[16];
-    
-    for (int i = 0; i < 8; i++) {
-        temp[i] = input_low[i];
-        temp[i + 8] = input_high[i];
-    }
-    
-    for (int i = 0; i < 8; i++) {
-        unsigned int ui = (temp[i] * MU_N) & 0xFFFFFFFF;
-        
-        unsigned long long carry = 0;
-        for (int j = 0; j < 8; j++) {
-            unsigned long long prod = (unsigned long long)ui * N_CONST[j] + temp[i + j] + carry;
-            temp[i + j] = (unsigned int)prod;
-            carry = prod >> 32;
-        }
-        
-        for (int j = 8; j < 16 - i; j++) {
-            carry += temp[i + j];
-            temp[i + j] = (unsigned int)carry;
-            carry >>= 32;
-        }
-    }
-    
-    for (int i = 0; i < 8; i++) {
-        result[i] = temp[i + 8];
-    }
-    
-    if (bignum_cmp(result, N_CONST) >= 0) {
-        bignum_sub_borrow(result, result, N_CONST);
-    }
-}
-
 __device__ void to_montgomery_p(unsigned int *result, const unsigned int *a) {
     unsigned int high[8], low[8];
     bignum_mul_full(high, low, a, R2_MOD_P);
@@ -255,18 +221,6 @@ __device__ void from_montgomery_p(unsigned int *result, const unsigned int *a) {
     unsigned int zero[8];
     bignum_zero(zero);
     montgomery_reduce_p(result, zero, a);
-}
-
-__device__ void to_montgomery_n(unsigned int *result, const unsigned int *a) {
-    unsigned int high[8], low[8];
-    bignum_mul_full(high, low, a, R2_MOD_N);
-    montgomery_reduce_n(result, high, low);
-}
-
-__device__ void from_montgomery_n(unsigned int *result, const unsigned int *a) {
-    unsigned int zero[8];
-    bignum_zero(zero);
-    montgomery_reduce_n(result, zero, a);
 }
 
 __device__ void mod_add_p(unsigned int *result, const unsigned int *a, const unsigned int *b) {
@@ -299,12 +253,6 @@ __device__ void mod_mul_mont_p(unsigned int *result, const unsigned int *a, cons
 
 __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
     mod_mul_mont_p(result, a, a);
-}
-
-__device__ void mod_mul_mont_n(unsigned int *result, const unsigned int *a, const unsigned int *b) {
-    unsigned int high[8], low[8];
-    bignum_mul_full(high, low, a, b);
-    montgomery_reduce_n(result, high, low);
 }
 
 __device__ void mod_inverse_p_fermat(unsigned int *result, const unsigned int *a) {
@@ -589,9 +537,48 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
 }
 
 __device__ void scalar_reduce_n(unsigned int *result, const unsigned int *scalar) {
-    bignum_copy(result, scalar);
+    unsigned int input_high[8];
+    unsigned int input_low[8];
+
+    #pragma unroll
+    for (int i = 0; i < 8; i++) {
+        input_low[i] = scalar[i];
+        input_high[i] = (i < 8) ? scalar[i + 8] : 0;
+    }
+
+    montgomery_reduce_n(result, input_high, input_low);
+}
+
+__device__ void montgomery_reduce_n(unsigned int *result, const unsigned int *input_high, const unsigned int *input_low) {
+    unsigned int temp[16];
     
-    while (bignum_cmp(result, N_CONST) >= 0) {
+    for (int i = 0; i < 8; i++) {
+        temp[i] = input_low[i];
+        temp[i + 8] = input_high[i];
+    }
+    
+    for (int i = 0; i < 8; i++) {
+        unsigned int ui = (temp[i] * MU_N) & 0xFFFFFFFF;
+        
+        unsigned long long carry = 0;
+        for (int j = 0; j < 8; j++) {
+            unsigned long long prod = (unsigned long long)ui * N_CONST[j] + temp[i + j] + carry;
+            temp[i + j] = (unsigned int)prod;
+            carry = prod >> 32;
+        }
+        
+        for (int j = 8; j < 16 - i; j++) {
+            carry += temp[i + j];
+            temp[i + j] = (unsigned int)carry;
+            carry >>= 32;
+        }
+    }
+    
+    for (int i = 0; i < 8; i++) {
+        result[i] = temp[i + 8];
+    }
+    
+    if (bignum_cmp(result, N_CONST) >= 0) {
         bignum_sub_borrow(result, result, N_CONST);
     }
 }
@@ -635,62 +622,6 @@ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const unsigned int
     }
 }
 
-__device__ void point_init(ECPoint *point) {
-    bignum_zero(point->x);
-    bignum_zero(point->y);
-    point->infinity = 0;
-}
-
-__device__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
-    ECPointJacobian P_jac, Q_jac, R_jac;
-    
-    affine_to_jacobian(&P_jac, P);
-    affine_to_jacobian(&Q_jac, Q);    
-    jacobian_add(&R_jac, &P_jac, &Q_jac);   
-    jacobian_to_affine(R, &R_jac);
-}
-
-__device__ void point_double(ECPoint *R, const ECPoint *P) {
-    ECPointJacobian P_jac, R_jac;
-    
-    affine_to_jacobian(&P_jac, P);
-    jacobian_double(&R_jac, &P_jac);
-    jacobian_to_affine(R, &R_jac);
-}
-
-__device__ void scalar_mult(ECPoint *R, const unsigned int *k, const ECPoint *P) {
-    ECPointJacobian P_jac, R_jac;
-    
-    affine_to_jacobian(&P_jac, P);
-    jacobian_scalar_mult(&R_jac, k, &P_jac);
-    jacobian_to_affine(R, &R_jac);
-}
-
-__device__ int point_is_valid(const ECPoint *point) {
-    if (point->infinity) return 1;
-
-    unsigned int lhs[8], rhs[8], temp[8];
-    
-    mod_sqr_mont_p(lhs, point->y);
-    mod_sqr_mont_p(rhs, point->x);
-    mod_mul_mont_p(rhs, rhs, point->x);
-    mod_add_p(rhs, rhs, SEVEN_MONT);
-
-    return (bignum_cmp(lhs, rhs) == 0);
-}
-
-__device__ void get_generator_montgomery(ECPoint *G) {
-    to_montgomery_p(G->x, GX_CONST);
-    to_montgomery_p(G->y, GY_CONST);
-    G->infinity = 0;
-}
-
-__device__ void generate_public_key(ECPoint *public_key, const unsigned int *private_key) {
-    ECPoint G;
-    get_generator_montgomery(&G);
-    scalar_mult(public_key, private_key, &G);
-}
-
 __device__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
     if (point_mont->infinity) {
         result->infinity = 1;
@@ -704,9 +635,53 @@ __device__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont
     result->infinity = 0;
 }
 
-__device__ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key_mont) {
+__device__ void kernel_point_init(ECPoint *point) {
+    bignum_zero(point->x);
+    bignum_zero(point->y);
+    point->infinity = 0;
+}
+
+__device__ void kernel_point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
+    ECPointJacobian P_jac, Q_jac, R_jac;
+    
+    affine_to_jacobian(&P_jac, P);
+    affine_to_jacobian(&Q_jac, Q);    
+    jacobian_add(&R_jac, &P_jac, &Q_jac);   
+    jacobian_to_affine(R, &R_jac);
+}
+
+__device__ void kernel_point_double(ECPoint *R, const ECPoint *P) {
+    ECPointJacobian P_jac, R_jac;
+    
+    affine_to_jacobian(&P_jac, P);
+    jacobian_double(&R_jac, &P_jac);
+    jacobian_to_affine(R, &R_jac);
+}
+
+__device__ void kernel_scalar_mult(ECPoint *R, const unsigned int *k, const ECPoint *P) {
+    ECPointJacobian P_jac, R_jac;
+    
+    affine_to_jacobian(&P_jac, P);
+    jacobian_scalar_mult(&R_jac, k, &P_jac);
+    jacobian_to_affine(R, &R_jac);
+}
+
+__device__ int kernel_point_is_valid(const ECPoint *point) {
+    if (point->infinity) return 1;
+
+    unsigned int lhs[8], rhs[8], temp[8];
+    
+    mod_sqr_mont_p(lhs, point->y);
+    mod_sqr_mont_p(rhs, point->x);
+    mod_mul_mont_p(rhs, rhs, point->x);
+    mod_add_p(rhs, rhs, SEVEN_MONT);
+
+    return (bignum_cmp(lhs, rhs) == 0);
+}
+
+__device__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
     ECPoint public_key_normal;
-    point_from_montgomery(&public_key_normal, public_key_mont);
+    point_from_montgomery(&public_key_normal, public_key);
     
     unsigned char prefix = (public_key_normal.y[0] & 1) ? 0x03 : 0x02;
     out[0] = prefix;
@@ -718,4 +693,28 @@ __device__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
         out[1 + i*4 + 2] = (word >> 8) & 0xFF;
         out[1 + i*4 + 3] = word & 0xFF;
     }
+}
+
+__global__ void point_init(ECPoint *point) {
+    kernel_point_init(point);
+}
+
+__global__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
+    kernel_point_add(R, P, Q);
+}
+
+__global__ void point_double(ECPoint *R, const ECPoint *P) {
+    kernel_point_double(R, P);
+}
+
+__global__ void scalar_mult(ECPoint *R, const unsigned int *k, const ECPoint *P) {
+    kernel_scalar_mult(R, k, P);
+}
+
+__global__ void point_is_valid(int *result, const ECPoint *point) {
+    *result = kernel_point_is_valid(point);
+}
+
+__global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub) {
+    kernel_get_compressed_public_key(out, pub);
 }
