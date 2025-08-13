@@ -128,17 +128,17 @@ uint256_t f(ECPoint& R, uint256_t k, int key_range) {
     size_t idx = static_cast<size_t>(mpz_fdiv_ui(R.x, (unsigned long)NUM_JUMPS));
 
     switch (op) {
-        case 0: // class 0
+        case 0: // class 1
             point_add(&R, &R, &G, P);
             k = (k + precomputed_jumps[idx]) & mask;
             break;
 
-        case 1: // class 1
+        case 1: // class 2
             point_add(&R, &R, &H, P);
             k = (k + precomputed_jumps[idx]) & mask;
             break;
 
-        default: // class 2
+        default: // class 3
             point_double(&R, &R, P);
             k = (k << 1) & mask;
             break;
@@ -493,3 +493,4 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
