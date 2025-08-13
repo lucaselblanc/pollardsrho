@@ -10,6 +10,8 @@
  * Written by Lucas Leblanc              *
 ******************************************/
 
+/* --- AINDA EM TESTES --- */
+
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
