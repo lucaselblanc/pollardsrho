@@ -1,13 +1,3 @@
-#include "ec.h"
-#include <gmpxx.h>
-#include <random>
-#include <thread>
-#include <mutex>
-#include <atomic>
-#include <omp.h>
-#include <sys/sysinfo.h>
-#include <boost/multiprecision/cpp_int.hpp>
-
 /******************************************************************************************************
  * This file is part of the Pollard's Rho distribution: (https://github.com/lucaselblanc/pollardsrho) *
  * Copyright (c) 2024, 2025 Lucas Leblanc.                                                            *
@@ -20,53 +10,121 @@
  * Written by Lucas Leblanc              *
 ******************************************/
 
-using namespace boost::multiprecision;
+#include "secp256k1.h"
+#include <random>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <omp.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <sys/sysinfo.h>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <ctime>
+#include <cstring>
+
+struct uint256_t {
+    uint32_t limbs[8];
+};
 
 ECPoint G;
 ECPoint H;
-mpz_t P, GX, GY, N;
+
+const uint256_t P = {
+    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFE, 0xFFFFFC2F
+};
+
+const uint256_t N = {
+    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFE,
+    0xBAAEDCE6, 0xAF48A03B, 0xBFD25E8C, 0xD0364141
+};
+
+const uint256_t GX = {
+    0x79BE667E, 0xF9DCBBAC, 0x55A06295, 0xCE870B07,
+    0x029BFCDB, 0x2DCE28D9, 0x59F2815B, 0x16F81798
+};
+
+const uint256_t GY = {
+    0x483ADA77, 0x26A3C465, 0x5DA4FBFC, 0x0E1108A8,
+    0xFD17B448, 0xA6855419, 0x9C47D08F, 0xFB10D4B8
+};
+
+void uint256_to_uint32_array(unsigned int* out, const uint256_t& value) {
+    for (int i = 0; i < 8; i++) {
+        out[i] = value.limbs[i];
+    }
+}
 
 void init_secp256k1() {
-    mpz_inits(P, N, GX, GY, NULL);
+    ECPoint* d_G = nullptr;
+    ECPoint* d_H = nullptr;
 
-    mpz_set_str(P, "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16);
-    mpz_set_str(N, "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", 16);
-    mpz_set_str(GX, "79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798", 16);
-    mpz_set_str(GY, "483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8", 16);
+    cudaMalloc(&d_G, sizeof(ECPoint));
+    cudaMalloc(&d_H, sizeof(ECPoint));
 
-    point_init(&G);
-    mpz_set(G.x, GX);
-    mpz_set(G.y, GY);
+    point_init<<<1,1>>>(d_G);
+    point_init<<<1,1>>>(d_H);
+
+    cudaDeviceSynchronize();
+    cudaMemcpy(&G, d_G, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&H, d_H, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+    cudaFree(d_G);
+    cudaFree(d_H);
+
+    uint256_to_uint32_array(G.x, GX);
+    uint256_to_uint32_array(G.y, GY);
     G.infinity = 0;
 
-    point_init(&H);
-    mpz_set(H.x, GX);
-    mpz_set(H.y, GY);
+    uint256_to_uint32_array(H.x, GX);
+    uint256_to_uint32_array(H.y, GY);
     H.infinity = 0;
 }
 
 class PKG {
     std::mt19937_64 gen;
-    uint64_t min_low, max_low, min_mid_low, max_mid_low;
-    uint64_t min_mid_high, max_mid_high, min_high, max_high;
+    uint64_t min_low, max_low;
+    uint64_t min_mid_low, max_mid_low;
+    uint64_t min_mid_high, max_mid_high;
+    uint64_t min_high, max_high;
 
-    public: PKG(uint256_t min_scalar, uint256_t max_scalar) : gen(std::random_device{}()),
-    min_low(static_cast<uint64_t>(min_scalar & 0xFFFFFFFFFFFFFFFF)),
-    max_low(static_cast<uint64_t>(max_scalar & 0xFFFFFFFFFFFFFFFF)),
-    min_mid_low(static_cast<uint64_t>((min_scalar >> 64) & 0xFFFFFFFFFFFFFFFF)),
-    max_mid_low(static_cast<uint64_t>((max_scalar >> 64) & 0xFFFFFFFFFFFFFFFF)),
-    min_mid_high(static_cast<uint64_t>((min_scalar >> 128) & 0xFFFFFFFFFFFFFFFF)),
-    max_mid_high(static_cast<uint64_t>((max_scalar >> 128) & 0xFFFFFFFFFFFFFFFF)),
-    min_high(static_cast<uint64_t>((min_scalar >> 192) & 0xFFFFFFFFFFFFFFFF)),
-    max_high(static_cast<uint64_t>((max_scalar >> 192) & 0xFFFFFFFFFFFFFFFF)) {}
+public:
+    PKG(const uint256_t& min_scalar, const uint256_t& max_scalar) : gen(std::random_device{}()) {
+        min_low      = (static_cast<uint64_t>(min_scalar.limbs[6]) << 32) | min_scalar.limbs[7];
+        max_low      = (static_cast<uint64_t>(max_scalar.limbs[6]) << 32) | max_scalar.limbs[7];
+
+        min_mid_low  = (static_cast<uint64_t>(min_scalar.limbs[4]) << 32) | min_scalar.limbs[5];
+        max_mid_low  = (static_cast<uint64_t>(max_scalar.limbs[4]) << 32) | max_scalar.limbs[5];
+
+        min_mid_high = (static_cast<uint64_t>(min_scalar.limbs[2]) << 32) | min_scalar.limbs[3];
+        max_mid_high = (static_cast<uint64_t>(max_scalar.limbs[2]) << 32) | max_scalar.limbs[3];
+
+        min_high     = (static_cast<uint64_t>(min_scalar.limbs[0]) << 32) | min_scalar.limbs[1];
+        max_high     = (static_cast<uint64_t>(max_scalar.limbs[0]) << 32) | max_scalar.limbs[1];
+    }
 
     uint256_t generate() {
-        uint64_t low = std::uniform_int_distribution<uint64_t>(min_low, max_low)(gen);
-        uint64_t mid_low = std::uniform_int_distribution<uint64_t>(min_mid_low, max_mid_low)(gen);
+        uint64_t low      = std::uniform_int_distribution<uint64_t>(min_low, max_low)(gen);
+        uint64_t mid_low  = std::uniform_int_distribution<uint64_t>(min_mid_low, max_mid_low)(gen);
         uint64_t mid_high = std::uniform_int_distribution<uint64_t>(min_mid_high, max_mid_high)(gen);
-        uint64_t high = std::uniform_int_distribution<uint64_t>(min_high, max_high)(gen);
+        uint64_t high     = std::uniform_int_distribution<uint64_t>(min_high, max_high)(gen);
 
-        return (static_cast<uint256_t>(high) << 192) | (static_cast<uint256_t>(mid_high) << 128) | (static_cast<uint256_t>(mid_low) << 64) | low;
+        uint256_t result;
+        result.limbs[7] = static_cast<uint32_t>(low & 0xFFFFFFFF);
+        result.limbs[6] = static_cast<uint32_t>(low >> 32);
+        result.limbs[5] = static_cast<uint32_t>(mid_low & 0xFFFFFFFF);
+        result.limbs[4] = static_cast<uint32_t>(mid_low >> 32);
+        result.limbs[3] = static_cast<uint32_t>(mid_high & 0xFFFFFFFF);
+        result.limbs[2] = static_cast<uint32_t>(mid_high >> 32);
+        result.limbs[1] = static_cast<uint32_t>(high & 0xFFFFFFFF);
+        result.limbs[0] = static_cast<uint32_t>(high >> 32);
+
+        return result;
     }
 };
 
@@ -89,70 +147,173 @@ bool precomputed_done = false;
 
 std::vector<uint256_t> precomputed_jumps;
 
-void precompute_jumps(int key_range) {
-    gmp_randstate_t rng;
-    gmp_randinit_default(rng);
-    gmp_randseed_ui(rng, std::random_device{}());
+uint256_t mask_for_bits(int bits) {
+    uint256_t mask{};
+    int full_limbs = bits / 32;
+    int rem_bits = bits % 32;
+    for(int i = 0; i < 8; i++) mask.limbs[i] = 0;
+    for(int i = 7; i > 7 - full_limbs; i--) mask.limbs[i] = 0xFFFFFFFF;
+    if(full_limbs < 8 && rem_bits > 0) mask.limbs[7 - full_limbs] = (1U << rem_bits) - 1;
+    return mask;
+}
 
+void precompute_jumps(int key_range) {
+    std::mt19937_64 rng(std::random_device{}());
     precomputed_jumps.resize(NUM_JUMPS);
 
+    uint256_t max_value = mask_for_bits(key_range);
+
     for (size_t i = 0; i < NUM_JUMPS; ++i) {
-        mpz_t r;
-        mpz_init(r);
-        mpz_urandomb(r, rng, key_range);
+        uint64_t r0 = rng();
+        uint64_t r1 = rng();
+        uint64_t r2 = rng();
+        uint64_t r3 = rng();
 
-        char r_char[78];
-        mpz_get_str(r_char, 10, r);
+        uint256_t r{};
+        r.limbs[7] = static_cast<uint32_t>(r0 & 0xFFFFFFFF);
+        r.limbs[6] = static_cast<uint32_t>(r0 >> 32);
+        r.limbs[5] = static_cast<uint32_t>(r1 & 0xFFFFFFFF);
+        r.limbs[4] = static_cast<uint32_t>(r1 >> 32);
+        r.limbs[3] = static_cast<uint32_t>(r2 & 0xFFFFFFFF);
+        r.limbs[2] = static_cast<uint32_t>(r2 >> 32);
+        r.limbs[1] = static_cast<uint32_t>(r3 & 0xFFFFFFFF);
+        r.limbs[0] = static_cast<uint32_t>(r3 >> 32);
 
-        precomputed_jumps[i] = uint256_t(r_char);
+        for(int j = 0; j < 8; j++) {
+            r.limbs[j] &= max_value.limbs[j];
+        }
 
-        mpz_clear(r);
+        if (r.limbs[0]==0 && r.limbs[1]==0 && r.limbs[2]==0 && r.limbs[3]==0 &&
+            r.limbs[4]==0 && r.limbs[5]==0 && r.limbs[6]==0 && r.limbs[7]==0) {
+            r.limbs[7] = 1;
+        }
+
+        precomputed_jumps[i] = r;
 
         if (i % (NUM_JUMPS / 100) == 0) {
             int progress = static_cast<int>((i * 101) / NUM_JUMPS);
-            std::cout << "\rLoading Jumps: " << progress << "% of total jumps: " << NUM_JUMPS << " Using: " << TOTAL_RAM << " GB ram - " << std::flush;
+            std::cout << "\rLoading Jumps: " << progress << "% of total jumps: " 
+                      << NUM_JUMPS << " Using: " << TOTAL_RAM << " GB ram - " << std::flush;
         }
     }
-
-    gmp_randclear(rng);
 
     precomputed_done = true;
 }
 
-std::atomic<size_t> jump(0);
+uint256_t sub_uint256(const uint256_t& a, const uint256_t& b) {
+    uint256_t result{};
+    uint64_t borrow = 0;
+
+    for (int i = 0; i < 8; ++i) {
+        uint64_t ai = a.limbs[i];
+        uint64_t bi = b.limbs[i];
+        uint64_t temp = ai - bi - borrow;
+
+        borrow = ((ai < bi + borrow) ? 1 : 0);
+        result.limbs[i] = temp;
+    }
+
+    return result;
+}
+
+int compare_uint256(const uint256_t& a, const uint256_t& b) {
+    for (int i = 7; i >= 0; i--) {
+        if (a.limbs[i] > b.limbs[i]) return 1;
+        if (a.limbs[i] < b.limbs[i]) return -1;
+    }
+    return 0;
+}
+
+uint256_t uint256_from_uint32(uint32_t value) {
+    uint256_t r{};
+    r.limbs[0] = value;
+    for(int i=1;i<8;i++) r.limbs[i] = 0;
+    return r;
+}
+
+uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
+    uint256_t result{};
+    uint64_t carry = 0;
+    for(int i = 7; i >= 0; i--) {
+        uint64_t sum = static_cast<uint64_t>(a.limbs[i]) + b.limbs[i] + carry;
+        result.limbs[i] = static_cast<uint32_t>(sum & 0xFFFFFFFF);
+        carry = sum >> 32;
+    }
+    return result;
+}
+
+uint256_t left_shift_uint256(const uint256_t& a, int shift) {
+    uint256_t result{};
+    if(shift == 0) return a;
+    int limb_shift = shift / 32;
+    int bit_shift = shift % 32;
+    for(int i = 0; i < 8; i++) result.limbs[i] = 0;
+
+    for(int i = 0; i < 8; i++) {
+        if(i + limb_shift < 8) {
+            result.limbs[i] |= a.limbs[i + limb_shift] << bit_shift;
+        }
+        if(bit_shift != 0 && i + limb_shift + 1 < 8) {
+            result.limbs[i] |= a.limbs[i + limb_shift + 1] >> (32 - bit_shift);
+        }
+    }
+    return result;
+}
 
 uint256_t f(ECPoint& R, uint256_t k, int key_range) {
-    const uint256_t mask = (uint256_t(1) << key_range) - 1;
+    const uint256_t mask = mask_for_bits(key_range);
 
-    unsigned long op = mpz_fdiv_ui(R.x, 3UL);
-    size_t idx = static_cast<size_t>(mpz_fdiv_ui(R.x, (unsigned long)NUM_JUMPS));
+    uint256_t x_coord{};
+    for(int i = 0; i < 8; i++) x_coord.limbs[i] = R.x[i];
 
-    switch (op) {
-        case 0: // class 1
-            point_add(&R, &R, &G, P);
-            k = (k + precomputed_jumps[idx]) & mask;
+    uint64_t x_low64 = (static_cast<uint64_t>(x_coord.limbs[6]) << 32) | x_coord.limbs[7];
+    unsigned int op = static_cast<unsigned int>(x_low64 % 3);
+    size_t idx = static_cast<size_t>(x_low64 % NUM_JUMPS);
+
+    ECPoint* d_R = nullptr;
+    ECPoint* d_G = nullptr;
+    ECPoint* d_H = nullptr;
+
+    cudaMalloc(&d_R, sizeof(ECPoint));
+    cudaMalloc(&d_G, sizeof(ECPoint));
+    cudaMalloc(&d_H, sizeof(ECPoint));
+    cudaMemcpy(d_R, &R, sizeof(ECPoint), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_G, &G, sizeof(ECPoint), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_H, &H, sizeof(ECPoint), cudaMemcpyHostToDevice);
+
+    switch(op) {
+        case 0:
+            point_add<<<1,1>>>(d_R, d_R, d_G);
+            k = add_uint256(k, precomputed_jumps[idx]);
             break;
-
-        case 1: // class 2
-            point_add(&R, &R, &H, P);
-            k = (k + precomputed_jumps[idx]) & mask;
+        case 1:
+            point_add<<<1,1>>>(d_R, d_R, d_H);
+            k = add_uint256(k, precomputed_jumps[idx]);
             break;
-
-        default: // class 3
-            point_double(&R, &R, P);
-            k = (k << 1) & mask;
+        default:
+            point_double<<<1,1>>>(d_R, d_R);
+            k = left_shift_uint256(k, 1);
             break;
     }
+
+    for(int i = 0; i < 8; i++) k.limbs[i] &= mask.limbs[i];
+
+    cudaDeviceSynchronize();
+    cudaMemcpy(&R, d_R, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+    cudaFree(d_R);
+    cudaFree(d_G);
+    cudaFree(d_H);
 
     return k;
 }
 
-/*-- The algorithm is more efficient for ranges >= 57 bits, as the search is more distributed over larger ranges --*/
 uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool test_mode) {
 
     auto uint_256_to_hex = [](const uint256_t& value) -> std::string {
         std::ostringstream oss;
-        oss << std::setw(64) << std::setfill('0') << std::hex << value;
+        for(int i = 0; i < 8; i++) {
+            oss << std::setw(8) << std::setfill('0') << std::hex << value.limbs[i];
+        }
         return oss.str();
     };
 
@@ -176,52 +337,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         return bytes;
     };
 
-    auto uint256_to_mpz = [](mpz_t private_key, uint256_t value) {
-        /*Retornando 0 pois futuramente esse lambda será removido,
-        por favor comente a linha: //mpz_init_set_ui(private_key, 0); 
-        e descomente o restante se for utilizar a função prho,
-        a função uint256_to_mpz é ineficiente e deve ser
-        substituída em breve, assim como o restante das funções gmp */
-
-        mpz_init_set_ui(private_key, 0);
-
-        /*
-        const int limb_bits = sizeof(mp_limb_t) * 8;
-        const int limb_bytes = sizeof(mp_limb_t);
-
-        std::vector<uint8_t> bytes;
-        export_bits(value, std::back_inserter(bytes), 8);
-
-        size_t num_limbs = (bytes.size() + limb_bytes - 1) / limb_bytes;
-
-        mpz_init2(private_key, 256);
-
-        mp_limb_t* limbs = mpz_limbs_write(private_key, num_limbs);
-        mp_limb_t carry = 0;
-
-        size_t byte_index = 0;
-
-        for (size_t i = 0; i < num_limbs; ++i) {
-
-            mp_limb_t temp = carry;
-
-            for (size_t j = 0; j < limb_bytes && byte_index < bytes.size(); ++j, ++byte_index) {
-                temp = (temp << 8) | bytes[byte_index];
-            }
-
-            limbs[i] = temp;
-            carry = temp >> (limb_bits - 8);
-        }
-
-        if (carry) {
-            limbs[num_limbs - 1] = carry;
-            num_limbs++;
-        }
-
-        private_key->_mp_size = num_limbs;
-        */
-    };
-
     auto start_time = std::chrono::system_clock::now();
     auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
     std::tm start_tm = *std::localtime(&start_time_t);
@@ -230,20 +345,19 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     if(test_mode) { std::cout << "Test Mode: True" << std::endl; }
     else          { std::cout << "Test Mode: False" << std::endl; }
 
-    uint256_t min_scalar = (uint256_t(1) << (key_range - 1));  
-    uint256_t max_scalar = (uint256_t(1) << key_range) - 1;
+    uint256_t min_scalar = left_shift_uint256(uint256_from_uint32(1), key_range - 1);
+    uint256_t max_scalar = sub_uint256(left_shift_uint256(uint256_from_uint32(1), key_range), uint256_from_uint32(1));
 
     std::cout << "key_range: " << key_range << std::endl;
     std::cout << "min_range: " << uint_256_to_hex(min_scalar) << std::endl;
     std::cout << "max_range: " << uint_256_to_hex(max_scalar) << std::endl;
-
     std::atomic<unsigned int> keys_ps{0};
     std::atomic<bool> search_in_progress(true);
     std::mutex pgrs;
-
     std::string P_key;
-    uint256_t p_key = uint256_t(0);
-    uint256_t found_key = uint256_t(0);
+
+    uint256_t p_key{};
+    uint256_t found_key{};
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
 
@@ -259,9 +373,15 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     std::vector<HareState> hare_states(hares);
 
     for (int i = 0; i < hares; ++i) {
-        point_init(&hare_states[i].R);
-        mpz_set(hare_states[i].R.x, G.x);
-        mpz_set(hare_states[i].R.y, G.y);
+        ECPoint* d_point = nullptr;
+        cudaMalloc(&d_point, sizeof(ECPoint));
+        point_init<<<1,1>>>(d_point);
+        cudaDeviceSynchronize();
+        cudaMemcpy(&hare_states[i].R, d_point, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+        cudaFree(d_point);
+
+        uint256_to_uint32_array(hare_states[i].R.x, GX);
+        uint256_to_uint32_array(hare_states[i].R.y, GY);
         hare_states[i].R.infinity = 0;
         hare_states[i].speed = 0;
         hare_states[i].k1 = pkg.generate();
@@ -291,155 +411,262 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
     //#pragma omp parallel
     //{
-        try {
-            while (search_in_progress.load()) {
+    try {
+        while (search_in_progress.load()) {
 
-                //#pragma omp for
-                for (int i = 0; i < hares; ++i) {
+            //#pragma omp for
+            for (int i = 0; i < hares; ++i) {
 
-                    HareState& hare = hare_states[i];
+                HareState& hare = hare_states[i];
 
-                    hare.speed = (i == 0) ? 1 : (i + 1);
+                hare.speed = (i == 0) ? 1 : (i + 1);
 
-                    current_key = hare.k1;
-                    p_key = current_key;
+                current_key = hare.k1;
+                p_key = current_key;
 
-                    keys_ps.fetch_add(1, std::memory_order_relaxed);
+                keys_ps.fetch_add(1, std::memory_order_relaxed);
 
-                    // Test mode is recommended for ranges <= 20, larger ranges may cause hares to enter infinite loops/cycles.
-                    if (test_mode)
-                    {
-                        /*-- Warning linear search, prone to infinite loops/cycles! --*/
-                        hare.k1 = (hare.k1 + hare.speed) % (uint256_t(1) << 64);
-                        hare.k2 = (hare.k2 + hare.speed) % (uint256_t(1) << 64);
-                    } else {
-                        // Pollard's rho random walk
-                        hare.k1 = f(hare.R, hare.k1, key_range);
-                        hare.k2 = f(hare.R, hare.k2, key_range);
+                // Test mode (brute-force) is recommended for ranges <= 20, larger ranges may cause hares to enter infinite loops/cycles.
+                if (test_mode)
+                {
+                    hare.k1 = add_uint256(hare.k1, uint256_from_uint32(hare.speed));
+                    hare.k2 = add_uint256(hare.k2, uint256_from_uint32(hare.speed));
+
+                    for(int i = 2; i < 8; i++) {
+                        hare.k1.limbs[i] = 0;
+                        hare.k2.limbs[i] = 0;
                     }
-
-                    if (hare.k1 < min_scalar) hare.k1 += min_scalar;
-                    if (hare.k2 < min_scalar) hare.k2 += min_scalar;
-
-                    ECPoint pub1, pub2;
-                    point_init(&pub1);
-                    point_init(&pub2);
-
-                    mpz_t k1_mpz, k2_mpz;
-                    mpz_init(k1_mpz);
-                    mpz_init(k2_mpz);
-                    uint256_to_mpz(k1_mpz, hare.k1);
-                    uint256_to_mpz(k2_mpz, hare.k2);
-
-                    scalar_mult(&pub1, k1_mpz, &hare.R, P);
-                    scalar_mult(&pub2, k2_mpz, &hare.R, P);
-
-                    char compressed1[33], compressed2[33];
-                    get_compressed_public_key(compressed1, &pub1);
-                    get_compressed_public_key(compressed2, &pub2);
-
-                    std::string current_pubkey_hex_R = bytes_to_hex((unsigned char*)compressed1, 33);
-                    std::string current_pubkey_hex_R1 = bytes_to_hex((unsigned char*)compressed2, 33);
-                    P_key = current_pubkey_hex_R;
-
-                    int LSB = 5;
-                    auto DP = [LSB](const ECPoint& point) -> bool {
-                        for (int i = 0; i < LSB; i++) {
-                        if (mpz_tstbit(point.x, i) != 0) return false;
-                        }
-                        return true;
-                    };
-
-                    // Caso onde x é par:
-                    if (DP(pub1) && DP(pub2) && !test_mode) {
-
-                        //#pragma omp critical
-                        //{
-                            if (mpz_cmp(pub1.x, pub2.x) == 0 && hare.k1 != hare.k2) {
-
-                                /*
-                                    Calcular a diferença (d) entre os pontos pubkey1 e pubkey2:
-                                    d = k1 - k2 tal que P1 = k1 * G e P2 = k2 * G
-
-                                    Verificar se: (d * G ≡ 0), caso verdadeiro: found_key = (k2 + d) % n;
-                                */
-
-                                mpz_class N_mpz(N);
-                                uint256_t N_uint(N_mpz.get_str());
-
-                                uint256_t key = DP(pub1) ? hare.k1 : hare.k2;
-                                uint256_t d = (hare.k1 >= hare.k2) ? (hare.k1 - hare.k2) : (N_uint - (hare.k2 - hare.k1));
-
-                                mpz_t d_mpz;
-                                mpz_init(d_mpz);
-                                uint256_to_mpz(d_mpz, d);
-
-                                ECPoint test_point;
-                                scalar_mult(&test_point, d_mpz, &G, P);
-
-                                if (test_point.infinity == 1) {
-
-                                    found_key = (key + d) % N_uint;
-
-                                    ECPoint verify_point;
-                                    mpz_t found_key_mpz;
-                                    mpz_init(found_key_mpz);
-                                    uint256_to_mpz(found_key_mpz, found_key);
-
-                                    scalar_mult(&verify_point, found_key_mpz, &G, P);
-
-                                    char compressed[33];
-                                    get_compressed_public_key(compressed, &verify_point);
-
-                                    if (memcmp(compressed, target_pubkey.data(), 33) == 0) {
-
-                                        std::cout << "\033[33mDP detected for hare " << i << " at k1: " << uint_256_to_hex(hare.k1) << "\033[0m" << std::endl;
-                                        std::cout << "\033[33mDP detected for hare " << i << " at k2: " << uint_256_to_hex(hare.k2) << "\033[0m" << std::endl;
-                                        std::cout << "A multiplicação satisfaz a equação (d * G ≡ 0)" << std::endl;
-                                        std::cout << "Private Key Found: " << uint_256_to_hex(found_key) << std::endl;
-
-                                        search_in_progress.store(false);
-                                    }
-                                    else
-                                    {
-                                        //std::cout << "K não corresponde: " << uint_256_to_hex(found_key) << std::endl;
-                                    }
-
-                                    mpz_clear(d_mpz);
-                                    mpz_clear(found_key_mpz);
-                                }
-                            }
-                        //}
-                    }
-
-                    if (memcmp(compressed1, target_pubkey.data(), 33) == 0 ||
-                        memcmp(compressed2, target_pubkey.data(), 33) == 0) {
-
-                        //#pragma omp critical
-                        //{
-                            found_key = (current_pubkey_hex_R == target_pubkey_hex) ? hare.k1 : hare.k2;
-                            std::cout << "\033[32mPrivate key found!\033[0m" << std::endl;
-                            std::cout << "Private Key: " << uint_256_to_hex(found_key) << std::endl;
-
-                            search_in_progress.store(false);
-                        //}
-                    }
-
-                    mpz_clears(k1_mpz, k2_mpz, NULL);
+                } else {
+                    // Pollard's rho random walk
+                    hare.k1 = f(hare.R, hare.k1, key_range);
+                    hare.k2 = f(hare.R, hare.k2, key_range);
                 }
 
-                //if(!search_in_progress.load()) {
-                    //#pragma omp cancel parallel
-                    //#pragma omp barrier
-                //}
+                if (compare_uint256(hare.k1, min_scalar) < 0)
+                { hare.k1 = add_uint256(hare.k1, min_scalar);}
+                if (compare_uint256(hare.k2, min_scalar) < 0)
+                { hare.k2 = add_uint256(hare.k2, min_scalar); }
+
+                ECPoint pub1, pub2;
+                ECPoint* d_pub1 = nullptr;
+                ECPoint* d_G = nullptr;
+                unsigned int* d_k1 = nullptr;
+
+                cudaMalloc(&d_pub1, sizeof(ECPoint));
+                cudaMalloc(&d_G, sizeof(ECPoint));
+                cudaMalloc(&d_k1, sizeof(unsigned int) * 8);
+
+                unsigned int k1_array[8];
+                uint256_to_uint32_array(k1_array, hare.k1);
+
+                cudaMemcpy(d_G, &G, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                cudaMemcpy(d_k1, k1_array, sizeof(unsigned int) * 8, cudaMemcpyHostToDevice);
+
+                scalar_mult<<<1,1>>>(d_pub1, d_k1, d_G);
+                cudaDeviceSynchronize();
+                cudaMemcpy(&pub1, d_pub1, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+                cudaFree(d_pub1);
+                cudaFree(d_G);
+                cudaFree(d_k1);
+
+                ECPoint* d_pub2 = nullptr;
+                ECPoint* d_G2 = nullptr;
+                unsigned int* d_k2 = nullptr;
+
+                cudaMalloc(&d_pub2, sizeof(ECPoint));
+                cudaMalloc(&d_G2, sizeof(ECPoint));
+                cudaMalloc(&d_k2, sizeof(unsigned int) * 8);
+
+                unsigned int k2_array[8];
+                uint256_to_uint32_array(k2_array, hare.k2);
+                cudaMemcpy(d_G2, &G, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                cudaMemcpy(d_k2, k2_array, sizeof(unsigned int) * 8, cudaMemcpyHostToDevice);
+
+                scalar_mult<<<1,1>>>(d_pub2, d_k2, d_G2);
+                cudaDeviceSynchronize();
+                cudaMemcpy(&pub2, d_pub2, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+                cudaFree(d_pub2);
+                cudaFree(d_G2);
+                cudaFree(d_k2);
+
+                unsigned char compressed1[33], compressed2[33];
+                unsigned char* d_compressed1 = nullptr;
+                ECPoint* d_pub1_comp = nullptr;
+
+                cudaMalloc(&d_compressed1, 33);
+                cudaMalloc(&d_pub1_comp, sizeof(ECPoint));
+                cudaMemcpy(d_pub1_comp, &pub1, sizeof(ECPoint), cudaMemcpyHostToDevice);
+
+                get_compressed_public_key<<<1,1>>>(d_compressed1, d_pub1_comp);
+                cudaDeviceSynchronize();
+                cudaMemcpy(compressed1, d_compressed1, 33, cudaMemcpyDeviceToHost);
+                cudaFree(d_compressed1);
+                cudaFree(d_pub1_comp);
+
+                unsigned char* d_compressed2 = nullptr;
+                ECPoint* d_pub2_comp = nullptr;
+
+                cudaMalloc(&d_compressed2, 33);
+                cudaMalloc(&d_pub2_comp, sizeof(ECPoint));
+                cudaMemcpy(d_pub2_comp, &pub2, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                get_compressed_public_key<<<1,1>>>(d_compressed2, d_pub2_comp);
+                cudaDeviceSynchronize();
+                cudaMemcpy(compressed2, d_compressed2, 33, cudaMemcpyDeviceToHost);
+                cudaFree(d_compressed2);
+                cudaFree(d_pub2_comp);
+
+                std::string current_pubkey_hex_R = bytes_to_hex((unsigned char*)compressed1, 33);
+                std::string current_pubkey_hex_R1 = bytes_to_hex((unsigned char*)compressed2, 33);
+                P_key = current_pubkey_hex_R;
+
+                int LSB = 5;
+                auto DP = [LSB](const ECPoint& point) -> bool {
+                    for (int i = 0; i < LSB; i++) {
+                        if ((point.x[0] >> i) & 1) return false;
+                    }
+                    return true;
+                };
+
+                // Caso onde x é par:
+                if (DP(pub1) && DP(pub2) && !test_mode) {
+
+                    //#pragma omp critical
+                    //{
+                    bool x_equal = true;
+                    for (int j = 0; j < 8; j++) {
+                        if (pub1.x[j] != pub2.x[j]) {
+                            x_equal = false;
+                            break;
+                        }
+                    }
+
+                    if (x_equal && compare_uint256(hare.k1, hare.k2) != 0) {
+
+                        /*
+                            Calcular a diferença (d) entre os pontos pubkey1 e pubkey2:
+                            d = k1 - k2 tal que P1 = k1 * G e P2 = k2 * G
+
+                            Verificar se: (d * G ≡ 0), caso verdadeiro: found_key = (k2 + d) % n;
+                        */
+
+                        uint256_t tortoise_key = hare.k2;
+                        uint256_t hare_key = hare.k1;
+                        uint256_t d = (compare_uint256(hare_key, tortoise_key) >= 0) ? 
+                                    sub_uint256(hare_key, tortoise_key) : 
+                                    sub_uint256(N, sub_uint256(tortoise_key, hare_key));
+
+                        ECPoint* d_test_point = nullptr;
+                        ECPoint* d_G_test = nullptr;
+                        unsigned int* d_d = nullptr;
+
+                        cudaMalloc(&d_test_point, sizeof(ECPoint));
+                        cudaMalloc(&d_G_test, sizeof(ECPoint));
+                        cudaMalloc(&d_d, sizeof(unsigned int) * 8);
+
+                        unsigned int d_array[8];
+                        uint256_to_uint32_array(d_array, d);
+
+                        cudaMemcpy(d_G_test, &G, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                        cudaMemcpy(d_d, d_array, sizeof(unsigned int) * 8, cudaMemcpyHostToDevice);
+
+                        scalar_mult<<<1,1>>>(d_test_point, d_d, d_G_test);
+                        cudaDeviceSynchronize();
+
+                        ECPoint test_point;
+                        cudaMemcpy(&test_point, d_test_point, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+
+                        cudaFree(d_test_point);
+                        cudaFree(d_G_test);
+                        cudaFree(d_d);
+
+                        if (test_point.infinity == 1) {
+
+                            found_key = add_uint256(tortoise_key, d);
+                            if (compare_uint256(found_key, N) >= 0) {
+                                found_key = sub_uint256(found_key, N);
+                            }
+
+                            ECPoint* d_verify_point = nullptr;
+                            ECPoint* d_G_verify = nullptr;
+                            unsigned int* d_found_key = nullptr;
+
+                            cudaMalloc(&d_verify_point, sizeof(ECPoint));
+                            cudaMalloc(&d_G_verify, sizeof(ECPoint));
+                            cudaMalloc(&d_found_key, sizeof(unsigned int) * 8);
+
+                            unsigned int found_key_array[8];
+                            uint256_to_uint32_array(found_key_array, found_key);
+
+                            cudaMemcpy(d_G_verify, &G, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                            cudaMemcpy(d_found_key, found_key_array, sizeof(unsigned int) * 8, cudaMemcpyHostToDevice);
+
+                            scalar_mult<<<1,1>>>(d_verify_point, d_found_key, d_G_verify);
+                            cudaDeviceSynchronize();
+
+                            ECPoint verify_point;
+                            cudaMemcpy(&verify_point, d_verify_point, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+
+                            cudaFree(d_verify_point);
+                            cudaFree(d_G_verify);
+                            cudaFree(d_found_key);
+
+                            unsigned char* d_compressed_verify = nullptr;
+                            ECPoint* d_verify_comp = nullptr;
+
+                            cudaMalloc(&d_compressed_verify, 33);
+                            cudaMalloc(&d_verify_comp, sizeof(ECPoint));
+
+                            cudaMemcpy(d_verify_comp, &verify_point, sizeof(ECPoint), cudaMemcpyHostToDevice);
+
+                            get_compressed_public_key<<<1,1>>>(d_compressed_verify, d_verify_comp);
+                            cudaDeviceSynchronize();
+
+                            unsigned char compressed_verify[33];
+                            cudaMemcpy(compressed_verify, d_compressed_verify, 33, cudaMemcpyDeviceToHost);
+
+                            cudaFree(d_compressed_verify);
+                            cudaFree(d_verify_comp);
+
+                            if (memcmp(compressed_verify, target_pubkey.data(), 33) == 0) {
+
+                                std::cout << "\033[33mDP detected for hare " << i << " at k1: " << uint_256_to_hex(hare.k1) << "\033[0m" << std::endl;
+                                std::cout << "\033[33mDP detected for hare " << i << " at k2: " << uint_256_to_hex(hare.k2) << "\033[0m" << std::endl;
+                                std::cout << "A multiplicação satisfaz a equação (d * G ≡ 0)" << std::endl;
+                                std::cout << "Private Key Found: " << uint_256_to_hex(found_key) << std::endl;
+
+                                search_in_progress.store(false);
+                            }
+                        }
+                    }
+                    //}
+                }
+
+                if (memcmp(compressed1, target_pubkey.data(), 33) == 0 ||
+                    memcmp(compressed2, target_pubkey.data(), 33) == 0) {
+
+                    //#pragma omp critical
+                    //{
+                    found_key = (current_pubkey_hex_R == target_pubkey_hex) ? hare.k1 : hare.k2;
+                    std::cout << "\033[32mPrivate key found!\033[0m" << std::endl;
+                    std::cout << "Private Key: " << uint_256_to_hex(found_key) << std::endl;
+
+                    search_in_progress.store(false);
+                    //}
+                }
             }
+
+            //if(!search_in_progress.load()) {
+                //#pragma omp cancel parallel
+                //#pragma omp barrier
+            //}
         }
-        catch (const std::exception& e) {
-            //#pragma omp cancel parallel
-            //#pragma omp barrier
-            //#pragma omp critical
-            std::cerr << "Exception: " << e.what() << std::endl;
-        }
+    }
+    catch (const std::exception& e) {
+        //#pragma omp cancel parallel
+        //#pragma omp barrier
+        //#pragma omp critical
+        std::cerr << "Exception: " << e.what() << std::endl;
+    }
     //}
 
     log_thread.join();
@@ -481,11 +708,13 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    uint256_t found_key = prho(pub_key_hex, key_range, 512, test_mode);
+    uint256_t found_key = prho(pub_key_hex, key_range, 3, test_mode);
 
     auto uint_256_to_hex = [](const uint256_t& value) -> std::string {
         std::ostringstream oss;
-        oss << std::setw(64) << std::setfill('0') << std::hex << value;
+        for(int i = 0; i < 8; i++) {
+            oss << std::setw(8) << std::setfill('0') << std::hex << value.limbs[i];
+        }
         return oss.str();
     };
 
@@ -493,4 +722,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-
