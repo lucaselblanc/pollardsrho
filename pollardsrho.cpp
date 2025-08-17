@@ -263,7 +263,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         mpz_set(hare_states[i].R.x, G.x);
         mpz_set(hare_states[i].R.y, G.y);
         hare_states[i].R.infinity = 0;
-        hare_states[i].speed = (i == 0) ? 1 : (i + 1);
+        hare_states[i].speed = 0;
         hare_states[i].k1 = pkg.generate();
         hare_states[i].k2 = pkg.generate();
     }
@@ -355,7 +355,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
                         //#pragma omp critical
                         //{
-                            if (mpz_cmp(pub1.x, pub2.x) == 0 && mpz_cmp(pub1.y, pub2.y) == 0 && hare.k1 != hare.k2) {
+                            if (mpz_cmp(pub1.x, pub2.x) == 0 && hare.k1 != hare.k2) {
 
                                 /*
                                     Calcular a diferença (d) entre os pontos pubkey1 e pubkey2:
