@@ -17,10 +17,6 @@
 
 #include <cuda_runtime.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef struct {
     unsigned int x[8];
     unsigned int y[8];
@@ -33,9 +29,5 @@ __global__ void point_double(ECPoint *R, const ECPoint *P);
 __global__ void scalar_mult(ECPoint *R, const unsigned int *k, const ECPoint *P);
 __global__ void point_is_valid(int *result, const ECPoint *point);
 __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* EC_SECP256K1_H */
