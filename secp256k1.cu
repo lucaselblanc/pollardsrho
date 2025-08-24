@@ -717,3 +717,8 @@ __global__ void point_is_valid(int *result, const ECPoint *point) {
 __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub) {
     kernel_get_compressed_public_key(out, pub);
 }
+
+__global__ void convert_to_montgomery_kernel(ECPoint* point) {
+    to_montgomery_p(point->x, point->x);
+    to_montgomery_p(point->y, point->y);
+}
