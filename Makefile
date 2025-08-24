@@ -1,5 +1,5 @@
 TARGET    := pollardsrho
-CXX       := g++-12
+CXX       := g++
 NVCC      := nvcc
 
 CUDA_HOME ?= $(or $(shell echo $$HOME/cuda-13.0),/usr/local/cuda)
