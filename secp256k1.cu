@@ -573,10 +573,9 @@ __device__ void scalar_reduce_n(unsigned int *result, const unsigned int *scalar
     unsigned int input_high[8];
     unsigned int input_low[8];
 
-    #pragma unroll
     for (int i = 0; i < 8; i++) {
         input_low[i] = scalar[i];
-        input_high[i] = (i < 8) ? scalar[i + 8] : 0;
+        input_high[i] = 0;
     }
 
     montgomery_reduce_n(result, input_high, input_low);
