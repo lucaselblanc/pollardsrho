@@ -4,15 +4,17 @@
 
 ## Description
 
-This repository contains the implementation of Pollard's Rho algorithm for the secp256k1 elliptic curve. The goal is to generate private keys over O√n using a tortoise and many hares, similar to Pollard's Kangoroo, to run the program it is necessary to have the public key of the bitcoin wallet.
+This repository contains the implementation of Pollard's Rho algorithm for the secp256k1 elliptic curve. The goal is to generate pseudorandom private keys with search complexity O√n using the tortoise/hare race method. To run the program, you need the public key of your Bitcoin wallet.
 
 ## Algorithm Complexity
 
-The expected time complexity of Pollard's Rho algorithm for elliptic curves is <code>O(&#8730;n)</code>, where <code>n</code> is the order of the group to the generating point(G). Given secp256k1, this translates to approximately <code>O(2<sup>128</sup>)</code>.
+The expected time complexity of Pollard's Rho algorithm for elliptic curves is <code>O(&#8730;n)</code>, where <code>n</code> is the order of the group to the generating point(G). Given secp256k1, this translates to approximately <code>O(2<sup>128</sup>)</code>, which is the quadratic needed to achieve the birthday paradox.
 
 #### Prerequisites
 
-- boost::multiprecision.
+- C++17 or later
+- boost::multiprecision
+- CUDA Toolkit
 
 ---
 
