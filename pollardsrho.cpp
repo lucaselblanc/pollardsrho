@@ -57,10 +57,19 @@ void uint256_to_uint32_array(unsigned int* out, const uint256_t& value) {
 void init_secp256k1() {
     uint256_to_uint32_array(G.x, GX);
     uint256_to_uint32_array(G.y, GY);
-    uint256_to_uint32_array(H.x, GX);
-    uint256_to_uint32_array(H.y, GY);
     G.infinity = 0;
+    H = G;
     H.infinity = 0;
+    
+    ECPoint* d_H = nullptr;
+    cudaMalloc(&d_H, sizeof(ECPoint));
+    cudaMemcpy(d_H, &H, sizeof(ECPoint), cudaMemcpyHostToDevice);
+    
+    point_double<<<1,1>>>(d_H, d_H);
+    cudaDeviceSynchronize();
+    
+    cudaMemcpy(&H, d_H, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+    cudaFree(d_H);
 }
 
 class PKG {
@@ -677,6 +686,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-
-
-
