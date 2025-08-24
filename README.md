@@ -30,7 +30,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
     ```bash
     sudo apt-get update
     sudo apt-get upgrade
-    sudo apt install build-essential g++-12 -y
+    sudo apt install build-essential g++ -y
     sudo apt install nvidia-cuda-runtime-13-0 -y
     sudo apt install nvidia-cuda-toolkit-13-0 -y
     ```
