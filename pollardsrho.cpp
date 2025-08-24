@@ -10,6 +10,8 @@
  * Written by Lucas Leblanc              *
 ******************************************/
 
+/* --- AINDA EM TESTES --- */
+
 #include <cuda_runtime.h>
 #include <sys/sysinfo.h>
 #include "secp256k1.h"
@@ -692,3 +694,4 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
