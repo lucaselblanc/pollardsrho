@@ -12,7 +12,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 
 #### Prerequisites
 
-- g++-12
+- g++
 - build-essential
 - nvidia-cuda-runtime-13-0
 - nvidia-cuda-toolkit-13-0
