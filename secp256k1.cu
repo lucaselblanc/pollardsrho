@@ -14,9 +14,6 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
 
 __constant__ unsigned int P_CONST[8] = {
     0xFFFFFC2F, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -671,7 +668,7 @@ __device__ void kernel_scalar_mult(ECPoint *R, const unsigned int *k, const ECPo
 __device__ int kernel_point_is_valid(const ECPoint *point) {
     if (point->infinity) return 1;
 
-    unsigned int lhs[8], rhs[8], temp[8];
+    unsigned int lhs[8], rhs[8];
     
     mod_sqr_mont_p(lhs, point->y);
     mod_sqr_mont_p(rhs, point->x);
