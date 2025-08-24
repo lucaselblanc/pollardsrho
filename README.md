@@ -1,6 +1,6 @@
 # Pollard's Rho Algorithm for SECP256K1 Curve (Beta)
 
-![C++](https://img.shields.io/badge/language-C++-blue)
+![C++](https://img.shields.io/badge/language-C++-blue) ![CUDA](https://img.shields.io/badge/language-CUDA-green)
 
 ## Description
 
@@ -12,9 +12,10 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 
 #### Prerequisites
 
-- C++17 or later
-- boost::multiprecision
-- CUDA Toolkit
+- g++-12
+- build-essential
+- nvidia-cuda-runtime-13-0
+- nvidia-cuda-toolkit-13-0
 
 ---
 
@@ -29,8 +30,9 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
     ```bash
     sudo apt-get update
     sudo apt-get upgrade
-    sudo apt-get install gcc g++
-    sudo apt-get install libboost-all-dev
+    sudo apt install build-essential g++-12 -y
+    sudo apt install nvidia-cuda-runtime-13-0 -y
+    sudo apt install nvidia-cuda-toolkit-13-0 -y
     ```
 
 3. Compile the project:
@@ -56,17 +58,11 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 - `~/pollardsrho$ ./pollardsrho <compressed public key> <key range>`: Starts the search for the private key corresponding to the given public key.
 - `~/pollardsrho$ ./pollardsrho <compressed public key> <key range> --t`: Starts searching for the private key corresponding to the public key provided in test mode for ranges equal to or less than 20 bits.
 
-## Libraries Used
+## External Libraries Used
 
-- ec.h
-- gmpxx.h
-- random
-- thread
-- mutex
-- atomic
-- omp.h
-- sys/sysinfo.h
-- boost/multiprecision/cpp_int.hpp
+<cuda.h>
+<cuda_runtime.h>
+"secp256k1.h"
 
 ## Contributing
 
