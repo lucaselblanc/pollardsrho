@@ -55,21 +55,6 @@ void uint256_to_uint32_array(unsigned int* out, const uint256_t& value) {
 }
 
 void init_secp256k1() {
-    ECPoint* d_G = nullptr;
-    ECPoint* d_H = nullptr;
-
-    cudaMalloc(&d_G, sizeof(ECPoint));
-    cudaMalloc(&d_H, sizeof(ECPoint));
-
-    point_init<<<1,1>>>(d_G);
-    point_init<<<1,1>>>(d_H);
-
-    cudaDeviceSynchronize();
-    cudaMemcpy(&G, d_G, sizeof(ECPoint), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&H, d_H, sizeof(ECPoint), cudaMemcpyDeviceToHost);
-    cudaFree(d_G);
-    cudaFree(d_H);
-
     uint256_to_uint32_array(G.x, GX);
     uint256_to_uint32_array(G.y, GY);
     G.infinity = 0;
@@ -694,4 +679,5 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
 
