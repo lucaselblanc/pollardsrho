@@ -21,9 +21,9 @@ else
 endif
 
 INCLUDES  := -I$(CUDA_HOME)/include
-CXXFLAGS  := -O3 -march=native -Wall -std=c++17 -pthread $(INCLUDES)
+CXXFLAGS  := -O3 -march=native -Wall -std=c++14 -pthread $(INCLUDES)
 NVCCFLAGS := -O3 -arch=$(CUDA_ARCH) -ccbin $(CXX) \
-             -Xcompiler "-O3 -std=c++17 -pthread" \
+             -Xcompiler "-O3 -std=c++14 -pthread" \
              $(INCLUDES) --expt-relaxed-constexpr
 
 LDFLAGS   := -L$(CUDA_HOME)/lib64
