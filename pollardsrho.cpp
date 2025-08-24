@@ -59,9 +59,17 @@ void init_secp256k1() {
     uint256_to_uint32_array(G.y, GY);
     G.infinity = 0;
 
-    uint256_to_uint32_array(H.x, GX);
-    uint256_to_uint32_array(H.y, GY);
-    H.infinity = 0;
+    ECPoint* d_G = nullptr;
+    cudaMalloc(&d_G, sizeof(ECPoint));
+    cudaMemcpy(d_G, &G, sizeof(ECPoint), cudaMemcpyHostToDevice);
+    
+    convert_to_montgomery_kernel<<<1,1>>>(d_G);
+    cudaDeviceSynchronize();
+    
+    cudaMemcpy(&G, d_G, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+    cudaFree(d_G);
+
+    H = G;
 }
 
 class PKG {
@@ -358,8 +366,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         cudaMemcpy(&hare_states[i].R, d_point, sizeof(ECPoint), cudaMemcpyDeviceToHost);
         cudaFree(d_point);
 
-        uint256_to_uint32_array(hare_states[i].R.x, GX);
-        uint256_to_uint32_array(hare_states[i].R.y, GY);
+        hare_states[i].R = G;
         hare_states[i].R.infinity = 0;
         hare_states[i].speed = 0;
         hare_states[i].k1 = pkg.generate();
@@ -679,5 +686,6 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
 
 
