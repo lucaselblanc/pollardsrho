@@ -7,10 +7,8 @@ CUDA_HOME ?= $(or $(shell echo $$HOME/cuda-13.0),/usr/local/cuda)
 ifeq ($(wildcard $(CUDA_HOME)/bin/nvcc),)
   HAS_CUDA := 0
 else
-  HAS_CUDA := 1
+  HAS_CUDA := 1 #Substitua por: HAS_CUDA := 0 caso não houver hardware cuda, é útil somente para compilação.
 endif
-
-#HAS_CUDA := 0 (Caso n tenha hardware cuda, serve apenas para compilar sem erros)
 
 ifeq ($(HAS_CUDA),1)
   CUDA_ARCH := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | \
@@ -23,9 +21,9 @@ else
 endif
 
 INCLUDES  := -I$(CUDA_HOME)/include
-CXXFLAGS  := -O3 -march=native -Wall -std=c++17 -fopenmp -pthread $(INCLUDES)
+CXXFLAGS  := -O3 -march=native -Wall -std=c++17 -pthread $(INCLUDES)
 NVCCFLAGS := -O3 -arch=$(CUDA_ARCH) -ccbin $(CXX) \
-             -Xcompiler "-O3 -std=c++17 -fopenmp -pthread" \
+             -Xcompiler "-O3 -std=c++17 -pthread" \
              $(INCLUDES) --expt-relaxed-constexpr
 
 LDFLAGS   := -L$(CUDA_HOME)/lib64
