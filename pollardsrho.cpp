@@ -10,23 +10,19 @@
  * Written by Lucas Leblanc              *
 ******************************************/
 
-#include "secp256k1.h"
-#include <random>
-#include <thread>
-#include <mutex>
-#include <atomic>
-#include <omp.h>
-#include <cuda.h>
 #include <cuda_runtime.h>
 #include <sys/sysinfo.h>
+#include "secp256k1.h"
 #include <iostream>
 #include <iomanip>
 #include <sstream>
-#include <string>
-#include <vector>
+#include <cuda.h>
+#include <random>
+#include <thread>
+#include <atomic>
 #include <chrono>
 #include <ctime>
-#include <cstring>
+#include <mutex>
 
 struct uint256_t {
     uint32_t limbs[8];
@@ -34,11 +30,6 @@ struct uint256_t {
 
 ECPoint G;
 ECPoint H;
-
-const uint256_t P = {
-    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFE, 0xFFFFFC2F
-};
 
 const uint256_t N = {
     0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFE,
@@ -388,9 +379,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         hare_states[i].k2 = pkg.generate();
     }
 
-    //unsigned int threads = std::thread::hardware_concurrency();
-    //omp_set_num_threads(threads);
-
     std::thread log_thread([&]() {
         try {
             while(search_in_progress.load()) {
@@ -409,12 +397,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         }
     });
 
-    //#pragma omp parallel
-    //{
     try {
         while (search_in_progress.load()) {
 
-            //#pragma omp for
             for (int i = 0; i < hares; ++i) {
 
                 HareState& hare = hare_states[i];
@@ -426,7 +411,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
                 keys_ps.fetch_add(1, std::memory_order_relaxed);
 
-                // Test mode (brute-force) is recommended for ranges <= 20, larger ranges may cause hares to enter infinite loops/cycles.
+                // Linear Search Test Mode "brute-force", is recommended for ranges <= 20, larger ranges may cause hares to enter infinite loops/cycles.
                 if (test_mode)
                 {
                     hare.k1 = add_uint256(hare.k1, uint256_from_uint32(hare.speed));
@@ -530,8 +515,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 // Caso onde x é par:
                 if (DP(pub1) && DP(pub2) && !test_mode) {
 
-                    //#pragma omp critical
-                    //{
                     bool x_equal = true;
                     for (int j = 0; j < 8; j++) {
                         if (pub1.x[j] != pub2.x[j]) {
@@ -638,36 +621,23 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                             }
                         }
                     }
-                    //}
                 }
 
                 if (memcmp(compressed1, target_pubkey.data(), 33) == 0 ||
                     memcmp(compressed2, target_pubkey.data(), 33) == 0) {
 
-                    //#pragma omp critical
-                    //{
                     found_key = (current_pubkey_hex_R == target_pubkey_hex) ? hare.k1 : hare.k2;
                     std::cout << "\033[32mPrivate key found!\033[0m" << std::endl;
                     std::cout << "Private Key: " << uint_256_to_hex(found_key) << std::endl;
 
                     search_in_progress.store(false);
-                    //}
                 }
             }
-
-            //if(!search_in_progress.load()) {
-                //#pragma omp cancel parallel
-                //#pragma omp barrier
-            //}
         }
     }
     catch (const std::exception& e) {
-        //#pragma omp cancel parallel
-        //#pragma omp barrier
-        //#pragma omp critical
         std::cerr << "Exception: " << e.what() << std::endl;
     }
-    //}
 
     log_thread.join();
 
