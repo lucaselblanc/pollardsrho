@@ -693,6 +693,18 @@ __device__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoi
     }
 }
 
+__global__ void generate_public_key(unsigned char *out, unsigned int *PRIV_KEY) {
+    ECPoint pub;
+    ECPoint G;
+
+    bignum_copy(G.x, GX_CONST);
+    bignum_copy(G.y, GY_CONST);
+    G.infinity = 0;
+
+    kernel_scalar_mult(&pub, PRIV_KEY, &G);
+    kernel_get_compressed_public_key(out, &pub);
+}
+
 __global__ void point_init(ECPoint *point) {
     kernel_point_init(point);
 }
