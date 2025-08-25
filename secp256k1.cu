@@ -693,19 +693,6 @@ __device__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoi
     }
 }
 
-__device__ void point_from_montgomery_device(ECPoint *result, const ECPoint *point) {
-    if (point->infinity) {
-        result->infinity = 1;
-        bignum_zero(result->x);
-        bignum_zero(result->y);
-        return;
-    }
-    
-    from_montgomery_p(result->x, point->x);
-    from_montgomery_p(result->y, point->y);
-    result->infinity = 0;
-}
-
 __global__ void point_init(ECPoint *point) {
     kernel_point_init(point);
 }
@@ -728,8 +715,4 @@ __global__ void point_is_valid(int *result, const ECPoint *point) {
 
 __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub) {
     kernel_get_compressed_public_key(out, pub);
-}
-
-__global__ void convert_from_montgomery(ECPoint *result, const ECPoint *point) {
-    point_from_montgomery_device(result, point);
 }
