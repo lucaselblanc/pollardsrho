@@ -498,24 +498,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 P_key = current_pubkey_hex_R;
 
                 int LSB = 5;
-                auto DP = [LSB](const ECPoint& point_mont) -> bool {
-    ECPoint point_normal;
-    ECPoint* d_point_mont = nullptr;
-    ECPoint* d_point_normal = nullptr;
-    
-    cudaMalloc(&d_point_mont, sizeof(ECPoint));
-    cudaMalloc(&d_point_normal, sizeof(ECPoint));
-    
-    cudaMemcpy(d_point_mont, &point_mont, sizeof(ECPoint), cudaMemcpyHostToDevice);
-    convert_from_montgomery<<<1,1>>>(d_point_normal, d_point_mont);
-    cudaDeviceSynchronize();
-    cudaMemcpy(&point_normal, d_point_normal, sizeof(ECPoint), cudaMemcpyDeviceToHost);
-    
-    cudaFree(d_point_mont);
-    cudaFree(d_point_normal);
-    
+                auto DP = [LSB](const ECPoint& point) -> bool {
     for (int i = 0; i < LSB; i++) {
-        if ((point_normal.x[0] >> i) & 1) return false;
+        if ((point.x[0] >> i) & 1) return false;
     }
     return true;
 };
