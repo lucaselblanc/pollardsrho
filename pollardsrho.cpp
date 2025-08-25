@@ -55,21 +55,31 @@ void uint256_to_uint32_array(unsigned int* out, const uint256_t& value) {
 }
 
 void init_secp256k1() {
-    uint256_to_uint32_array(G.x, GX);
-    uint256_to_uint32_array(G.y, GY);
-    G.infinity = 0;
-    H = G;
-    H.infinity = 0;
+
+    ECPoint G_normal, H_normal;
+    uint256_to_uint32_array(G_normal.x, GX);
+    uint256_to_uint32_array(G_normal.y, GY);
+    G_normal.infinity = 0;
     
-    ECPoint* d_H = nullptr;
-    cudaMalloc(&d_H, sizeof(ECPoint));
-    cudaMemcpy(d_H, &H, sizeof(ECPoint), cudaMemcpyHostToDevice);
+    ECPoint* d_G_normal = nullptr;
+    ECPoint* d_G_mont = nullptr;
     
-    point_double<<<1,1>>>(d_H, d_H);
+    cudaMalloc(&d_G_normal, sizeof(ECPoint));
+    cudaMalloc(&d_G_mont, sizeof(ECPoint));
+    
+    cudaMemcpy(d_G_normal, &G_normal, sizeof(ECPoint), cudaMemcpyHostToDevice);
+    
+    convert_to_montgomery<<<1,1>>>(d_G_mont, d_G_normal);
     cudaDeviceSynchronize();
     
-    cudaMemcpy(&H, d_H, sizeof(ECPoint), cudaMemcpyDeviceToHost);
-    cudaFree(d_H);
+    cudaMemcpy(&G, d_G_mont, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+    
+    point_double<<<1,1>>>(d_G_mont, d_G_mont);
+    cudaDeviceSynchronize();
+    cudaMemcpy(&H, d_G_mont, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+    
+    cudaFree(d_G_normal);
+    cudaFree(d_G_mont);
 }
 
 class PKG {
@@ -499,12 +509,27 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 P_key = current_pubkey_hex_R;
 
                 int LSB = 5;
-                auto DP = [LSB](const ECPoint& point) -> bool {
-                    for (int i = 0; i < LSB; i++) {
-                        if ((point.x[0] >> i) & 1) return false;
-                    }
-                    return true;
-                };
+                auto DP = [LSB](const ECPoint& point_mont) -> bool {
+    ECPoint point_normal;
+    ECPoint* d_point_mont = nullptr;
+    ECPoint* d_point_normal = nullptr;
+    
+    cudaMalloc(&d_point_mont, sizeof(ECPoint));
+    cudaMalloc(&d_point_normal, sizeof(ECPoint));
+    
+    cudaMemcpy(d_point_mont, &point_mont, sizeof(ECPoint), cudaMemcpyHostToDevice);
+    convert_from_montgomery<<<1,1>>>(d_point_normal, d_point_mont);
+    cudaDeviceSynchronize();
+    cudaMemcpy(&point_normal, d_point_normal, sizeof(ECPoint), cudaMemcpyDeviceToHost);
+    
+    cudaFree(d_point_mont);
+    cudaFree(d_point_normal);
+    
+    for (int i = 0; i < LSB; i++) {
+        if ((point_normal.x[0] >> i) & 1) return false;
+    }
+    return true;
+};
 
                 // Caso onde x é par:
                 if (DP(pub1) && DP(pub2) && !test_mode) {
