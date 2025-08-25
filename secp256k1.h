@@ -29,5 +29,6 @@ __global__ void point_double(ECPoint *R, const ECPoint *P);
 __global__ void scalar_mult(ECPoint *R, const unsigned int *k, const ECPoint *P);
 __global__ void point_is_valid(int *result, const ECPoint *point);
 __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub);
+__global__ void convert_from_montgomery(ECPoint *result, const ECPoint *point);
 
 #endif /* EC_SECP256K1_H */
