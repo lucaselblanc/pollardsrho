@@ -56,30 +56,19 @@ void uint256_to_uint32_array(unsigned int* out, const uint256_t& value) {
 
 void init_secp256k1() {
 
-    ECPoint G_normal, H_normal;
-    uint256_to_uint32_array(G_normal.x, GX);
-    uint256_to_uint32_array(G_normal.y, GY);
-    G_normal.infinity = 0;
+    uint256_to_uint32_array(G.x, GX);
+    uint256_to_uint32_array(G.y, GY);
+    G.infinity = 0;
     
-    ECPoint* d_G_normal = nullptr;
-    ECPoint* d_G_mont = nullptr;
+    ECPoint* d_G = nullptr;
+    cudaMalloc(&d_G, sizeof(ECPoint));
+    cudaMemcpy(d_G, &G, sizeof(ECPoint), cudaMemcpyHostToDevice);
     
-    cudaMalloc(&d_G_normal, sizeof(ECPoint));
-    cudaMalloc(&d_G_mont, sizeof(ECPoint));
-    
-    cudaMemcpy(d_G_normal, &G_normal, sizeof(ECPoint), cudaMemcpyHostToDevice);
-    
-    convert_to_montgomery<<<1,1>>>(d_G_mont, d_G_normal);
+    point_double<<<1,1>>>(d_G, d_G);
     cudaDeviceSynchronize();
+    cudaMemcpy(&H, d_G, sizeof(ECPoint), cudaMemcpyDeviceToHost);
     
-    cudaMemcpy(&G, d_G_mont, sizeof(ECPoint), cudaMemcpyDeviceToHost);
-    
-    point_double<<<1,1>>>(d_G_mont, d_G_mont);
-    cudaDeviceSynchronize();
-    cudaMemcpy(&H, d_G_mont, sizeof(ECPoint), cudaMemcpyDeviceToHost);
-    
-    cudaFree(d_G_normal);
-    cudaFree(d_G_mont);
+    cudaFree(d_G);
 }
 
 class PKG {
