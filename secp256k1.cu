@@ -67,7 +67,7 @@ __constant__ unsigned int ONE_MONT[8] = {
 };
 
 __constant__ unsigned int SEVEN_MONT[8] = {
-    0x00001AB7, 0x00000007, 0x00000000, 0x00000000,
+    0x00001A97, 0x00000007, 0x00000000, 0x00000000,
     0x00000000, 0x00000000, 0x00000000, 0x00000000
 };
 
