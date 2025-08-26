@@ -452,10 +452,9 @@ __device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *
         jacobian_set_infinity(result);
         return;
     }
-    
+
     unsigned int A[8], B[8], C[8], D[8], E[8], F[8];
     unsigned int X2[8]; 
-    
     mod_sqr_mont_p(A, point->Y);  
     mod_mul_mont_p(B, point->X, A);
     mod_add_p(B, B, B);
@@ -466,17 +465,17 @@ __device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *
     mod_add_p(C, C, C);
     mod_sqr_mont_p(X2, point->X);
     mod_add_p(D, X2, X2);
-    mod_add_p(D, D, X2); 
-    mod_sqr_mont_p(E, D);  
+    mod_add_p(D, D, X2);
+    mod_sqr_mont_p(E, D);
     mod_sub_p(F, E, B);
     mod_sub_p(F, F, B);
-    bignum_copy(result->X, F); 
+    bignum_copy(result->X, F);
     mod_sub_p(result->Y, B, F);
     mod_mul_mont_p(result->Y, D, result->Y);
     mod_sub_p(result->Y, result->Y, C);
     mod_mul_mont_p(result->Z, point->Y, point->Z);
     mod_add_p(result->Z, result->Z, result->Z);
-    
+
     result->infinity = 0;
 }
 
@@ -488,7 +487,7 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
         result->infinity = Q->infinity;
         return;
     }
-    
+
     if (jacobian_is_infinity(Q)) {
         bignum_copy(result->X, P->X);
         bignum_copy(result->Y, P->Y);
@@ -496,19 +495,19 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
         result->infinity = P->infinity;
         return;
     }
-    
+
     unsigned int U1[8], U2[8], S1[8], S2[8], H[8], I[8], J[8], r[8], V[8];
-    unsigned int Z1Z1[8], Z2Z2[8];
-    
+    unsigned int Z1Z1[8], Z2Z2[8], temp[8];
+
     mod_sqr_mont_p(Z1Z1, P->Z);
     mod_sqr_mont_p(Z2Z2, Q->Z);
     mod_mul_mont_p(U1, P->X, Z2Z2);
     mod_mul_mont_p(U2, Q->X, Z1Z1);
-    mod_mul_mont_p(S1, Q->Z, Z2Z2);
-    mod_mul_mont_p(S1, P->Y, S1);
-    mod_mul_mont_p(S2, P->Z, Z1Z1);
-    mod_mul_mont_p(S2, Q->Y, S2);
-    
+    mod_mul_mont_p(temp, Q->Z, Z2Z2);
+    mod_mul_mont_p(S1, P->Y, temp);
+    mod_mul_mont_p(temp, P->Z, Z1Z1);
+    mod_mul_mont_p(S2, Q->Y, temp);
+
     if (bignum_cmp(U1, U2) == 0) {
         if (bignum_cmp(S1, S2) == 0) {
             jacobian_double(result, P);
@@ -518,7 +517,7 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
             return;
         }
     }
-    
+
     mod_sub_p(H, U2, U1);
     mod_sqr_mont_p(I, H);
     mod_add_p(I, I, I);
@@ -539,7 +538,7 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
     mod_mul_mont_p(result->Z, P->Z, Q->Z);
     mod_mul_mont_p(result->Z, result->Z, H);
     mod_add_p(result->Z, result->Z, result->Z);
-    
+
     result->infinity = 0;
 }
 
