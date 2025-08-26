@@ -698,12 +698,16 @@ __device__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoi
 __global__ void generate_public_key(unsigned char *out, unsigned int *PRIV_KEY) {
     ECPoint pub;
     ECPoint G;
+    ECPointJacobian G_jac, pub_jac;
 
     to_montgomery_p(G.x, GX_CONST);
     to_montgomery_p(G.y, GY_CONST);
     G.infinity = 0;
 
-    kernel_scalar_mult(&pub, PRIV_KEY, &G);
+    affine_to_jacobian(&G_jac, &G);
+    jacobian_scalar_mult(&pub_jac, PRIV_KEY, &G_jac);
+    jacobian_to_affine(&pub, &pub_jac);
+
     kernel_get_compressed_public_key(out, &pub);
 }
 
