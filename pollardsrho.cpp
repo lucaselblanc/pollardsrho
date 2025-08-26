@@ -12,10 +12,6 @@
 
 /* --- AINDA EM TESTES --- */
 
-struct uint256_t {
-    uint32_t limbs[8];
-};
-
 #include <sys/sysinfo.h>
 #include <iostream>
 #include <iomanip>
@@ -30,6 +26,10 @@ struct uint256_t {
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include "secp256k1.h"
+
+struct uint256_t {
+    uint32_t limbs[8];
+};
 
 ECPoint G;
 ECPoint H;
