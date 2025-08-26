@@ -699,8 +699,8 @@ __global__ void generate_public_key(unsigned char *out, unsigned int *PRIV_KEY) 
     ECPoint pub;
     ECPoint G;
 
-    bignum_copy(G.x, GX_CONST);
-    bignum_copy(G.y, GY_CONST);
+    to_montgomery_p(G.x, GX_CONST);
+    to_montgomery_p(G.y, GY_CONST);
     G.infinity = 0;
 
     kernel_scalar_mult(&pub, PRIV_KEY, &G);
