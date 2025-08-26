@@ -12,19 +12,21 @@
 
 /* --- AINDA EM TESTES --- */
 
-#include <cuda_runtime.h>
+
 #include <sys/sysinfo.h>
-#include "secp256k1.h"
 #include <iostream>
 #include <iomanip>
 #include <sstream>
-#include <cuda.h>
 #include <random>
 #include <thread>
 #include <atomic>
 #include <chrono>
 #include <ctime>
 #include <mutex>
+
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include "secp256k1.h"
 
 struct uint256_t {
     uint32_t limbs[8];
