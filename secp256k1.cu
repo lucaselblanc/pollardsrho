@@ -196,10 +196,10 @@ __device__ void montgomery_reduce_p(unsigned int *result, const unsigned int *in
             carry = prod >> 32;
         }
         
-        for (int j = 8; j < 16 - i; j++) {
-            carry += temp[i + j];
-            temp[i + j] = (unsigned int)carry;
-            carry >>= 32;
+        for (int j = i + 8; j < 16; j++) {
+            unsigned long long tmp = (unsigned long long)temp[j] + carry;
+            temp[j] = (unsigned int)tmp;
+            carry = tmp >> 32;
         }
     }
     
@@ -261,37 +261,41 @@ __device__ void mod_inverse_p_fermat(unsigned int *result, const unsigned int *a
         0xFFFFFC2D, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
     };
-    
+
     unsigned int base[8], exp[8], temp_result[8];
-    bignum_copy(base, a);
+
+    to_montgomery_p(base, a);
+
     bignum_copy(exp, p_minus_2);
     bignum_copy(temp_result, ONE_MONT);
-    
+
     while (!bignum_is_zero(exp)) {
         if (bignum_is_odd(exp)) {
             mod_mul_mont_p(temp_result, temp_result, base);
         }
-        
         mod_mul_mont_p(base, base, base);
         bignum_shr1(exp, exp);
     }
-    
+
     bignum_copy(result, temp_result);
 }
 
 __device__ void mod_inverse_p_binary(unsigned int *result, const unsigned int *a) {
     unsigned int u[8], v[8], A[8], B[8], C[8], D[8];
     unsigned int temp[8];
-    
-    bignum_copy(u, a);
+
+    to_montgomery_p(u, a);
     bignum_copy(v, P_CONST);
-    bignum_set_ui(A, 1); bignum_zero(B);
-    bignum_zero(C); bignum_set_ui(D, 1);
-    
+
+    bignum_copy(A, ONE_MONT);
+    bignum_zero(B);
+    bignum_zero(C);
+    bignum_copy(D, ONE_MONT);
+
     while (!bignum_is_zero(u)) {
         while (!bignum_is_odd(u)) {
             bignum_shr1(u, u);
-            
+
             if (bignum_is_odd(A) || bignum_is_odd(B)) {
                 bignum_add_carry(A, A, P_CONST);
                 if (bignum_cmp(B, a) >= 0) {
@@ -301,14 +305,14 @@ __device__ void mod_inverse_p_binary(unsigned int *result, const unsigned int *a
                     bignum_sub_borrow(B, temp, a);
                 }
             }
-            
+
             bignum_shr1(A, A);
             bignum_shr1(B, B);
         }
-        
+
         while (!bignum_is_odd(v)) {
             bignum_shr1(v, v);
-            
+
             if (bignum_is_odd(C) || bignum_is_odd(D)) {
                 bignum_add_carry(C, C, P_CONST);
                 if (bignum_cmp(D, a) >= 0) {
@@ -318,21 +322,21 @@ __device__ void mod_inverse_p_binary(unsigned int *result, const unsigned int *a
                     bignum_sub_borrow(D, temp, a);
                 }
             }
-            
+
             bignum_shr1(C, C);
             bignum_shr1(D, D);
         }
-        
+
         if (bignum_cmp(u, v) >= 0) {
             bignum_sub_borrow(u, u, v);
-            
+
             if (bignum_cmp(A, C) >= 0) {
                 bignum_sub_borrow(A, A, C);
             } else {
                 bignum_add_carry(temp, A, P_CONST);
                 bignum_sub_borrow(A, temp, C);
             }
-            
+
             if (bignum_cmp(B, D) >= 0) {
                 bignum_sub_borrow(B, B, D);
             } else {
@@ -341,14 +345,14 @@ __device__ void mod_inverse_p_binary(unsigned int *result, const unsigned int *a
             }
         } else {
             bignum_sub_borrow(v, v, u);
-            
+
             if (bignum_cmp(C, A) >= 0) {
                 bignum_sub_borrow(C, C, A);
             } else {
                 bignum_add_carry(temp, C, P_CONST);
                 bignum_sub_borrow(C, temp, A);
             }
-            
+
             if (bignum_cmp(D, B) >= 0) {
                 bignum_sub_borrow(D, D, B);
             } else {
@@ -357,7 +361,7 @@ __device__ void mod_inverse_p_binary(unsigned int *result, const unsigned int *a
             }
         }
     }
-    
+
     if (bignum_cmp(v, ONE) == 0) {
         bignum_copy(result, C);
         while (bignum_cmp(result, P_CONST) >= 0) {
@@ -366,6 +370,8 @@ __device__ void mod_inverse_p_binary(unsigned int *result, const unsigned int *a
     } else {
         bignum_zero(result);
     }
+
+    to_montgomery_p(result, result);
 }
 
 __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a) {
@@ -555,10 +561,10 @@ __device__ void montgomery_reduce_n(unsigned int *result, const unsigned int *in
             carry = prod >> 32;
         }
         
-        for (int j = 8; j < 16 - i; j++) {
-            carry += temp[i + j];
-            temp[i + j] = (unsigned int)carry;
-            carry >>= 32;
+        for (int j = i + 8; j < 16; j++) {
+            unsigned long long tmp = (unsigned long long)temp[j] + carry;
+            temp[j] = (unsigned int)tmp;
+            carry = tmp >> 32;
         }
     }
     
