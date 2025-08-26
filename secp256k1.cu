@@ -577,18 +577,11 @@ __device__ void montgomery_reduce_n(unsigned int *result, const unsigned int *in
 }
 
 __device__ void scalar_reduce_n(unsigned int *result, const unsigned int *scalar) {
-    unsigned int scalar_mont[8];
-
-    to_montgomery_p(scalar_mont, scalar);
-
-    unsigned int input_high[8] = {0};
-    unsigned int input_low[8];
-
-    for (int i = 0; i < 8; i++) {
-        input_low[i] = scalar_mont[i];
+    if (bignum_cmp(scalar, N_CONST) >= 0) {
+        bignum_sub_borrow(result, scalar, N_CONST);
+    } else {
+        bignum_copy(result, scalar);
     }
-
-    montgomery_reduce_n(result, input_high, input_low);
 }
 
 __device__ void jacobian_scalar_mult(ECPointJacobian *result, const unsigned int *scalar, const ECPointJacobian *point) {
