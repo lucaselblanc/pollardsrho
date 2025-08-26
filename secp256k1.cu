@@ -728,3 +728,33 @@ __global__ void point_is_valid(int *result, const ECPoint *point) {
 __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub) {
     kernel_get_compressed_public_key(out, pub);
 }
+
+int main() {
+    unsigned int h_priv[8] = {
+        0x97C603C9, 0x28B88CF8, 0x4F59F053, 0x33E76657,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000
+    };
+
+    unsigned int *d_priv;
+    unsigned char *d_out, h_out[33];
+
+    cudaMalloc(&d_priv, sizeof(h_priv));
+    cudaMalloc(&d_out, 33);
+
+    cudaMemcpy(d_priv, h_priv, sizeof(h_priv), cudaMemcpyHostToDevice);
+
+    generate_public_key<<<1,1>>>(d_out, d_priv);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(h_out, d_out, 33, cudaMemcpyDeviceToHost);
+
+    printf("Public key compressed: ");
+    for (int i = 0; i < 33; i++) {
+        printf("%02X", h_out[i]);
+    }
+    printf("\n");
+
+    cudaFree(d_priv);
+    cudaFree(d_out);
+    return 0;
+}
