@@ -12,6 +12,9 @@
 
 /* --- AINDA EM TESTES --- */
 
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include "secp256k1.h"
 #include <sys/sysinfo.h>
 #include <iostream>
 #include <iomanip>
@@ -22,10 +25,6 @@
 #include <chrono>
 #include <ctime>
 #include <mutex>
-
-#include <cuda.h>
-#include <cuda_runtime.h>
-#include "secp256k1.h"
 
 struct uint256_t {
     uint32_t limbs[8];
@@ -642,6 +641,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     << std::setw(2) << std::setfill('0') << duration.count() % 60 << std::endl;
 
     return found_key;
+}
+
+int main(){
+ return 0;
 }
 
 /*
