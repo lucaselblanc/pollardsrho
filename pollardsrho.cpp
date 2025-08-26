@@ -644,10 +644,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     return found_key;
 }
 
-int main(){
- return 0;
-}
-
 /*
 int main(int argc, char* argv[]) {
 
