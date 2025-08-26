@@ -12,7 +12,6 @@
 
 /* --- AINDA EM TESTES --- */
 
-
 #include <sys/sysinfo.h>
 #include <iostream>
 #include <iomanip>
