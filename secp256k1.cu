@@ -362,7 +362,7 @@ __device__ void mod_inverse_p_binary(unsigned int *result, const unsigned int *a
         }
     }
 
-    if (bignum_cmp(v, ONE) == 0) {
+    if (bignum_cmp(v, ONE_MONT) == 0) {
         bignum_copy(result, C);
         while (bignum_cmp(result, P_CONST) >= 0) {
             bignum_sub_borrow(result, result, P_CONST);
