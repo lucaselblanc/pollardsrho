@@ -17,24 +17,25 @@ OBJ       := $(SRC_CPP:.cpp=.o) $(SRC_CU:.cu=.o)
 
 all: arch $(TARGET)
 
-arch:
+arch: arch.cu
 	$(NVCC) arch.cu -o arch
 
 GPU_ARCH := $(shell ./arch)
 
-NVCCFLAGS := -O3 -gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
-             -ccbin $(CXX) \
-             -Xcompiler "-O3 -std=c++14 -pthread" \
-             $(INCLUDES) --expt-relaxed-constexpr
+NVCCFLAGS := -O3 \
+	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
+	-ccbin $(CXX) \
+	-Xcompiler "-O3 -std=c++14 -pthread" \
+	$(INCLUDES) --expt-relaxed-constexpr
+
+%.o: %.cpp | arch
+	$(NVCC) --x cu $(NVCCFLAGS) -c $< -o $@
+
+%.o: %.cu | arch
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJ)
 	$(NVCC) $(OBJ) -o $@ $(LDFLAGS) $(LDLIBS)
-
-%.o: %.cpp
-	$(NVCC) --x cu $(NVCCFLAGS) -c $< -o $@
-
-%.o: %.cu
-	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(TARGET) $(OBJ) arch
