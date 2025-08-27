@@ -7,9 +7,9 @@ CUDA_HOME ?= $(or $(shell echo $$HOME/cuda-13.0),/usr/local/cuda)
 INCLUDES  := -I$(CUDA_HOME)/include
 CXXFLAGS  := -O3 -march=native -Wall -std=c++14 -pthread $(INCLUDES)
 
-SUPPORTED_ARCHS := $(shell $(NVCC) --list-gpu-arch | grep -Eo 'compute_[0-9]+')
+FIRST_ARCH := $(firstword $(shell $(NVCC) --list-gpu-arch | grep -Eo 'compute_[0-9]+'))
 
-NVCCFLAGS := -O3 $(foreach arch,$(SUPPORTED_ARCHS),-gencode arch=$(arch),code=sm_$(subst compute_,,$(arch))) \
+NVCCFLAGS := -O3 -gencode arch=$(FIRST_ARCH),code=sm_$(subst compute_,,$(FIRST_ARCH)) \
              -ccbin $(CXX) \
              -Xcompiler "-O3 -std=c++14 -pthread" \
              $(INCLUDES) --expt-relaxed-constexpr
