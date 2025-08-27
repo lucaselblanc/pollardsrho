@@ -435,15 +435,18 @@ __device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
         aff->infinity = 1;
         return;
     }
-    
-    unsigned int z_inv[8], z_inv_sqr[8], z_inv_cube[8];
-    
-    mod_inverse_p(z_inv, jac->Z);
+
+    unsigned int z_norm[8], z_inv[8], z_inv_sqr[8], z_inv_cube[8];
+
+    from_montgomery_p(z_norm, jac->Z);
+
+    mod_inverse_p(z_inv, z_norm);
     mod_mul_mont_p(z_inv_sqr, z_inv, z_inv);
     mod_mul_mont_p(z_inv_cube, z_inv_sqr, z_inv);
+
     mod_mul_mont_p(aff->x, jac->X, z_inv_sqr);
     mod_mul_mont_p(aff->y, jac->Y, z_inv_cube);
-    
+
     aff->infinity = 0;
 }
 
