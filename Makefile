@@ -4,29 +4,31 @@ NVCC      := nvcc
 
 CUDA_HOME ?= $(or $(shell echo $$HOME/cuda-13.0),/usr/local/cuda)
 
-ifeq ($(wildcard $(CUDA_HOME)/bin/nvcc),)
-  HAS_CUDA := 0
-else
-  HAS_CUDA := 1 #Substitua por: HAS_CUDA := 0 caso não houver hardware cuda, é útil somente para compilação.
-endif
-
-ifeq ($(HAS_CUDA),1)
-  CUDA_ARCH := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | \
-                 awk -F. '{printf "sm_%d%d", $$1,$$2}' || echo "sm_75")
-  ifeq ($(CUDA_ARCH),)
-    CUDA_ARCH := sm_75
-  endif
-else
-  CUDA_ARCH := sm_75
-endif
-
 INCLUDES  := -I$(CUDA_HOME)/include
 CXXFLAGS  := -O3 -march=native -Wall -std=c++14 -pthread $(INCLUDES)
-NVCCFLAGS := -O3 -gencode arch=compute_$(shell echo $(CUDA_ARCH) | sed 's/sm_//'),code=$(CUDA_ARCH) \
-                 -gencode arch=compute_$(shell echo $(CUDA_ARCH) | sed 's/sm_//'),code=compute_$(shell echo $(CUDA_ARCH) | sed 's/sm_//') \
-                 -ccbin $(CXX) \
-                 -Xcompiler "-O3 -std=c++14 -pthread" \
-                 $(INCLUDES) --expt-relaxed-constexpr
+
+NVCCFLAGS := -O3 \
+    -gencode arch=compute_35,code=sm_35 \
+    -gencode arch=compute_50,code=sm_50 \
+    -gencode arch=compute_52,code=sm_52 \
+    -gencode arch=compute_60,code=sm_60 \
+    -gencode arch=compute_61,code=sm_61 \
+    -gencode arch=compute_70,code=sm_70 \
+    -gencode arch=compute_75,code=sm_75 \
+    -gencode arch=compute_80,code=sm_80 \
+    -gencode arch=compute_86,code=sm_86 \
+    -gencode arch=compute_89,code=sm_89 \
+    -gencode arch=compute_35,code=compute_35 \  # PTX fallback
+    -gencode arch=compute_50,code=compute_50 \
+    -gencode arch=compute_60,code=compute_60 \
+    -gencode arch=compute_70,code=compute_70 \
+    -gencode arch=compute_75,code=compute_75 \
+    -gencode arch=compute_80,code=compute_80 \
+    -gencode arch=compute_86,code=compute_86 \
+    -gencode arch=compute_89,code=compute_89 \
+    -ccbin $(CXX) \
+    -Xcompiler "-O3 -std=c++14 -pthread" \
+    $(INCLUDES) --expt-relaxed-constexpr
 
 LDFLAGS   := -L$(CUDA_HOME)/lib64
 LDLIBS    := -lcudart -lpthread
