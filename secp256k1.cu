@@ -542,42 +542,6 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
     result->infinity = 0;
 }
 
-/*
-__device__ void montgomery_reduce_n(unsigned int *result, const unsigned int *input_high, const unsigned int *input_low) {
-    unsigned int temp[16];
-    
-    for (int i = 0; i < 8; i++) {
-        temp[i] = input_low[i];
-        temp[i + 8] = input_high[i];
-    }
-    
-    for (int i = 0; i < 8; i++) {
-        unsigned int ui = (temp[i] * MU_N) & 0xFFFFFFFF;
-        
-        unsigned long long carry = 0;
-        for (int j = 0; j < 8; j++) {
-            unsigned long long prod = (unsigned long long)ui * N_CONST[j] + temp[i + j] + carry;
-            temp[i + j] = (unsigned int)prod;
-            carry = prod >> 32;
-        }
-        
-        for (int j = i + 8; j < 16; j++) {
-            unsigned long long tmp = (unsigned long long)temp[j] + carry;
-            temp[j] = (unsigned int)tmp;
-            carry = tmp >> 32;
-        }
-    }
-    
-    for (int i = 0; i < 8; i++) {
-        result[i] = temp[i + 8];
-    }
-    
-    if (bignum_cmp(result, N_CONST) >= 0) {
-        bignum_sub_borrow(result, result, N_CONST);
-    }
-}
-*/
-
 __device__ void scalar_reduce_n(unsigned int *result, const unsigned int *scalar) {
     if (bignum_cmp(scalar, N_CONST) >= 0) {
         bignum_sub_borrow(result, scalar, N_CONST);
