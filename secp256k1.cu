@@ -587,39 +587,51 @@ __device__ void scalar_reduce_n(unsigned int *result, const unsigned int *scalar
 }
 
 __device__ void jacobian_scalar_mult(ECPointJacobian *result, const unsigned int *scalar, const ECPointJacobian *point) {
-    ECPointJacobian Q, temp;
-    jacobian_init(&Q);
+    ECPointJacobian Q;
+    
+    if (bignum_is_zero(scalar)) {
+        jacobian_set_infinity(result);
+        return;
+    }
+    
+    if (jacobian_is_infinity(point)) {
+        jacobian_set_infinity(result);
+        return;
+    }
+    
     jacobian_set_infinity(result);
-    
-    bignum_copy(Q.X, point->X);
-    bignum_copy(Q.Y, point->Y);
-    bignum_copy(Q.Z, point->Z);
-    Q.infinity = point->infinity;
-    
+    Q = *point;
+
     unsigned int k[8];
-    scalar_reduce_n(k, scalar);
+    bignum_copy(k, scalar);
+
+    int bit_found = 0;
+    for (int i = 7; i >= 0; i--) {
+        if (k[i] != 0) {
+            bit_found = 1;
+            break;
+        }
+    }
     
+    if (!bit_found) {
+        jacobian_set_infinity(result);
+        return;
+    }
+
     while (!bignum_is_zero(k)) {
         if (bignum_is_odd(k)) {
             if (jacobian_is_infinity(result)) {
-                bignum_copy(result->X, Q.X);
-                bignum_copy(result->Y, Q.Y);
-                bignum_copy(result->Z, Q.Z);
-                result->infinity = Q.infinity;
+                *result = Q;
             } else {
+                ECPointJacobian temp;
                 jacobian_add(&temp, result, &Q);
-                bignum_copy(result->X, temp.X);
-                bignum_copy(result->Y, temp.Y);
-                bignum_copy(result->Z, temp.Z);
-                result->infinity = temp.infinity;
+                *result = temp;
             }
         }
         
+        ECPointJacobian temp;
         jacobian_double(&temp, &Q);
-        bignum_copy(Q.X, temp.X);
-        bignum_copy(Q.Y, temp.Y);
-        bignum_copy(Q.Z, temp.Z);
-        Q.infinity = temp.infinity;
+        Q = temp;
         
         bignum_shr1(k, k);
     }
