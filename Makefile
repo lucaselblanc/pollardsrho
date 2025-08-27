@@ -18,7 +18,7 @@ NVCCFLAGS := -O3 \
     -gencode arch=compute_80,code=sm_80 \
     -gencode arch=compute_86,code=sm_86 \
     -gencode arch=compute_89,code=sm_89 \
-    -gencode arch=compute_35,code=compute_35 \  # PTX fallback
+    -gencode arch=compute_35,code=compute_35 \
     -gencode arch=compute_50,code=compute_50 \
     -gencode arch=compute_60,code=compute_60 \
     -gencode arch=compute_70,code=compute_70 \
