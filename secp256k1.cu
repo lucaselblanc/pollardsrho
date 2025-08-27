@@ -725,6 +725,10 @@ int main() {
 
     unsigned int *d_priv;
     unsigned char *d_out, h_out[33];
+    
+    //Start
+    cudaError_t err;
+    //Final
 
     cudaMalloc(&d_priv, sizeof(h_priv));
     cudaMalloc(&d_out, 33);
@@ -732,6 +736,14 @@ int main() {
     cudaMemcpy(d_priv, h_priv, sizeof(h_priv), cudaMemcpyHostToDevice);
 
     generate_public_key<<<1,1>>>(d_out, d_priv);
+
+    //Start
+    err = cudaGetLastError();
+       if (err != cudaSuccess) printf("Launch error: %s\n", cudaGetErrorString(err));
+       err = cudaDeviceSynchronize();
+       if (err != cudaSuccess) printf("Synchronize error: %s\n", cudaGetErrorString(err));
+
+    //Final
     cudaDeviceSynchronize();
 
     cudaMemcpy(h_out, d_out, 33, cudaMemcpyDeviceToHost);
