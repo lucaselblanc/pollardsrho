@@ -719,8 +719,7 @@ __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
 
 int main() {
     unsigned int h_priv[8] = {
-        0x97C603C9, 0x28B88CF8, 0x4F59F053, 0x33E76657,
-        0x00000000, 0x00000000, 0x00000000, 0x00000000
+        0x97c603c9, 0x28b88cf8, 0x5359f04f, 0x3e766570, 0x00000003, 0x00000000, 0x00000000, 0x00000000
     };
 
     unsigned int *d_priv;
