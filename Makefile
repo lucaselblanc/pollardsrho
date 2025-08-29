@@ -13,29 +13,32 @@ SRC_CPP   := pollardsrho.cpp
 SRC_CU    := secp256k1.cu
 OBJ       := $(SRC_CPP:.cpp=.o) $(SRC_CU:.cu=.o)
 
-.PHONY: all clean arch
+.PHONY: all clean gpu_arch
 
-all: arch $(TARGET)
+all: $(TARGET)
 
 arch: arch.cu
 	$(NVCC) arch.cu -o arch
 
-GPU_ARCH := $(shell ./arch)
+gpu_arch: arch
+	@./arch > gpu_arch
 
-NVCCFLAGS := -O3 \
+include gpu_arch
+
+NVCCFLAGS = -O3 \
 	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
 	-ccbin $(CXX) \
 	-Xcompiler "-O3 -std=c++14 -pthread" \
 	$(INCLUDES) --expt-relaxed-constexpr
 
-%.o: %.cpp | arch
+%.o: %.cpp gpu_arch
 	$(NVCC) --x cu $(NVCCFLAGS) -c $< -o $@
 
-%.o: %.cu | arch
+%.o: %.cu gpu_arch
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJ)
 	$(NVCC) $(OBJ) -o $@ $(LDFLAGS) $(LDLIBS)
 
 clean:
-	rm -f $(TARGET) $(OBJ) arch
+	rm -f $(TARGET) $(OBJ) arch gpu_arch
