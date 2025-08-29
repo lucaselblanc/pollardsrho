@@ -286,8 +286,10 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
     }
 
     const int WINDOW = 4;
-    const int WSIZE = (1 << WINDOW); 
+    const int WSIZE = (1 << WINDOW);
+
     unsigned int pow_table[WSIZE][8];
+    bignum_copy(pow_table[0], ONE_MONT);
     bignum_copy(pow_table[1], a_hat);
 
     for (int i = 2; i < WSIZE; i++) {
