@@ -257,7 +257,7 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
 }
 
 __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
-    
+
     if (bignum_is_zero(a_normal)) {
         bignum_zero(result);
         return;
@@ -273,27 +273,27 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
 
     unsigned int exp[8];
     bignum_copy(exp, exp_const);
-
     int bitlen = 0;
+
     for (int bit = 255; bit >= 0; bit--) {
-        int word = bit >> 5;
-        int wbit = bit & 31;
-        if ( (exp[word] >> wbit) & 1U ) { bitlen = bit + 1; break; }
+        int w = bit >> 5, b = bit & 31;
+        if ( (exp[w] >> b) & 1U ) { bitlen = bit + 1; break; }
     }
+
     if (bitlen == 0) {
         bignum_copy(result, ONE_MONT);
         return;
     }
 
     const int WINDOW = 4;
-    const int WSIZE = (1 << WINDOW);
+    const int WSIZE  = (1 << WINDOW);
 
     unsigned int pow_table[WSIZE][8];
     bignum_copy(pow_table[0], ONE_MONT);
     bignum_copy(pow_table[1], a_hat);
 
-    for (int i = 2; i < WSIZE; i++) {
-        mod_mul_mont_p(pow_table[i], pow_table[i-1], a_hat);
+    for (int t = 2; t < WSIZE; t++) {
+        mod_mul_mont_p(pow_table[t], pow_table[t-1], a_hat);
     }
 
     unsigned int acc[8];
@@ -301,43 +301,30 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
 
     int i = bitlen - 1;
     while (i >= 0) {
-        int word = i >> 5;
+        int widx = i >> 5;
         int wbit = i & 31;
-        unsigned int curbit = (exp[word] >> wbit) & 1U;
+        unsigned int bit = (exp[widx] >> wbit) & 1U;
 
-        if (!curbit) {
+        if (!bit) {
             mod_sqr_mont_p(acc, acc);
             i--;
             continue;
         }
 
-        int l = 1;
         int max_l = (i + 1 < WINDOW) ? (i + 1) : WINDOW;
-
-        unsigned int wval = 0;
-        for (int k = 0; k < max_l; k++) {
-            int bitpos = i - k;
-            int w = bitpos >> 5;
-            int wb = bitpos & 31;
-            unsigned int b = (exp[w] >> wb) & 1U;
-            wval |= (b << k);
-        }
-
-        while (l < max_l) {
-            l++;
-        }
-
         int chosen_l = 1;
+        unsigned int wval = 1;
+
         for (int try_l = max_l; try_l >= 1; try_l--) {
             unsigned int val = 0;
             for (int k = 0; k < try_l; k++) {
                 int bitpos = i - k;
-                int w = bitpos >> 5;
-                int wb = bitpos & 31;
-                unsigned int b = (exp[w] >> wb) & 1U;
+                int ww = bitpos >> 5;
+                int bb = bitpos & 31;
+                unsigned int b = (exp[ww] >> bb) & 1U;
                 val |= (b << k);
             }
-            if ( (val & ((1U << (try_l-1)))) != 0 ) {
+            if (val & (1U << (try_l - 1))) {
                 chosen_l = try_l;
                 wval = val;
                 break;
@@ -359,10 +346,7 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
     mod_mul_mont_p(chk, a_hat, result);
     if (bignum_cmp(chk, ONE_MONT) != 0) {
         bignum_zero(result);
-        return;
     }
-
-    return;
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
