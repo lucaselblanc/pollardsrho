@@ -257,74 +257,198 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
 }
 
 __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
-    if (bignum_is_zero(a_normal)) {
-        bignum_zero(result);
-        return;
-    }
-
     const unsigned int p[8] = {
         0xFFFFFC2D, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
     };
 
-    unsigned int u[8], v[8], x1[8], x2[8];
-    bignum_copy(u, a_normal);
-    bignum_copy(v, p);
-
-    bignum_zero(x1); x1[0] = 1;
-    bignum_zero(x2);
-
-    while (!bignum_is_zero(u)) {
-        while ((u[0] & 1U) == 0) {
-            unsigned int carry = 0;
-            for (int i = 7; i >= 0; i--) {
-                unsigned int next = u[i] << 31;
-                u[i] = (u[i] >> 1) | carry;
-                carry = next;
-            }
-
-            unsigned int mask = (x1[0] & 1U) ? 0xFFFFFFFF : 0;
-            mod_add_p(x1, x1, p);
-            carry = 0;
-            for (int i = 7; i >= 0; i--) {
-                unsigned int next = x1[i] << 31;
-                x1[i] = (x1[i] >> 1) | carry;
-                carry = next;
-            }
-        }
-
-        while ((v[0] & 1U) == 0) {
-            unsigned int carry = 0;
-            for (int i = 7; i >= 0; i--) {
-                unsigned int next = v[i] << 31;
-                v[i] = (v[i] >> 1) | carry;
-                carry = next;
-            }
-
-            unsigned int mask = (x2[0] & 1U) ? 0xFFFFFFFF : 0;
-            mod_add_p(x2, x2, p);
-            carry = 0;
-            for (int i = 7; i >= 0; i--) {
-                unsigned int next = x2[i] << 31;
-                x2[i] = (x2[i] >> 1) | carry;
-                carry = next;
-            }
-        }
-
-        if (bignum_cmp(u, v) >= 0) {
-            mod_sub_p(u, u, v);
-            mod_sub_p(x1, x1, x2);
-        } else {
-            mod_sub_p(v, v, u);
-            mod_sub_p(x2, x2, x1);
-        }
+    if (bignum_is_zero(a_normal)) {
+        bignum_zero(result);
+        return;
     }
 
-    unsigned int inv[8];
-    bignum_copy(inv, x2);
-    while ((int)inv[7] < 0) mod_add_p(inv, inv, p);
+    int delta = 1;
+    
+    unsigned int u[8];
+    u[0] = a_normal[0]; u[1] = a_normal[1]; u[2] = a_normal[2]; u[3] = a_normal[3];
+    u[4] = a_normal[4]; u[5] = a_normal[5]; u[6] = a_normal[6]; u[7] = a_normal[7];
 
-    to_montgomery_p(result, inv);
+    unsigned int v[8];
+    v[0] = p[0]; v[1] = p[1]; v[2] = p[2]; v[3] = p[3];
+    v[4] = p[4]; v[5] = p[5]; v[6] = p[6]; v[7] = p[7];
+
+    unsigned int q[8] = {1, 0, 0, 0, 0, 0, 0, 0};
+    
+    unsigned int r[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+    for (int i = 0; i < 62; i++) {
+        #pragma unroll 4
+        for (int j = 0; j < 4; j++) {
+            unsigned int v_odd = v[0] & 1;
+            unsigned int swap_condition = ((delta > 0) & v_odd) ? 0xFFFFFFFF : 0;
+            
+            unsigned int temp_u[8], temp_q[8];
+            int temp_delta;
+            
+            temp_u[0] = u[0]; temp_u[1] = u[1]; temp_u[2] = u[2]; temp_u[3] = u[3];
+            temp_u[4] = u[4]; temp_u[5] = u[5]; temp_u[6] = u[6]; temp_u[7] = u[7];
+            temp_q[0] = q[0]; temp_q[1] = q[1]; temp_q[2] = q[2]; temp_q[3] = q[3];
+            temp_q[4] = q[4]; temp_q[5] = q[5]; temp_q[6] = q[6]; temp_q[7] = q[7];
+            temp_delta = delta;
+
+            u[0] = (v[0] & swap_condition) | (u[0] & ~swap_condition);
+            u[1] = (v[1] & swap_condition) | (u[1] & ~swap_condition);
+            u[2] = (v[2] & swap_condition) | (u[2] & ~swap_condition);
+            u[3] = (v[3] & swap_condition) | (u[3] & ~swap_condition);
+            u[4] = (v[4] & swap_condition) | (u[4] & ~swap_condition);
+            u[5] = (v[5] & swap_condition) | (u[5] & ~swap_condition);
+            u[6] = (v[6] & swap_condition) | (u[6] & ~swap_condition);
+            u[7] = (v[7] & swap_condition) | (u[7] & ~swap_condition);
+            
+            v[0] = (temp_u[0] & swap_condition) | (v[0] & ~swap_condition);
+            v[1] = (temp_u[1] & swap_condition) | (v[1] & ~swap_condition);
+            v[2] = (temp_u[2] & swap_condition) | (v[2] & ~swap_condition);
+            v[3] = (temp_u[3] & swap_condition) | (v[3] & ~swap_condition);
+            v[4] = (temp_u[4] & swap_condition) | (v[4] & ~swap_condition);
+            v[5] = (temp_u[5] & swap_condition) | (v[5] & ~swap_condition);
+            v[6] = (temp_u[6] & swap_condition) | (v[6] & ~swap_condition);
+            v[7] = (temp_u[7] & swap_condition) | (v[7] & ~swap_condition);
+            
+            q[0] = (r[0] & swap_condition) | (q[0] & ~swap_condition);
+            q[1] = (r[1] & swap_condition) | (q[1] & ~swap_condition);
+            q[2] = (r[2] & swap_condition) | (q[2] & ~swap_condition);
+            q[3] = (r[3] & swap_condition) | (q[3] & ~swap_condition);
+            q[4] = (r[4] & swap_condition) | (q[4] & ~swap_condition);
+            q[5] = (r[5] & swap_condition) | (q[5] & ~swap_condition);
+            q[6] = (r[6] & swap_condition) | (q[6] & ~swap_condition);
+            q[7] = (r[7] & swap_condition) | (q[7] & ~swap_condition);
+            
+            r[0] = (temp_q[0] & swap_condition) | (r[0] & ~swap_condition);
+            r[1] = (temp_q[1] & swap_condition) | (r[1] & ~swap_condition);
+            r[2] = (temp_q[2] & swap_condition) | (r[2] & ~swap_condition);
+            r[3] = (temp_q[3] & swap_condition) | (r[3] & ~swap_condition);
+            r[4] = (temp_q[4] & swap_condition) | (r[4] & ~swap_condition);
+            r[5] = (temp_q[5] & swap_condition) | (r[5] & ~swap_condition);
+            r[6] = (temp_q[6] & swap_condition) | (r[6] & ~swap_condition);
+            r[7] = (temp_q[7] & swap_condition) | (r[7] & ~swap_condition);
+            
+            delta = ((-temp_delta) & swap_condition) | (delta & ~swap_condition);
+            
+            delta++;
+            
+            unsigned int carry = 0;
+            v[0] = v[0] + (u[0] & v_odd);
+            carry = (v[0] < (u[0] & v_odd)) ? 1 : 0;
+            
+            v[1] = v[1] + (u[1] & v_odd) + carry;
+            carry = ((v[1] < (u[1] & v_odd)) || (v[1] == (u[1] & v_odd) && carry)) ? 1 : 0;
+            
+            v[2] = v[2] + (u[2] & v_odd) + carry;
+            carry = ((v[2] < (u[2] & v_odd)) || (v[2] == (u[2] & v_odd) && carry)) ? 1 : 0;
+            
+            v[3] = v[3] + (u[3] & v_odd) + carry;
+            carry = ((v[3] < (u[3] & v_odd)) || (v[3] == (u[3] & v_odd) && carry)) ? 1 : 0;
+            
+            v[4] = v[4] + (u[4] & v_odd) + carry;
+            carry = ((v[4] < (u[4] & v_odd)) || (v[4] == (u[4] & v_odd) && carry)) ? 1 : 0;
+            
+            v[5] = v[5] + (u[5] & v_odd) + carry;
+            carry = ((v[5] < (u[5] & v_odd)) || (v[5] == (u[5] & v_odd) && carry)) ? 1 : 0;
+            
+            v[6] = v[6] + (u[6] & v_odd) + carry;
+            carry = ((v[6] < (u[6] & v_odd)) || (v[6] == (u[6] & v_odd) && carry)) ? 1 : 0;
+            
+            v[7] = v[7] + (u[7] & v_odd) + carry;
+            carry = 0;
+            r[0] = r[0] + (q[0] & v_odd);
+            carry = (r[0] < (q[0] & v_odd)) ? 1 : 0;
+            
+            r[1] = r[1] + (q[1] & v_odd) + carry;
+            carry = ((r[1] < (q[1] & v_odd)) || (r[1] == (q[1] & v_odd) && carry)) ? 1 : 0;
+            
+            r[2] = r[2] + (q[2] & v_odd) + carry;
+            carry = ((r[2] < (q[2] & v_odd)) || (r[2] == (q[2] & v_odd) && carry)) ? 1 : 0;
+            
+            r[3] = r[3] + (q[3] & v_odd) + carry;
+
+            carry = ((r[3] < (q[3] & v_odd)) || (r[3] == (q[3] & v_odd) && carry)) ? 1 : 0;
+            
+            r[4] = r[4] + (q[4] & v_odd) + carry;
+            carry = ((r[4] < (q[4] & v_odd)) || (r[4] == (q[4] & v_odd) && carry)) ? 1 : 0;
+            
+            r[5] = r[5] + (q[5] & v_odd) + carry;
+            carry = ((r[5] < (q[5] & v_odd)) || (r[5] == (q[5] & v_odd) && carry)) ? 1 : 0;
+            
+            r[6] = r[6] + (q[6] & v_odd) + carry;
+            carry = ((r[6] < (q[6] & v_odd)) || (r[6] == (q[6] & v_odd) && carry)) ? 1 : 0;
+            
+            r[7] = r[7] + (q[7] & v_odd) + carry;
+
+            unsigned int v_carry = 0;
+            for (int k = 7; k >= 0; k--) {
+                unsigned int next_carry = (v[k] & 1) << 31;
+                v[k] = (v[k] >> 1) | v_carry;
+                v_carry = next_carry;
+            }
+            
+            unsigned int r_odd = r[0] & 1;
+            
+            carry = 0;
+            r[0] = r[0] + (p[0] & r_odd);
+            carry = (r[0] < (p[0] & r_odd)) ? 1 : 0;
+            
+            r[1] = r[1] + (p[1] & r_odd) + carry;
+            carry = ((r[1] < (p[1] & r_odd)) || (r[1] == (p[1] & r_odd) && carry)) ? 1 : 0;
+            
+            r[2] = r[2] + (p[2] & r_odd) + carry;
+            carry = ((r[2] < (p[2] & r_odd)) || (r[2] == (p[2] & r_odd) && carry)) ? 1 : 0;
+            
+            r[3] = r[3] + (p[3] & r_odd) + carry;
+            carry = ((r[3] < (p[3] & r_odd)) || (r[3] == (p[3] & r_odd) && carry)) ? 1 : 0;
+            
+            r[4] = r[4] + (p[4] & r_odd) + carry;
+            carry = ((r[4] < (p[4] & r_odd)) || (r[4] == (p[4] & r_odd) && carry)) ? 1 : 0;
+            
+            r[5] = r[5] + (p[5] & r_odd) + carry;
+            carry = ((r[5] < (p[5] & r_odd)) || (r[5] == (p[5] & r_odd) && carry)) ? 1 : 0;
+            
+            r[6] = r[6] + (p[6] & r_odd) + carry;
+            carry = ((r[6] < (p[6] & r_odd)) || (r[6] == (p[6] & r_odd) && carry)) ? 1 : 0;
+            
+            r[7] = r[7] + (p[7] & r_odd) + carry;
+
+            unsigned int r_carry = 0;
+            for (int k = 7; k >= 0; k--) {
+                unsigned int next_carry = (r[k] & 1) << 31;
+                r[k] = (r[k] >> 1) | r_carry;
+                r_carry = next_carry;
+            }
+        }
+    }
+    
+    unsigned int needs_reduction = 0;
+    for (int i = 7; i >= 0; i--) {
+        if (q[i] > p[i]) {
+            needs_reduction = 0xFFFFFFFF;
+            break;
+        } else if (q[i] < p[i]) {
+            break;
+        }
+    }
+    
+    if (needs_reduction) {
+        unsigned int borrow = 0;
+        for (int i = 0; i < 8; i++) {
+            unsigned int temp = q[i] - p[i] - borrow;
+            borrow = (q[i] < (p[i] + borrow)) ? 1 : 0;
+            q[i] = temp;
+        }
+    }
+    
+    result[0] = q[0]; result[1] = q[1]; result[2] = q[2]; result[3] = q[3];
+    result[4] = q[4]; result[5] = q[5]; result[6] = q[6]; result[7] = q[7];
+    
+    to_montgomery_p(result, result);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
