@@ -257,96 +257,74 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
 }
 
 __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
-
     if (bignum_is_zero(a_normal)) {
         bignum_zero(result);
         return;
     }
 
-    const unsigned int exp_const[8] = {
+    const unsigned int p[8] = {
         0xFFFFFC2D, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
     };
 
-    unsigned int a_hat[8];
-    to_montgomery_p(a_hat, a_normal);
+    unsigned int u[8], v[8], x1[8], x2[8];
+    bignum_copy(u, a_normal);
+    bignum_copy(v, p);
 
-    unsigned int exp[8];
-    bignum_copy(exp, exp_const);
-    int bitlen = 0;
+    bignum_zero(x1); x1[0] = 1;
+    bignum_zero(x2);
 
-    for (int bit = 255; bit >= 0; bit--) {
-        int w = bit >> 5, b = bit & 31;
-        if ( (exp[w] >> b) & 1U ) { bitlen = bit + 1; break; }
-    }
-
-    if (bitlen == 0) {
-        bignum_copy(result, ONE_MONT);
-        return;
-    }
-
-    const int WINDOW = 4;
-    const int WSIZE  = (1 << WINDOW);
-
-    unsigned int pow_table[WSIZE][8];
-    bignum_copy(pow_table[0], ONE_MONT);
-    bignum_copy(pow_table[1], a_hat);
-
-    for (int t = 2; t < WSIZE; t++) {
-        mod_mul_mont_p(pow_table[t], pow_table[t-1], a_hat);
-    }
-
-    unsigned int acc[8];
-    bignum_copy(acc, ONE_MONT);
-
-    int i = bitlen - 1;
-    while (i >= 0) {
-        int widx = i >> 5;
-        int wbit = i & 31;
-        unsigned int bit = (exp[widx] >> wbit) & 1U;
-
-        if (!bit) {
-            mod_sqr_mont_p(acc, acc);
-            i--;
-            continue;
-        }
-
-        int max_l = (i + 1 < WINDOW) ? (i + 1) : WINDOW;
-        int chosen_l = 1;
-        unsigned int wval = 1;
-
-        for (int try_l = max_l; try_l >= 1; try_l--) {
-            unsigned int val = 0;
-            for (int k = 0; k < try_l; k++) {
-                int bitpos = i - k;
-                int ww = bitpos >> 5;
-                int bb = bitpos & 31;
-                unsigned int b = (exp[ww] >> bb) & 1U;
-                val |= (b << k);
+    while (!bignum_is_zero(u)) {
+        while ((u[0] & 1U) == 0) {
+            unsigned int carry = 0;
+            for (int i = 7; i >= 0; i--) {
+                unsigned int next = u[i] << 31;
+                u[i] = (u[i] >> 1) | carry;
+                carry = next;
             }
-            if (val & (1U << (try_l - 1))) {
-                chosen_l = try_l;
-                wval = val;
-                break;
+
+            unsigned int mask = (x1[0] & 1U) ? 0xFFFFFFFF : 0;
+            mod_add_p(x1, x1, p);
+            carry = 0;
+            for (int i = 7; i >= 0; i--) {
+                unsigned int next = x1[i] << 31;
+                x1[i] = (x1[i] >> 1) | carry;
+                carry = next;
             }
         }
 
-        for (int s = 0; s < chosen_l; s++) {
-            mod_sqr_mont_p(acc, acc);
+        while ((v[0] & 1U) == 0) {
+            unsigned int carry = 0;
+            for (int i = 7; i >= 0; i--) {
+                unsigned int next = v[i] << 31;
+                v[i] = (v[i] >> 1) | carry;
+                carry = next;
+            }
+
+            unsigned int mask = (x2[0] & 1U) ? 0xFFFFFFFF : 0;
+            mod_add_p(x2, x2, p);
+            carry = 0;
+            for (int i = 7; i >= 0; i--) {
+                unsigned int next = x2[i] << 31;
+                x2[i] = (x2[i] >> 1) | carry;
+                carry = next;
+            }
         }
 
-        mod_mul_mont_p(acc, acc, pow_table[wval]);
-
-        i -= chosen_l;
+        if (bignum_cmp(u, v) >= 0) {
+            mod_sub_p(u, u, v);
+            mod_sub_p(x1, x1, x2);
+        } else {
+            mod_sub_p(v, v, u);
+            mod_sub_p(x2, x2, x1);
+        }
     }
 
-    bignum_copy(result, acc);
+    unsigned int inv[8];
+    bignum_copy(inv, x2);
+    while ((int)inv[7] < 0) mod_add_p(inv, inv, p);
 
-    unsigned int chk[8];
-    mod_mul_mont_p(chk, a_hat, result);
-    if (bignum_cmp(chk, ONE_MONT) != 0) {
-        bignum_zero(result);
-    }
+    to_montgomery_p(result, inv);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
