@@ -257,7 +257,10 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
 }
 
 __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
-    const unsigned int p[8] = P_CONST;
+    const unsigned int p[8] = {
+    0xFFFFFC2F, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
+    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
+};
 
     if (bignum_is_zero(a_normal)) {
         bignum_zero(result);
