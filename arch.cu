@@ -6,7 +6,7 @@ int main() {
     cudaGetDeviceCount(&deviceCount);
 
     if (deviceCount == 0) {
-        printf("$(error No NVIDIA GPUs were detected!)\n");
+        printf("$(error no NVIDIA GPUs were detected!)\n");
         return 1;
     }
 
