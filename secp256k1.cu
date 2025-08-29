@@ -616,54 +616,47 @@ __device__ void scalar_reduce_n(unsigned int *r, const unsigned int *k) {
 }
 
 __device__ void jacobian_scalar_mult(ECPointJacobian *result, const unsigned int *scalar, const ECPointJacobian *point) {
-    ECPointJacobian Q;
-    
-    if (bignum_is_zero(scalar)) {
+    if (bignum_is_zero(scalar) || jacobian_is_infinity(point)) {
         jacobian_set_infinity(result);
         return;
     }
-    
-    if (jacobian_is_infinity(point)) {
-        jacobian_set_infinity(result);
-        return;
-    }
-    
-    jacobian_set_infinity(result);
-    Q = *point;
+
+    ECPointJacobian R0, R1;
+    jacobian_set_infinity(&R0);
+    R1 = *point;
 
     unsigned int k[8];
     bignum_copy(k, scalar);
 
-    int bit_found = 0;
-    for (int i = 7; i >= 0; i--) {
-        if (k[i] != 0) {
-            bit_found = 1;
-            break;
-        }
-    }
-    
-    if (!bit_found) {
-        jacobian_set_infinity(result);
-        return;
+    int msb = 255;
+    while (msb >= 0) {
+        int word = msb / 32;
+        int bit = msb % 32;
+        if ((k[word] >> bit) & 1) break;
+        msb--;
     }
 
-    while (!bignum_is_zero(k)) {
-        if (bignum_is_odd(k)) {
-            if (jacobian_is_infinity(result)) {
-                *result = Q;
-            } else {
-                ECPointJacobian temp;
-                jacobian_add(&temp, result, &Q);
-                *result = temp;
-            }
+    for (int i = msb; i >= 0; i--) {
+        int word = i / 32;
+        int bit = i % 32;
+        int kbit = (k[word] >> bit) & 1;
+
+        if (kbit == 0) {
+            ECPointJacobian temp;
+            jacobian_add(&temp, &R1, &R0);
+            R1 = temp;
+
+            jacobian_double(&R0, &R0);
+        } else {
+            ECPointJacobian temp;
+            jacobian_add(&temp, &R0, &R1);
+            R0 = temp;
+
+            jacobian_double(&R1, &R1);
         }
-        
-        ECPointJacobian temp;
-        jacobian_double(&temp, &Q);
-        Q = temp;
-        
-        bignum_shr1(k, k);
     }
+
+    *result = R0;
 }
 
 __device__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
