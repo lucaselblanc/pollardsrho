@@ -13,15 +13,18 @@ SRC_CPP   := pollardsrho.cpp
 SRC_CU    := secp256k1.cu
 OBJ       := $(SRC_CPP:.cpp=.o) $(SRC_CU:.cu=.o)
 
-.PHONY: all clean gpu_arch
+.PHONY: all clean gpu_arch recurse
 
-all: $(TARGET)
+all: gpu_arch
+	@$(MAKE) recurse
 
 arch: arch.cu
 	$(NVCC) arch.cu -o arch
 
 gpu_arch: arch
 	@./arch > gpu_arch
+
+recurse: $(TARGET)
 
 include gpu_arch
 
@@ -31,10 +34,10 @@ NVCCFLAGS = -O3 \
 	-Xcompiler "-O3 -std=c++14 -pthread" \
 	$(INCLUDES) --expt-relaxed-constexpr
 
-%.o: %.cpp gpu_arch
+%.o: %.cpp
 	$(NVCC) --x cu $(NVCCFLAGS) -c $< -o $@
 
-%.o: %.cu gpu_arch
+%.o: %.cu
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJ)
