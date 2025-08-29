@@ -537,7 +537,10 @@ __device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *
 
 __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
 
-    if (jacobian_is_infinity(P)) {
+    unsigned int P_infinity = jacobian_is_infinity(P);
+    unsigned int Q_infinity = jacobian_is_infinity(Q);
+
+    if (P_infinity) {
         bignum_copy(result->X, Q->X);
         bignum_copy(result->Y, Q->Y);
         bignum_copy(result->Z, Q->Z);
@@ -545,7 +548,7 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
         return;
     }
 
-    if (jacobian_is_infinity(Q)) {
+    if (Q_infinity) {
         bignum_copy(result->X, P->X);
         bignum_copy(result->Y, P->Y);
         bignum_copy(result->Z, P->Z);
@@ -554,21 +557,24 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
     }
 
     unsigned int U1[8], U2[8], S1[8], S2[8], H[8], I[8], J[8], r[8], V[8];
-    unsigned int Z1Z1[8], Z2Z2[8], temp[8];
+    unsigned int Z1Z1[8], Z2Z2[8], Z1Z2[8], temp1[8], temp2[8];
 
     mod_sqr_mont_p(Z1Z1, P->Z);
     mod_sqr_mont_p(Z2Z2, Q->Z);
-
     mod_mul_mont_p(U1, P->X, Z2Z2);
     mod_mul_mont_p(U2, Q->X, Z1Z1);
+    mod_mul_mont_p(temp1, Q->Z, Z2Z2);
+    mod_mul_mont_p(S1, P->Y, temp1);
+    mod_mul_mont_p(temp2, P->Z, Z1Z1);
+    mod_mul_mont_p(S2, Q->Y, temp2);
+    mod_sub_p(H, U2, U1);
+    mod_sub_p(r, S2, S1);
 
-    mod_mul_mont_p(temp, Q->Z, Z2Z2);
-    mod_mul_mont_p(S1, P->Y, temp);
-    mod_mul_mont_p(temp, P->Z, Z1Z1);
-    mod_mul_mont_p(S2, Q->Y, temp);
+    int is_H_zero = (bignum_cmp(H, ZERO) == 0);
+    int is_r_zero = (bignum_cmp(r, ZERO) == 0);
 
-    if (bignum_cmp(U1, U2) == 0) {
-        if (bignum_cmp(S1, S2) == 0) {
+    if (is_H_zero) {
+        if (is_r_zero) {
             jacobian_double(result, P);
             return;
         } else {
@@ -577,28 +583,24 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
         }
     }
 
-    mod_sub_p(H, U2, U1);
-    mod_sqr_mont_p(I, H);
-    mod_add_p(I, I, I);
-    mod_add_p(I, I, I);
+    mod_add_p(I, H, H);
+    mod_sqr_mont_p(I, I);
     mod_mul_mont_p(J, H, I);
-    mod_sub_p(r, S2, S1);
-    mod_add_p(r, r, r);
     mod_mul_mont_p(V, U1, I);
-
+    mod_add_p(r, r, r);
     mod_sqr_mont_p(result->X, r);
     mod_sub_p(result->X, result->X, J);
     mod_sub_p(result->X, result->X, V);
     mod_sub_p(result->X, result->X, V);
-
-    mod_sub_p(result->Y, V, result->X);
-    mod_mul_mont_p(result->Y, r, result->Y);
-    mod_mul_mont_p(S1, S1, J);
-    mod_add_p(S1, S1, S1);
-    mod_sub_p(result->Y, result->Y, S1);
-
-    unsigned int Z1Z2[8];
-    mod_mul_mont_p(Z1Z2, P->Z, Q->Z);
+    mod_sub_p(temp1, V, result->X);
+    mod_mul_mont_p(result->Y, r, temp1);
+    mod_mul_mont_p(temp2, S1, J);
+    mod_add_p(temp2, temp2, temp2);
+    mod_sub_p(result->Y, result->Y, temp2);
+    mod_add_p(Z1Z2, P->Z, Q->Z);
+    mod_sqr_mont_p(Z1Z2, Z1Z2);
+    mod_sub_p(Z1Z2, Z1Z2, Z1Z1);
+    mod_sub_p(Z1Z2, Z1Z2, Z2Z2);
     mod_mul_mont_p(result->Z, Z1Z2, H);
 
     result->infinity = 0;
