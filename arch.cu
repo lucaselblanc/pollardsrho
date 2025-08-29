@@ -6,13 +6,13 @@ int main() {
     cudaGetDeviceCount(&deviceCount);
 
     if (deviceCount == 0) {
-        printf("0\n");
-        return 0;
+        printf("$(error No NVIDIA GPUs were detected!)\n");
+        return 1;
     }
 
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, 0);
 
-    printf("%d%d\n", prop.major, prop.minor);
+    printf("GPU_ARCH := %d%d\n", prop.major, prop.minor);
     return 0;
 }
