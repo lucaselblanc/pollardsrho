@@ -503,9 +503,13 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
     mod_mul_mont_p(S1, S1, J);
     mod_add_p(S1, S1, S1);
     mod_sub_p(result->Y, result->Y, S1);
-    mod_mul_mont_p(result->Z, P->Z, Q->Z);
-    mod_mul_mont_p(result->Z, result->Z, H);
-    mod_add_p(result->Z, result->Z, result->Z);
+
+    unsigned int Z1_plus_Z2[8], Z1Z2_term[8];
+    mod_add_p(Z1_plus_Z2, P->Z, Q->Z);
+    mod_sqr_mont_p(Z1_plus_Z2, Z1_plus_Z2);
+    mod_sub_p(Z1_plus_Z2, Z1_plus_Z2, Z1Z1);
+    mod_sub_p(Z1_plus_Z2, Z1_plus_Z2, Z2Z2);
+    mod_mul_mont_p(result->Z, Z1_plus_Z2, H);
 
     result->infinity = 0;
 }
