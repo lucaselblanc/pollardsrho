@@ -514,11 +514,14 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
     result->infinity = 0;
 }
 
-__device__ void scalar_reduce_n(unsigned int *result, const unsigned int *scalar) {
-    if (bignum_cmp(scalar, N_CONST) >= 0) {
-        bignum_sub_borrow(result, scalar, N_CONST);
+__device__ void scalar_reduce_n(unsigned int *r, const unsigned int *k) {
+    unsigned int t[8];
+    unsigned int borrow = bignum_sub_borrow(t, k, N_CONST);
+
+    if (borrow == 0) {
+        bignum_copy(r, t);
     } else {
-        bignum_copy(result, scalar);
+        bignum_copy(r, k);
     }
 }
 
