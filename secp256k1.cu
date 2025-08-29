@@ -43,7 +43,7 @@ __constant__ unsigned int R_MOD_P[8] = {
 };
 
 __constant__ unsigned int R2_MOD_P[8] = {
-    0x00000000, 0x000E90A1, 0x000007A2, 0x00000001,
+    0x000E90A1, 0x000007A2, 0x00000001, 0x00000000,
     0x00000000, 0x00000000, 0x00000000, 0x00000000
 };
 
@@ -256,146 +256,111 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
     mod_mul_mont_p(result, a, a);
 }
 
-__device__ void mod_inverse_p_fermat(unsigned int *result, const unsigned int *a) {
-    unsigned int p_minus_2[8] = {
+__device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
+    
+    if (bignum_is_zero(a_normal)) {
+        bignum_zero(result);
+        return;
+    }
+
+    const unsigned int exp_const[8] = {
         0xFFFFFC2D, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
     };
 
-    unsigned int base[8], exp[8], temp_result[8];
+    unsigned int a_hat[8];
+    to_montgomery_p(a_hat, a_normal);
 
-    to_montgomery_p(base, a);
+    unsigned int exp[8];
+    bignum_copy(exp, exp_const);
 
-    bignum_copy(exp, p_minus_2);
-    bignum_copy(temp_result, ONE_MONT);
-
-    while (!bignum_is_zero(exp)) {
-        if (bignum_is_odd(exp)) {
-            mod_mul_mont_p(temp_result, temp_result, base);
-        }
-        mod_mul_mont_p(base, base, base);
-        bignum_shr1(exp, exp);
+    int bitlen = 0;
+    for (int bit = 255; bit >= 0; bit--) {
+        int word = bit >> 5;
+        int wbit = bit & 31;
+        if ( (exp[word] >> wbit) & 1U ) { bitlen = bit + 1; break; }
     }
-
-    bignum_copy(result, temp_result);
-}
-
-__device__ void mod_inverse_p_binary(unsigned int *result, const unsigned int *a) {
-    unsigned int u[8], v[8], A[8], B[8], C[8], D[8];
-    unsigned int temp[8];
-
-    to_montgomery_p(u, a);
-    bignum_copy(v, P_CONST);
-
-    bignum_copy(A, ONE_MONT);
-    bignum_zero(B);
-    bignum_zero(C);
-    bignum_copy(D, ONE_MONT);
-
-    while (!bignum_is_zero(u)) {
-        while (!bignum_is_odd(u)) {
-            bignum_shr1(u, u);
-
-            if (bignum_is_odd(A) || bignum_is_odd(B)) {
-                bignum_add_carry(A, A, P_CONST);
-                if (bignum_cmp(B, a) >= 0) {
-                    bignum_sub_borrow(B, B, a);
-                } else {
-                    bignum_add_carry(temp, B, P_CONST);
-                    bignum_sub_borrow(B, temp, a);
-                }
-            }
-
-            bignum_shr1(A, A);
-            bignum_shr1(B, B);
-        }
-
-        while (!bignum_is_odd(v)) {
-            bignum_shr1(v, v);
-
-            if (bignum_is_odd(C) || bignum_is_odd(D)) {
-                bignum_add_carry(C, C, P_CONST);
-                if (bignum_cmp(D, a) >= 0) {
-                    bignum_sub_borrow(D, D, a);
-                } else {
-                    bignum_add_carry(temp, D, P_CONST);
-                    bignum_sub_borrow(D, temp, a);
-                }
-            }
-
-            bignum_shr1(C, C);
-            bignum_shr1(D, D);
-        }
-
-        if (bignum_cmp(u, v) >= 0) {
-            bignum_sub_borrow(u, u, v);
-
-            if (bignum_cmp(A, C) >= 0) {
-                bignum_sub_borrow(A, A, C);
-            } else {
-                bignum_add_carry(temp, A, P_CONST);
-                bignum_sub_borrow(A, temp, C);
-            }
-
-            if (bignum_cmp(B, D) >= 0) {
-                bignum_sub_borrow(B, B, D);
-            } else {
-                bignum_add_carry(temp, B, P_CONST);
-                bignum_sub_borrow(B, temp, D);
-            }
-        } else {
-            bignum_sub_borrow(v, v, u);
-
-            if (bignum_cmp(C, A) >= 0) {
-                bignum_sub_borrow(C, C, A);
-            } else {
-                bignum_add_carry(temp, C, P_CONST);
-                bignum_sub_borrow(C, temp, A);
-            }
-
-            if (bignum_cmp(D, B) >= 0) {
-                bignum_sub_borrow(D, D, B);
-            } else {
-                bignum_add_carry(temp, D, P_CONST);
-                bignum_sub_borrow(D, temp, B);
-            }
-        }
-    }
-
-    if (bignum_cmp(v, ONE_MONT) == 0) {
-        bignum_copy(result, C);
-        while (bignum_cmp(result, P_CONST) >= 0) {
-            bignum_sub_borrow(result, result, P_CONST);
-        }
-    } else {
-        bignum_zero(result);
-    }
-
-    to_montgomery_p(result, result);
-}
-
-__device__ void mod_inverse_p(unsigned int *result, const unsigned int *a) {
-    if (bignum_is_zero(a)) {
-        bignum_zero(result);
-        return;
-    }
-    
-    if (bignum_cmp(a, ONE_MONT) == 0) {
+    if (bitlen == 0) {
         bignum_copy(result, ONE_MONT);
         return;
     }
-    
-    mod_inverse_p_fermat(result, a);
-    
-    unsigned int verification[8];
-    mod_mul_mont_p(verification, a, result);
-    
-    if (bignum_cmp(verification, ONE_MONT) != 0) {
-        unsigned int a_normal[8], result_normal[8];
-        from_montgomery_p(a_normal, a);
-        mod_inverse_p_binary(result_normal, a_normal);
-        to_montgomery_p(result, result_normal);
+
+    const int WINDOW = 4;
+    const int WSIZE = (1 << WINDOW); 
+    unsigned int pow_table[WSIZE][8];
+    bignum_copy(pow_table[1], a_hat);
+
+    for (int i = 2; i < WSIZE; i++) {
+        mod_mul_mont_p(pow_table[i], pow_table[i-1], a_hat);
     }
+
+    unsigned int acc[8];
+    bignum_copy(acc, ONE_MONT);
+
+    int i = bitlen - 1;
+    while (i >= 0) {
+        int word = i >> 5;
+        int wbit = i & 31;
+        unsigned int curbit = (exp[word] >> wbit) & 1U;
+
+        if (!curbit) {
+            mod_sqr_mont_p(acc, acc);
+            i--;
+            continue;
+        }
+
+        int l = 1;
+        int max_l = (i + 1 < WINDOW) ? (i + 1) : WINDOW;
+
+        unsigned int wval = 0;
+        for (int k = 0; k < max_l; k++) {
+            int bitpos = i - k;
+            int w = bitpos >> 5;
+            int wb = bitpos & 31;
+            unsigned int b = (exp[w] >> wb) & 1U;
+            wval |= (b << k);
+        }
+
+        while (l < max_l) {
+            l++;
+        }
+
+        int chosen_l = 1;
+        for (int try_l = max_l; try_l >= 1; try_l--) {
+            unsigned int val = 0;
+            for (int k = 0; k < try_l; k++) {
+                int bitpos = i - k;
+                int w = bitpos >> 5;
+                int wb = bitpos & 31;
+                unsigned int b = (exp[w] >> wb) & 1U;
+                val |= (b << k);
+            }
+            if ( (val & ((1U << (try_l-1)))) != 0 ) {
+                chosen_l = try_l;
+                wval = val;
+                break;
+            }
+        }
+
+        for (int s = 0; s < chosen_l; s++) {
+            mod_sqr_mont_p(acc, acc);
+        }
+
+        mod_mul_mont_p(acc, acc, pow_table[wval]);
+
+        i -= chosen_l;
+    }
+
+    bignum_copy(result, acc);
+
+    unsigned int chk[8];
+    mod_mul_mont_p(chk, a_hat, result);
+    if (bignum_cmp(chk, ONE_MONT) != 0) {
+        bignum_zero(result);
+        return;
+    }
+
+    return;
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
