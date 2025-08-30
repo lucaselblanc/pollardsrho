@@ -448,7 +448,7 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
     result[0] = q[0]; result[1] = q[1]; result[2] = q[2]; result[3] = q[3];
     result[4] = q[4]; result[5] = q[5]; result[6] = q[6]; result[7] = q[7];
     
-    to_montgomery_p(result, result);
+    //to_montgomery_p(result, result);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
@@ -776,6 +776,42 @@ __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
     kernel_get_compressed_public_key(out, pub);
 }
 
+//test
+__global__ void test_inverse_kernel(unsigned int *a, unsigned int *result) {
+    mod_inverse_p(result, a);
+}
+
+int main() {
+
+    unsigned int h_priv[8] = {
+        0x97c603c9, 0x28b88cf8, 0x5359f04f, 0x3e766570, 0x00000003, 0x00000000, 0x00000000, 0x00000000
+    };
+
+    unsigned int h_result[8];
+    unsigned int *d_priv, *d_result;
+
+    cudaMalloc(&d_priv, sizeof(h_priv));
+    cudaMalloc(&d_result, sizeof(h_result));
+
+    cudaMemcpy(d_priv, h_priv, sizeof(h_priv), cudaMemcpyHostToDevice);
+
+    test_inverse_kernel<<<1,1>>>(d_priv, d_result);
+    cudaDeviceSynchronize();
+    cudaMemcpy(h_result, d_result, sizeof(h_result), cudaMemcpyDeviceToHost);
+
+    printf("Inverse mod N (big-endian words):\n");
+    for (int i = 7; i >= 0; i--) {
+        printf("%08X ", h_result[i]);
+    }
+    printf("\n");
+
+    cudaFree(d_priv);
+    cudaFree(d_result);
+
+    return 0;
+}
+
+/*
 int main() {
     unsigned int h_priv[8] = {
         0x97c603c9, 0x28b88cf8, 0x5359f04f, 0x3e766570, 0x00000003, 0x00000000, 0x00000000, 0x00000000
@@ -805,3 +841,4 @@ int main() {
     cudaFree(d_out);
     return 0;
 }
+*/
