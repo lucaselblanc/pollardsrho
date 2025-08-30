@@ -469,6 +469,7 @@ __device__ int jacobian_is_infinity(const ECPointJacobian *point) {
     return point->infinity || bignum_is_zero(point->Z);
 }
 
+/*
 __device__ void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
     if (aff->infinity) {
         jacobian_set_infinity(jac);
@@ -477,6 +478,19 @@ __device__ void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
     
     bignum_copy(jac->X, aff->x);
     bignum_copy(jac->Y, aff->y);
+    bignum_copy(jac->Z, ONE_MONT);
+    jac->infinity = 0;
+}
+*/
+
+__device__ void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
+    if (aff->infinity) {
+        jacobian_set_infinity(jac);
+        return;
+    }
+
+    to_montgomery_p(jac->X, aff->x);
+    to_montgomery_p(jac->Y, aff->y);
     bignum_copy(jac->Z, ONE_MONT);
     jac->infinity = 0;
 }
@@ -494,7 +508,6 @@ __device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     from_montgomery_p(z_norm, jac->Z);
 
     mod_inverse_p(z_inv, z_norm);
-    to_montgomery_p(z_inv, z_inv);
     mod_mul_mont_p(z_inv_sqr, z_inv, z_inv);
     mod_mul_mont_p(z_inv_cube, z_inv_sqr, z_inv);
 
