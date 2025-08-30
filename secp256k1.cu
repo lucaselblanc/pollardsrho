@@ -517,6 +517,7 @@ __device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     aff->infinity = 0;
 }
 
+/*
 __device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
     if (jacobian_is_infinity(point) || bignum_is_zero(point->Y)) {
         jacobian_set_infinity(result);
@@ -536,6 +537,39 @@ __device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *
     mod_sqr_mont_p(D, point->X);
     mod_add_p(D, D, D);
     mod_add_p(D, D, point->X);
+    mod_sqr_mont_p(result->X, D);
+    mod_sub_p(result->X, result->X, B);
+    mod_sub_p(result->X, result->X, B);
+    mod_sub_p(E, B, result->X);
+    mod_mul_mont_p(result->Y, D, E);
+    mod_sub_p(result->Y, result->Y, C);
+    mod_mul_mont_p(result->Z, point->Y, point->Z);
+    mod_add_p(result->Z, result->Z, result->Z);
+
+    result->infinity = 0;
+}
+*/
+
+__device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
+    if (jacobian_is_infinity(point) || bignum_is_zero(point->Y)) {
+        jacobian_set_infinity(result);
+        return;
+    }
+
+    unsigned int A[8], B[8], C[8], D[8], E[8];
+    unsigned int X2[8];
+
+    mod_sqr_mont_p(A, point->Y);
+    mod_mul_mont_p(B, point->X, A);
+    mod_add_p(B, B, B);
+    mod_add_p(B, B, B);
+    mod_sqr_mont_p(C, A);
+    mod_add_p(C, C, C);
+    mod_add_p(C, C, C);
+    mod_add_p(C, C, C);
+    mod_sqr_mont_p(X2, point->X);
+    mod_add_p(D, X2, X2);
+    mod_add_p(D, D, X2);
     mod_sqr_mont_p(result->X, D);
     mod_sub_p(result->X, result->X, B);
     mod_sub_p(result->X, result->X, B);
