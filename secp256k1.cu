@@ -494,6 +494,7 @@ __device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     from_montgomery_p(z_norm, jac->Z);
 
     mod_inverse_p(z_inv, z_norm);
+    to_montgomery_p(z_inv, z_inv);
     mod_mul_mont_p(z_inv_sqr, z_inv, z_inv);
     mod_mul_mont_p(z_inv_cube, z_inv_sqr, z_inv);
 
