@@ -629,6 +629,8 @@ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const unsigned int
     unsigned int k[8];
     bignum_copy(k, scalar);
 
+    scalar_reduce_n(k, k);
+
     int msb = 255;
     while (msb >= 0) {
         int word = msb / 32;
