@@ -281,7 +281,7 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
     
     unsigned int r[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 512; i++) {
         #pragma unroll 4
         for (int j = 0; j < 4; j++) {
             unsigned int v_odd = v[0] & 1;
