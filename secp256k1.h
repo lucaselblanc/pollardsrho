@@ -30,4 +30,7 @@ __global__ void scalar_mult(ECPoint *R, const unsigned int *k, const ECPoint *P)
 __global__ void point_is_valid(int *result, const ECPoint *point);
 __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub);
 
+//test
+__global__ void test_inverse_kernel(unsigned int *a, unsigned int *result);
+
 #endif /* EC_SECP256K1_H */
