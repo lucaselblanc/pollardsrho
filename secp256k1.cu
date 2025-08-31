@@ -455,9 +455,9 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
 
 __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
     const unsigned int p[8] = {
-    0xFFFFFC2F, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
-    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
-};
+        0xFFFFFC2F, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
+        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
+    };
 
     if (bignum_is_zero(a_normal)) {
         bignum_zero(result);
@@ -475,14 +475,13 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
     v[4] = p[4]; v[5] = p[5]; v[6] = p[6]; v[7] = p[7];
 
     unsigned int q[8] = {1, 0, 0, 0, 0, 0, 0, 0};
-
     unsigned int r[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
     for (int i = 0; i < 512; i++) {
         #pragma unroll 4
         for (int j = 0; j < 4; j++) {
-            unsigned int v_odd = v[0] & 1;
-            unsigned int swap_condition = ((delta > 0) & v_odd) ? 0xFFFFFFFF : 0;
+            unsigned int v_odd = v[0] & 1u;
+            unsigned int swap_condition = ((delta > 0) & v_odd) ? 0xFFFFFFFFu : 0u;
 
             unsigned int temp_u[8], temp_q[8];
             int temp_delta;
@@ -493,6 +492,7 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
             temp_q[4] = q[4]; temp_q[5] = q[5]; temp_q[6] = q[6]; temp_q[7] = q[7];
             temp_delta = delta;
 
+            /* swap u <-> v (condicional, sem branch) */
             u[0] = (v[0] & swap_condition) | (u[0] & ~swap_condition);
             u[1] = (v[1] & swap_condition) | (u[1] & ~swap_condition);
             u[2] = (v[2] & swap_condition) | (u[2] & ~swap_condition);
@@ -511,6 +511,7 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
             v[6] = (temp_u[6] & swap_condition) | (v[6] & ~swap_condition);
             v[7] = (temp_u[7] & swap_condition) | (v[7] & ~swap_condition);
 
+            /* swap q <-> r (condicional, sem branch) */
             q[0] = (r[0] & swap_condition) | (q[0] & ~swap_condition);
             q[1] = (r[1] & swap_condition) | (q[1] & ~swap_condition);
             q[2] = (r[2] & swap_condition) | (q[2] & ~swap_condition);
@@ -529,164 +530,171 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
             r[6] = (temp_q[6] & swap_condition) | (r[6] & ~swap_condition);
             r[7] = (temp_q[7] & swap_condition) | (r[7] & ~swap_condition);
 
-            delta = ((-temp_delta) & swap_condition) | (delta & ~swap_condition);
-
+            /* delta update (preserve original semantics, cond swap) */
+            delta = ((-temp_delta) & (int)swap_condition) | (delta & ~(int)swap_condition);
             delta++;
 
-            /* ---- Atualização de v = v + (u & v_odd) com carry de 64 bits ---- */
+            /* ---- Atualização de v = v + (u & v_odd) com soma 64-bit por palavra ---- */
             {
-                unsigned int carry = 0;
-                unsigned long long sum;
+                unsigned long long carry64 = 0ULL;
+                unsigned long long addend;
+                addend = ((unsigned long long)u[0] & (unsigned long long)v_odd);
+                unsigned long long sum = (unsigned long long)v[0] + addend + carry64;
+                v[0] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)v[0] + ((unsigned long long)u[0] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                v[0] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)u[1] & (unsigned long long)v_odd);
+                sum = (unsigned long long)v[1] + addend + carry64;
+                v[1] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)v[1] + ((unsigned long long)u[1] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                v[1] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)u[2] & (unsigned long long)v_odd);
+                sum = (unsigned long long)v[2] + addend + carry64;
+                v[2] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)v[2] + ((unsigned long long)u[2] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                v[2] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)u[3] & (unsigned long long)v_odd);
+                sum = (unsigned long long)v[3] + addend + carry64;
+                v[3] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)v[3] + ((unsigned long long)u[3] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                v[3] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)u[4] & (unsigned long long)v_odd);
+                sum = (unsigned long long)v[4] + addend + carry64;
+                v[4] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)v[4] + ((unsigned long long)u[4] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                v[4] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)u[5] & (unsigned long long)v_odd);
+                sum = (unsigned long long)v[5] + addend + carry64;
+                v[5] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)v[5] + ((unsigned long long)u[5] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                v[5] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)u[6] & (unsigned long long)v_odd);
+                sum = (unsigned long long)v[6] + addend + carry64;
+                v[6] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)v[6] + ((unsigned long long)u[6] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                v[6] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
-
-                sum = (unsigned long long)v[7] + ((unsigned long long)u[7] & (unsigned long long)v_odd) + (unsigned long long)carry;
+                addend = ((unsigned long long)u[7] & (unsigned long long)v_odd);
+                sum = (unsigned long long)v[7] + addend + carry64;
                 v[7] = (unsigned int)sum;
-                /* carry descartado após a última palavra */
+                /* carry64 final descartado */
             }
 
-            /* ---- Atualização de r = r + (q & v_odd) com carry de 64 bits ---- */
+            /* ---- Atualização de r = r + (q & v_odd) com soma 64-bit por palavra ---- */
             {
-                unsigned int carry = 0;
-                unsigned long long sum;
+                unsigned long long carry64 = 0ULL;
+                unsigned long long addend;
+                addend = ((unsigned long long)q[0] & (unsigned long long)v_odd);
+                unsigned long long sum = (unsigned long long)r[0] + addend + carry64;
+                r[0] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)r[0] + ((unsigned long long)q[0] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                r[0] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)q[1] & (unsigned long long)v_odd);
+                sum = (unsigned long long)r[1] + addend + carry64;
+                r[1] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)r[1] + ((unsigned long long)q[1] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                r[1] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)q[2] & (unsigned long long)v_odd);
+                sum = (unsigned long long)r[2] + addend + carry64;
+                r[2] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)r[2] + ((unsigned long long)q[2] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                r[2] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)q[3] & (unsigned long long)v_odd);
+                sum = (unsigned long long)r[3] + addend + carry64;
+                r[3] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)r[3] + ((unsigned long long)q[3] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                r[3] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)q[4] & (unsigned long long)v_odd);
+                sum = (unsigned long long)r[4] + addend + carry64;
+                r[4] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)r[4] + ((unsigned long long)q[4] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                r[4] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)q[5] & (unsigned long long)v_odd);
+                sum = (unsigned long long)r[5] + addend + carry64;
+                r[5] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)r[5] + ((unsigned long long)q[5] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                r[5] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
+                addend = ((unsigned long long)q[6] & (unsigned long long)v_odd);
+                sum = (unsigned long long)r[6] + addend + carry64;
+                r[6] = (unsigned int)sum; carry64 = sum >> 32;
 
-                sum = (unsigned long long)r[6] + ((unsigned long long)q[6] & (unsigned long long)v_odd) + (unsigned long long)carry;
-                r[6] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
-
-                sum = (unsigned long long)r[7] + ((unsigned long long)q[7] & (unsigned long long)v_odd) + (unsigned long long)carry;
+                addend = ((unsigned long long)q[7] & (unsigned long long)v_odd);
+                sum = (unsigned long long)r[7] + addend + carry64;
                 r[7] = (unsigned int)sum;
-                /* carry final descartado */
+                /* carry64 final descartado */
             }
 
-            unsigned int v_carry = 0;
-            for (int k = 7; k >= 0; k--) {
-                unsigned int next_carry = (v[k] & 1) << 31;
-                v[k] = (v[k] >> 1) | v_carry;
-                v_carry = next_carry;
-            }
-
-            unsigned int r_odd = r[0] & 1;
-
-            /* ---- r = r + (p & r_odd) com acumulação 64 bits ---- */
+            /* v >>= 1 (shift de bignum) */
             {
-                unsigned int carry = 0;
-                unsigned long long sum;
-
-                sum = (unsigned long long)r[0] + ((unsigned long long)p[0] & (unsigned long long)r_odd) + (unsigned long long)carry;
-                r[0] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
-
-                sum = (unsigned long long)r[1] + ((unsigned long long)p[1] & (unsigned long long)r_odd) + (unsigned long long)carry;
-                r[1] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
-
-                sum = (unsigned long long)r[2] + ((unsigned long long)p[2] & (unsigned long long)r_odd) + (unsigned long long)carry;
-                r[2] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
-
-                sum = (unsigned long long)r[3] + ((unsigned long long)p[3] & (unsigned long long)r_odd) + (unsigned long long)carry;
-                r[3] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
-
-                sum = (unsigned long long)r[4] + ((unsigned long long)p[4] & (unsigned long long)r_odd) + (unsigned long long)carry;
-                r[4] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
-
-                sum = (unsigned long long)r[5] + ((unsigned long long)p[5] & (unsigned long long)r_odd) + (unsigned long long)carry;
-                r[5] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
-
-                sum = (unsigned long long)r[6] + ((unsigned long long)p[6] & (unsigned long long)r_odd) + (unsigned long long)carry;
-                r[6] = (unsigned int)sum;
-                carry = (unsigned int)(sum >> 32);
-
-                sum = (unsigned long long)r[7] + ((unsigned long long)p[7] & (unsigned long long)r_odd) + (unsigned long long)carry;
-                r[7] = (unsigned int)sum;
-                /* carry final descartado */
+                unsigned int v_carry = 0u;
+                for (int k = 7; k >= 0; k--) {
+                    unsigned int next_carry = (v[k] & 1u) << 31;
+                    v[k] = (v[k] >> 1) | v_carry;
+                    v_carry = next_carry;
+                }
             }
 
-            unsigned int r_carry = 0;
-            for (int k = 7; k >= 0; k--) {
-                unsigned int next_carry = (r[k] & 1) << 31;
-                r[k] = (r[k] >> 1) | r_carry;
-                r_carry = next_carry;
+            unsigned int r_odd = r[0] & 1u;
+
+            /* r = r + (p & r_odd) com soma 64-bit por palavra */
+            {
+                unsigned long long carry64 = 0ULL;
+                unsigned long long addend;
+                addend = ((unsigned long long)p[0] & (unsigned long long)r_odd);
+                unsigned long long sum = (unsigned long long)r[0] + addend + carry64;
+                r[0] = (unsigned int)sum; carry64 = sum >> 32;
+
+                addend = ((unsigned long long)p[1] & (unsigned long long)r_odd);
+                sum = (unsigned long long)r[1] + addend + carry64;
+                r[1] = (unsigned int)sum; carry64 = sum >> 32;
+
+                addend = ((unsigned long long)p[2] & (unsigned long long)r_odd);
+                sum = (unsigned long long)r[2] + addend + carry64;
+                r[2] = (unsigned int)sum; carry64 = sum >> 32;
+
+                addend = ((unsigned long long)p[3] & (unsigned long long)r_odd);
+                sum = (unsigned long long)r[3] + addend + carry64;
+                r[3] = (unsigned int)sum; carry64 = sum >> 32;
+
+                addend = ((unsigned long long)p[4] & (unsigned long long)r_odd);
+                sum = (unsigned long long)r[4] + addend + carry64;
+                r[4] = (unsigned int)sum; carry64 = sum >> 32;
+
+                addend = ((unsigned long long)p[5] & (unsigned long long)r_odd);
+                sum = (unsigned long long)r[5] + addend + carry64;
+                r[5] = (unsigned int)sum; carry64 = sum >> 32;
+
+                addend = ((unsigned long long)p[6] & (unsigned long long)r_odd);
+                sum = (unsigned long long)r[6] + addend + carry64;
+                r[6] = (unsigned int)sum; carry64 = sum >> 32;
+
+                addend = ((unsigned long long)p[7] & (unsigned long long)r_odd);
+                sum = (unsigned long long)r[7] + addend + carry64;
+                r[7] = (unsigned int)sum;
+                /* carry64 final descartado */
+            }
+
+            /* r >>= 1 */
+            {
+                unsigned int r_carry = 0u;
+                for (int k = 7; k >= 0; k--) {
+                    unsigned int next_carry = (r[k] & 1u) << 31;
+                    r[k] = (r[k] >> 1) | r_carry;
+                    r_carry = next_carry;
+                }
             }
         }
     }
 
-    unsigned int needs_reduction = 0;
+    /* Comparação lexicográfica q >= p ? (q e p little-endian neste array) */
+    int cmp = 0; // -1 q<p, 0 q==p, +1 q>p
     for (int i = 7; i >= 0; i--) {
-        if (q[i] > p[i]) {
-            needs_reduction = 0xFFFFFFFF;
-            break;
-        } else if (q[i] < p[i]) {
-            break;
-        }
+        if (q[i] < p[i]) { cmp = -1; break; }
+        if (q[i] > p[i]) { cmp = +1; break; }
     }
 
-    if (needs_reduction) {
-        unsigned int borrow = 0;
+    if (cmp >= 0) {
+        /* q -= p  (subtração com borrow, usando 64-bit para detectar underflow) */
+        unsigned int borrow = 0u;
         for (int i = 0; i < 8; i++) {
-            unsigned int temp = q[i] - p[i] - borrow;
-            borrow = (q[i] < (p[i] + borrow)) ? 1 : 0;
-            q[i] = temp;
+            unsigned long long lhs = (unsigned long long)q[i];
+            unsigned long long rhs = (unsigned long long)p[i] + (unsigned long long)borrow;
+            unsigned long long sub = lhs - rhs;
+            q[i] = (unsigned int)sub;
+            /* if lhs < rhs then borrow = 1 else 0; detect via high bit of (lhs - rhs) for unsigned */
+            borrow = (lhs < rhs) ? 1u : 0u;
         }
     }
 
+    /* saída */
     result[0] = q[0]; result[1] = q[1]; result[2] = q[2]; result[3] = q[3];
     result[4] = q[4]; result[5] = q[5]; result[6] = q[6]; result[7] = q[7];
-
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
