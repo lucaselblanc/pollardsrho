@@ -256,6 +256,7 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
     mod_mul_mont_p(result, a, a);
 }
 
+/*
 __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
     const unsigned int p[8] = {
     0xFFFFFC2F, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -449,6 +450,119 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
     result[4] = q[4]; result[5] = q[5]; result[6] = q[6]; result[7] = q[7];
     
     //to_montgomery_p(result, result);
+}
+*/
+
+__device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
+    const unsigned int p[8] = {
+        0xFFFFFC2F, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
+        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
+    };
+
+    if (bignum_is_zero(a_normal)) {
+        bignum_zero(result);
+        return;
+    }
+
+    int delta = 1;
+
+    unsigned int u[8], v[8], q[8], r[8];
+    for (int i = 0; i < 8; i++) {
+        u[i] = a_normal[i];
+        v[i] = p[i];
+        q[i] = (i == 0) ? 1 : 0;
+        r[i] = 0;
+    }
+
+    for (int i = 0; i < 512; i++) {
+        #pragma unroll 4
+        for (int j = 0; j < 4; j++) {
+            unsigned int v_odd = v[0] & 1;
+            unsigned int swap_condition = ((delta > 0) && v_odd) ? 0xFFFFFFFFu : 0u;
+
+            unsigned int temp_u[8], temp_q[8];
+            int temp_delta;
+
+            for (int k = 0; k < 8; k++) {
+                temp_u[k] = u[k];
+                temp_q[k] = q[k];
+            }
+            temp_delta = delta;
+
+            for (int k = 0; k < 8; k++) {
+                u[k] = (v[k] & swap_condition) | (u[k] & ~swap_condition);
+                v[k] = (temp_u[k] & swap_condition) | (v[k] & ~swap_condition);
+                q[k] = (r[k] & swap_condition) | (q[k] & ~swap_condition);
+                r[k] = (temp_q[k] & swap_condition) | (r[k] & ~swap_condition);
+            }
+
+            delta = ((-temp_delta) & swap_condition) | (delta & ~swap_condition);
+            delta++;
+
+            // v = v + (u & v_odd)
+            unsigned long long carry = 0;
+            for (int k = 0; k < 8; k++) {
+                unsigned long long sum = (unsigned long long)v[k] + ((unsigned long long)u[k] & v_odd) + carry;
+                v[k] = (unsigned int)sum;
+                carry = sum >> 32;
+            }
+
+            // r = r + (q & v_odd)
+            carry = 0;
+            for (int k = 0; k < 8; k++) {
+                unsigned long long sum = (unsigned long long)r[k] + ((unsigned long long)q[k] & v_odd) + carry;
+                r[k] = (unsigned int)sum;
+                carry = sum >> 32;
+            }
+
+            // v >>= 1
+            unsigned int v_carry = 0;
+            for (int k = 7; k >= 0; k--) {
+                unsigned int next_carry = (v[k] & 1) << 31;
+                v[k] = (v[k] >> 1) | v_carry;
+                v_carry = next_carry;
+            }
+
+            unsigned int r_odd = r[0] & 1;
+
+            // r = r + (p & r_odd)
+            carry = 0;
+            for (int k = 0; k < 8; k++) {
+                unsigned long long sum = (unsigned long long)r[k] + ((unsigned long long)p[k] & r_odd) + carry;
+                r[k] = (unsigned int)sum;
+                carry = sum >> 32;
+            }
+
+            // r >>= 1
+            unsigned int r_carry = 0;
+            for (int k = 7; k >= 0; k--) {
+                unsigned int next_carry = (r[k] & 1) << 31;
+                r[k] = (r[k] >> 1) | r_carry;
+                r_carry = next_carry;
+            }
+        }
+    }
+
+    // Redução condicional q >= p
+    int cmp = 0; // -1 q<p, 0 q==p, +1 q>p
+    for (int i = 7; i >= 0; i--) {
+        if (q[i] < p[i]) { cmp = -1; break; }
+        if (q[i] > p[i]) { cmp = 1; break; }
+    }
+
+    if (cmp >= 0) {
+        unsigned int borrow = 0;
+        for (int i = 0; i < 8; i++) {
+            unsigned long long lhs = (unsigned long long)q[i];
+            unsigned long long rhs = (unsigned long long)p[i] + borrow;
+            q[i] = (unsigned int)(lhs - rhs);
+            borrow = (lhs < rhs) ? 1 : 0;
+        }
+    }
+
+    for (int i = 0; i < 8; i++) {
+        result[i] = q[i];
+    }
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
