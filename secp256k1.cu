@@ -256,6 +256,7 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
     mod_mul_mont_p(result, a, a);
 }
 
+/*
 __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
     const unsigned int p[8] = {
     0xFFFFFC2F, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -449,6 +450,193 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
     result[4] = q[4]; result[5] = q[5]; result[6] = q[6]; result[7] = q[7];
     
     //to_montgomery_p(result, result);
+}
+*/
+
+__device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
+    const uint32_t p[8] = {
+        0xFFFFFC2F, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
+        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
+    };
+
+    if (bignum_is_zero(a_normal)) {
+        bignum_zero(result);
+        return;
+    }
+
+    int delta = 1;
+
+    // Working variables (little-endian words: word0 = LSW)
+    uint32_t u[8], v[8], q[8], r[8];
+
+    for (int i = 0; i < 8; i++) {
+        u[i] = a_normal[i];
+        v[i] = p[i];
+    }
+
+    // q = 1, r = 0
+    q[0] = 1; for (int i = 1; i < 8; i++) q[i] = 0;
+    for (int i = 0; i < 8; i++) r[i] = 0;
+
+    // Main loop: 512 iterations of 4 inner (same structure que você usou)
+    for (int outer = 0; outer < 512; outer++) {
+        #pragma unroll 4
+        for (int inner = 0; inner < 4; inner++) {
+            // v odd?
+            uint32_t v_odd = v[0] & 1u;
+            // cond = (delta > 0) && v_odd
+            uint32_t cond = (uint32_t)((delta > 0) && (v_odd != 0));
+            uint32_t mask = (uint32_t)(-(int)cond); // 0xFFFFFFFF if cond==1 else 0
+
+            // Save temps
+            uint32_t tu[8], tq[8];
+            for (int i = 0; i < 8; i++) { tu[i] = u[i]; tq[i] = q[i]; }
+
+            int temp_delta = delta;
+
+            // Branchless swap u <-> v (using mask)
+            for (int i = 0; i < 8; i++) {
+                uint32_t ux = u[i], vx = v[i];
+                u[i] = (vx & mask) | (ux & ~mask);
+                v[i] = (ux & mask) | (vx & ~mask);
+            }
+
+            // Branchless swap q <-> r
+            for (int i = 0; i < 8; i++) {
+                uint32_t qx = q[i], rx = r[i];
+                q[i] = (rx & mask) | (qx & ~mask);
+                r[i] = (qx & mask) | (rx & ~mask);
+            }
+
+            // delta = (swap ? -temp_delta : delta)
+            if (cond) temp_delta = -temp_delta;
+            // then increment
+            delta = temp_delta + 1;
+
+            // v += u & v_odd  (multiword add with carry)
+            {
+                uint64_t carry = 0;
+                for (int i = 0; i < 8; i++) {
+                    uint64_t addend = (uint64_t)(u[i] & v_odd);
+                    uint64_t s = (uint64_t)v[i] + addend + carry;
+                    v[i] = (uint32_t)s;
+                    carry = s >> 32;
+                }
+            }
+
+            // r += q & v_odd  (multiword)
+            {
+                uint64_t carry = 0;
+                for (int i = 0; i < 8; i++) {
+                    uint64_t addend = (uint64_t)(q[i] & v_odd);
+                    uint64_t s = (uint64_t)r[i] + addend + carry;
+                    r[i] = (uint32_t)s;
+                    carry = s >> 32;
+                }
+            }
+
+            // v >>= 1  (logical right shift across words, little-endian word0 = LSW)
+            {
+                uint32_t carry_in = 0;
+                for (int k = 7; k >= 0; k--) {
+                    uint32_t next_carry = (v[k] & 1u) << 31; // LSB forms MSB for lower word
+                    v[k] = (v[k] >> 1) | carry_in;
+                    carry_in = next_carry;
+                }
+            }
+
+            // r_odd = r[0] & 1
+            uint32_t r_odd = r[0] & 1u;
+
+            // r += p & r_odd  (multiword)
+            if (r_odd) {
+                uint64_t carry = 0;
+                for (int i = 0; i < 8; i++) {
+                    uint64_t addend = (uint64_t)p[i];
+                    uint64_t s = (uint64_t)r[i] + addend + carry;
+                    r[i] = (uint32_t)s;
+                    carry = s >> 32;
+                }
+            }
+
+            // r >>= 1
+            {
+                uint32_t carry_in = 0;
+                for (int k = 7; k >= 0; k--) {
+                    uint32_t next_carry = (r[k] & 1u) << 31;
+                    r[k] = (r[k] >> 1) | carry_in;
+                    carry_in = next_carry;
+                }
+            }
+        }
+    } // end main loops
+
+    // Decide which result to use: if u == 1 -> out = q, else if v == 1 -> out = r
+    bool u_is_one = true;
+    for (int i = 0; i < 8; i++) {
+        uint32_t expect = (i == 0) ? 1u : 0u;
+        if (u[i] != expect) { u_is_one = false; break; }
+    }
+    bool v_is_one = true;
+    for (int i = 0; i < 8; i++) {
+        uint32_t expect = (i == 0) ? 1u : 0u;
+        if (v[i] != expect) { v_is_one = false; break; }
+    }
+
+    uint32_t out[8];
+    if (u_is_one) {
+        for (int i = 0; i < 8; i++) out[i] = q[i];
+        // If delta < 0 then out = p - out (complement), according to variant
+        if (delta < 0) {
+            uint32_t borrow = 0;
+            for (int i = 0; i < 8; i++) {
+                uint64_t sub = (uint64_t)p[i] + (uint64_t)borrow;
+                // check borrow: out[i] < sub ?
+                uint32_t subi = (uint32_t)sub;
+                uint32_t old = out[i];
+                out[i] = old - subi;
+                borrow = (old < subi) ? 1u : 0u;
+            }
+        }
+    } else if (v_is_one) {
+        for (int i = 0; i < 8; i++) out[i] = r[i];
+        // For the variant used here, if delta > 0 we complement; otherwise leave.
+        if (delta > 0) {
+            uint32_t borrow = 0;
+            for (int i = 0; i < 8; i++) {
+                uint64_t sub = (uint64_t)p[i] + (uint64_t)borrow;
+                uint32_t subi = (uint32_t)sub;
+                uint32_t old = out[i];
+                out[i] = old - subi;
+                borrow = (old < subi) ? 1u : 0u;
+            }
+        }
+    } else {
+        // Convergence failure — fallback: set zero (you can decide another policy)
+        bignum_zero(result);
+        return;
+    }
+
+    // Final normalization: ensure out < p (if out >= p subtract p)
+    {
+        int cmp = 0; // 1 if out > p, 0 if equal, -1 if out < p
+        for (int i = 7; i >= 0; i--) {
+            if (out[i] > p[i]) { cmp = 1; break; }
+            else if (out[i] < p[i]) { cmp = -1; break; }
+        }
+        if (cmp >= 0) { // out >= p => out -= p
+            uint32_t borrow = 0;
+            for (int i = 0; i < 8; i++) {
+                uint32_t sub = p[i] + borrow;
+                uint32_t old = out[i];
+                out[i] = old - sub;
+                borrow = (old < sub) ? 1u : 0u;
+            }
+        }
+    }
+
+    // Write result (little-endian words)
+    for (int i = 0; i < 8; i++) result[i] = out[i];
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
