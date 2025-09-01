@@ -356,6 +356,7 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
     }
 
     bignum_copy(result, q);
+    to_montgomery_p(result, q);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
