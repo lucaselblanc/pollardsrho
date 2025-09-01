@@ -644,7 +644,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     return found_key;
 }
 
-/*
 int main(int argc, char* argv[]) {
 
     if (argc < 3 || argc > 4) {
@@ -687,4 +686,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-*/
