@@ -256,6 +256,7 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
     mod_mul_mont_p(result, a, a);
 }
 
+/*
 __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal) {
     const unsigned int p[8] = {
     0xFFFFFC2F, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -449,6 +450,114 @@ __device__ void mod_inverse_p(unsigned int *result, const unsigned int *a_normal
     result[4] = q[4]; result[5] = q[5]; result[6] = q[6]; result[7] = q[7];
     
     //to_montgomery_p(result, result);
+}
+*/
+
+__device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
+    const uint32_t p[8] = {
+        0xFFFFFC2F, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF,
+        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF
+    };
+
+    if (bignum_is_zero(a_normal)) {
+        #pragma unroll
+        for (int i = 0; i < 8; i++) result[i] = 0;
+        return;
+    }
+
+    int32_t delta = 1;
+
+    uint32_t u[8];
+    #pragma unroll
+    for (int i = 0; i < 8; i++) u[i] = a_normal[i];
+
+    uint32_t v[8];
+    #pragma unroll
+    for (int i = 0; i < 8; i++) v[i] = p[i];
+
+    uint32_t q[8] = {1,0,0,0,0,0,0,0};
+    uint32_t r[8] = {0,0,0,0,0,0,0,0};
+
+    uint32_t temp_u[8];
+    uint32_t temp_q[8];
+    uint32_t q_minus_p[8];
+
+    auto shr1 = [] __device__ (uint32_t *x) {
+        uint32_t carry = 0u;
+        for (int k = 7; k >= 0; --k) {
+            uint32_t next = (x[k] & 1u) << 31;
+            x[k] = (x[k] >> 1) | carry;
+            carry = next;
+        }
+    };
+
+    auto add_cond = [] __device__ (uint32_t *dst, const uint32_t *src, uint32_t mask) {
+        uint64_t carry = 0;
+        for (int t = 0; t < 8; ++t) {
+            uint64_t addend = (uint64_t)(src[t] & mask);
+            uint64_t sum = (uint64_t)dst[t] + addend + carry;
+            dst[t] = (uint32_t)sum;
+            carry = sum >> 32;
+        }
+    };
+
+    for (int i = 0; i < 128; ++i) {
+        #pragma unroll 4
+        for (int j = 0; j < 4; ++j) {
+            uint32_t v_odd = v[0] & 1u;
+            int32_t swap_flag = ((delta > 0) & (int32_t)v_odd);
+            int32_t m = -swap_flag;
+            uint32_t mask = (uint32_t)m;
+            uint32_t inv_mask = ~mask;
+
+            for (int t = 0; t < 8; ++t) {
+                temp_u[t] = u[t];
+                temp_q[t] = q[t];
+            }
+
+            for (int t = 0; t < 8; ++t) {
+                u[t] = (v[t] & mask) | (u[t] & inv_mask);
+                v[t] = (temp_u[t] & mask) | (v[t] & inv_mask);
+                q[t] = (r[t] & mask) | (q[t] & inv_mask);
+                r[t] = (temp_q[t] & mask) | (r[t] & inv_mask);
+            }
+
+            int32_t temp_delta = delta;
+            int32_t neg = -temp_delta;
+            delta = (neg & m) | (delta & ~m);
+            delta++;
+
+            uint32_t v_odd_mask = 0u - v_odd;
+            add_cond(v, u, v_odd_mask);
+            add_cond(r, q, v_odd_mask);
+
+            shr1(v);
+
+            uint32_t r_odd = r[0] & 1u;
+            uint32_t r_odd_mask = 0u - r_odd;
+            add_cond(r, p, r_odd_mask);
+
+            shr1(r);
+        }
+    }
+
+    uint32_t borrow = 0;
+    for (int t = 0; t < 8; ++t) {
+        uint64_t tmp = (uint64_t)p[t] + (uint64_t)borrow;
+        uint32_t qi = q[t];
+        uint32_t diff = (uint32_t)((uint64_t)qi - tmp);
+        q_minus_p[t] = diff;
+        borrow = (qi < tmp) ? 1u : 0u;
+    }
+
+    uint32_t mask = 0u - (borrow ^ 1u);
+    uint32_t inv_mask = ~mask;
+    for (int t = 0; t < 8; ++t) {
+        q[t] = (q_minus_p[t] & mask) | (q[t] & inv_mask);
+    }
+
+    #pragma unroll
+    for (int i = 0; i < 8; i++) result[i] = q[i];
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
