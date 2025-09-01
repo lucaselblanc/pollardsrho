@@ -1,53 +1,3 @@
-#TARGET    := pollardsrho
-#CXX       := g++
-#NVCC      := nvcc
-
-#CUDA_HOME ?= $(or $(shell echo $$HOME/cuda-13.0),/usr/local/cuda)
-
-#INCLUDES  := -I$(CUDA_HOME)/include
-#CXXFLAGS  := -O3 -march=native -Wall -std=c++14 -pthread $(INCLUDES)
-#LDFLAGS   := -L$(CUDA_HOME)/lib64
-#LDLIBS    := -lcudart -lpthread
-
-#SRC_CPP   := pollardsrho.cpp
-#SRC_CU    := secp256k1.cu
-#OBJ       := $(SRC_CPP:.cpp=.o) $(SRC_CU:.cu=.o)
-
-#.PHONY: all clean gpu_arch recurse
-
-#all: gpu_arch
-#	@$(MAKE) recurse
-
-#arch: arch.cu
-#	$(NVCC) arch.cu -o arch
-
-#gpu_arch: arch
-#	@./arch > gpu_arch
-
-#recurse: $(TARGET)
-
-#include gpu_arch
-
-#NVCCFLAGS = -O3 \
-	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
-	-ccbin $(CXX) \
-	-Xcompiler "-O3 -std=c++14 -pthread" \
-	$(INCLUDES) --expt-relaxed-constexpr --expt-extended-lambda
-
-#%.o: %.cpp
-#	$(NVCC) --x cu $(NVCCFLAGS) -c $< -o $@
-
-#%.o: %.cu
-#	$(NVCC) $(NVCCFLAGS) -c $< -o $@
-
-#$(TARGET): $(OBJ)
-#	$(NVCC) $(OBJ) -o $@ $(LDFLAGS) $(LDLIBS)
-
-#clean:
-#	rm -f $(TARGET) $(OBJ) arch gpu_arch
-
-#-- TEST --
-
 TARGET    := pollardsrho
 CXX       := g++
 NVCC      := nvcc
@@ -63,9 +13,10 @@ SRC_CPP   := pollardsrho.cpp
 SRC_CU    := secp256k1.cu
 OBJ       := $(SRC_CPP:.cpp=.o) $(SRC_CU:.cu=.o)
 
-.PHONY: all clean gpu_arch recurse debug release
+.PHONY: all clean gpu_arch recurse
 
-all: release
+all: gpu_arch
+	@$(MAKE) recurse
 
 arch: arch.cu
 	$(NVCC) arch.cu -o arch
@@ -77,19 +28,11 @@ recurse: $(TARGET)
 
 include gpu_arch
 
-NVCCFLAGS_RELEASE = -O3 \
+NVCCFLAGS = -O3 \
 	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
 	-ccbin $(CXX) \
 	-Xcompiler "-O3 -std=c++14 -pthread" \
-	$(INCLUDES) --expt-relaxed-constexpr --expt-extended-lambda \
-	-lineinfo
-
-NVCCFLAGS_DEBUG = -O0 -G \
-	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
-	-ccbin $(CXX) \
-	-Xcompiler "-O0 -g -std=c++14 -pthread" \
-	$(INCLUDES) --expt-relaxed-constexpr --expt-extended-lambda \
-	-lineinfo
+	$(INCLUDES) --expt-relaxed-constexpr --expt-extended-lambda
 
 %.o: %.cpp
 	$(NVCC) --x cu $(NVCCFLAGS) -c $< -o $@
@@ -99,12 +42,6 @@ NVCCFLAGS_DEBUG = -O0 -G \
 
 $(TARGET): $(OBJ)
 	$(NVCC) $(OBJ) -o $@ $(LDFLAGS) $(LDLIBS)
-
-release: NVCCFLAGS=$(NVCCFLAGS_RELEASE)
-release: gpu_arch recurse
-
-debug: NVCCFLAGS=$(NVCCFLAGS_DEBUG)
-debug: gpu_arch recurse
 
 clean:
 	rm -f $(TARGET) $(OBJ) arch gpu_arch
