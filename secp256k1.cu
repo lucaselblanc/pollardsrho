@@ -405,7 +405,16 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
     bignum_set_ui(q, 1);
     bignum_zero(r);
 
-    printf("INIT u[0]=%08x v[0]=%08x q[0]=%08x r[0]=%08x\n", u[0], v[0], q[0], r[0]);
+    // PRINT INIT (todos os words)
+    printf("INIT u =");
+    for (int t = 7; t >= 0; --t) printf(" %08X", u[t]);
+    printf("  v =");
+    for (int t = 7; t >= 0; --t) printf(" %08X", v[t]);
+    printf("  q =");
+    for (int t = 7; t >= 0; --t) printf(" %08X", q[t]);
+    printf("  r =");
+    for (int t = 7; t >= 0; --t) printf(" %08X", r[t]);
+    printf("  delta=%d\n", delta);
 
     for (int i = 0; i < 128; ++i) {
         #pragma unroll 4
@@ -415,6 +424,16 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
             int32_t m = -swap_flag;
             uint32_t mask = (uint32_t)m;
             uint32_t inv_mask = ~mask;
+
+            // snapshot antes do swap
+            if (i < 3) {
+                printf("BEF_SWAP i=%d j=%d mask=%08X inv_mask=%08X v_odd=%u delta=%d\n", i, j, mask, inv_mask, v_odd, delta);
+                printf("  temp_u =");
+                for (int t=7; t>=0; --t) printf(" %08X", u[t]); // temp_u currently will be same as u after copying below
+                printf("  temp_q =");
+                for (int t=7; t>=0; --t) printf(" %08X", q[t]);
+                printf("\n");
+            }
 
             for (int t = 0; t < 8; ++t) {
                 temp_u[t] = u[t];
@@ -428,24 +447,70 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
                 r[t] = (temp_q[t] & mask) | (r[t] & inv_mask);
             }
 
+            // snapshot depois do swap
+            if (i < 3) {
+                printf("AFT_SWAP i=%d j=%d u=", i, j);
+                for (int t=7; t>=0; --t) printf(" %08X", u[t]);
+                printf(" v=");
+                for (int t=7; t>=0; --t) printf(" %08X", v[t]);
+                printf(" q=");
+                for (int t=7; t>=0; --t) printf(" %08X", q[t]);
+                printf(" r=");
+                for (int t=7; t>=0; --t) printf(" %08X", r[t]);
+                printf("\n");
+            }
+
             int32_t temp_delta = delta;
             int32_t neg = -temp_delta;
             delta = (neg & m) | (delta & ~m);
             delta++;
 
+            // add_cond to v and r
             uint32_t v_odd_mask = 0u - v_odd;
             add_cond(v, u, v_odd_mask);
+
+            if (i < 3) {
+                printf("AFTER add_cond(v,u) i=%d j=%d v=", i, j);
+                for (int t=7; t>=0; --t) printf(" %08X", v[t]);
+                printf("\n");
+            }
+
             add_cond(r, q, v_odd_mask);
 
+            if (i < 3) {
+                printf("AFTER add_cond(r,q) i=%d j=%d r=", i, j);
+                for (int t=7; t>=0; --t) printf(" %08X", r[t]);
+                printf("\n");
+            }
+
             shr1(v);
+
+            if (i < 3) {
+                printf("AFTER shr1(v) i=%d j=%d v=", i, j);
+                for (int t=7; t>=0; --t) printf(" %08X", v[t]);
+                printf("\n");
+            }
 
             uint32_t r_odd = r[0] & 1u;
             uint32_t r_odd_mask = 0u - r_odd;
             add_cond(r, p, r_odd_mask);
+
+            if (i < 3) {
+                printf("AFTER add_cond(r,p) i=%d j=%d r=", i, j);
+                for (int t=7; t>=0; --t) printf(" %08X", r[t]);
+                printf("\n");
+            }
+
             shr1(r);
+
+            if (i < 3) {
+                printf("AFTER shr1(r) i=%d j=%d r=", i, j);
+                for (int t=7; t>=0; --t) printf(" %08X", r[t]);
+                printf("\n");
+            }
         }
 
-        // log a cada iteração maior
+        // log a cada iteração maior (mantive sua saída compacta)
         if ((i % 16) == 0) {
             printf("ITER %3d: u[0]=%08x v[0]=%08x q[0]=%08x r[0]=%08x delta=%d\n",
                    i, u[0], v[0], q[0], r[0], delta);
@@ -461,7 +526,12 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
         borrow = (qi < tmp) ? 1u : 0u;
     }
 
-    printf("BEFORE REDUCE q[0]=%08x q[7]=%08x borrow=%u\n", q[0], q[7], borrow);
+    // log final completo antes e depois da redução
+    printf("BEFORE REDUCE q =");
+    for (int t=7; t>=0; --t) printf(" %08X", q[t]);
+    printf("  q_minus_p =");
+    for (int t=7; t>=0; --t) printf(" %08X", q_minus_p[t]);
+    printf("  borrow=%u\n", borrow);
 
     uint32_t sel_mask = 0u - (borrow ^ 1u);
     uint32_t sel_inv = ~sel_mask;
@@ -469,7 +539,9 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
         q[t] = (q_minus_p[t] & sel_mask) | (q[t] & sel_inv);
     }
 
-    printf("FINAL q[0]=%08x q[7]=%08x\n", q[0], q[7]);
+    printf("FINAL q =");
+    for (int t=7; t>=0; --t) printf(" %08X", q[t]);
+    printf("\n");
 
     bignum_copy(result, q);
 }
