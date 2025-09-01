@@ -908,7 +908,7 @@ int main() {
     cudaDeviceSynchronize();
     cudaMemcpy(h_result, d_result, sizeof(h_result), cudaMemcpyDeviceToHost);
 
-    printf("Inverse mod N (big-endian words):\n");
+    printf("Inverse a mod P (big-endian words):\n");
     for (int i = 7; i >= 0; i--) {
         printf("%08X ", h_result[i]);
     }
