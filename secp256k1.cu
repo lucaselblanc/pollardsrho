@@ -256,6 +256,7 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
     mod_mul_mont_p(result, a, a);
 }
 
+//Divstep / Almost Inverse
 __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
     const uint32_t p[8] = {
         0xFFFFFC2Fu, 0xFFFFFFFEu, 0xFFFFFFFFu, 0xFFFFFFFFu,
