@@ -683,11 +683,14 @@ __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
     kernel_get_compressed_public_key(out, pub);
 }
 
+/*
 //test
 __global__ void test_inverse_kernel(unsigned int *a, unsigned int *result) {
     mod_inverse_p(result, a);
 }
+*/
 
+/*
 int main() {
 
     unsigned int h_priv[8] = {
@@ -717,6 +720,7 @@ int main() {
 
     return 0;
 }
+*/
 
 /*
 int main() {
