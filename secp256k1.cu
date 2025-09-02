@@ -724,8 +724,14 @@ int main() {
 */
 
 int main() {
+    /*
     unsigned int h_priv[8] = {
         0x97c603c9, 0x28b88cf8, 0x5359f04f, 0x3e766570, 0x00000003, 0x00000000, 0x00000000, 0x00000000
+    };
+    */
+
+    unsigned int h_priv[8] = {
+        0x00000000, 0x00000000, 0x00000000, 0x00000003, 0x3e766570, 0x5359f04f, 0x28b88cf8, 0x97c603c9
     };
 
     unsigned int *d_priv;
