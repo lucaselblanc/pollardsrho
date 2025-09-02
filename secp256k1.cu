@@ -404,9 +404,11 @@ __device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     mod_inverse_p(z_inv, z_norm);
     mod_mul_mont_p(z_inv_sqr, z_inv, z_inv);
     mod_mul_mont_p(z_inv_cube, z_inv_sqr, z_inv);
-
     mod_mul_mont_p(aff->x, jac->X, z_inv_sqr);
     mod_mul_mont_p(aff->y, jac->Y, z_inv_cube);
+
+    from_montgomery_p(aff->x, aff->x);
+    from_montgomery_p(aff->y, aff->y);
 
     aff->infinity = 0;
 }
@@ -540,30 +542,29 @@ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const unsigned int
 
     scalar_reduce_n(k, k);
 
+    //(MSB > LSB)
     int msb = 255;
     while (msb >= 0) {
-        int word = msb / 32;
-        int bit = msb % 32;
+        int word = 7 - (msb / 32);
+        int bit  = 31 - (msb % 32);
         if ((k[word] >> bit) & 1) break;
         msb--;
     }
 
     for (int i = msb; i >= 0; i--) {
-        int word = i / 32;
-        int bit = i % 32;
+        int word = 7 - (i / 32);
+        int bit  = 31 - (i % 32);
         int kbit = (k[word] >> bit) & 1;
 
         if (kbit == 0) {
             ECPointJacobian temp;
             jacobian_add(&temp, &R1, &R0);
             R1 = temp;
-
             jacobian_double(&R0, &R0);
         } else {
             ECPointJacobian temp;
             jacobian_add(&temp, &R0, &R1);
             R0 = temp;
-
             jacobian_double(&R1, &R1);
         }
     }
@@ -629,17 +630,14 @@ __device__ int kernel_point_is_valid(const ECPoint *point) {
 }
 
 __device__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
-    ECPoint public_key_normal;
-    point_from_montgomery(&public_key_normal, public_key);
-    
-    unsigned char prefix = (public_key_normal.y[0] & 1) ? 0x03 : 0x02;
+    unsigned char prefix = (public_key->y[0] & 1) ? 0x03 : 0x02;
     out[0] = prefix;
-    
+
     for (int i = 0; i < 8; i++) {
-        unsigned int word = public_key_normal.x[7-i];
-        out[1 + i*4] = (word >> 24) & 0xFF;
+        unsigned int word = public_key->x[7 - i];
+        out[1 + i*4]     = (word >> 24) & 0xFF;
         out[1 + i*4 + 1] = (word >> 16) & 0xFF;
-        out[1 + i*4 + 2] = (word >> 8) & 0xFF;
+        out[1 + i*4 + 2] = (word >> 8)  & 0xFF;
         out[1 + i*4 + 3] = word & 0xFF;
     }
 }
@@ -694,8 +692,9 @@ __global__ void test_inverse_kernel(unsigned int *a, unsigned int *result) {
 /*
 int main() {
 
+    //MSB
     unsigned int h_priv[8] = {
-        0x97c603c9, 0x28b88cf8, 0x5359f04f, 0x3e766570, 0x00000003, 0x00000000, 0x00000000, 0x00000000
+        0x00000000, 0x00000000, 0x00000000, 0x00000003, 0x3e766570, 0x5359f04f, 0x28b88cf8, 0x97c603c9
     };
 
     unsigned int h_result[8];
@@ -724,12 +723,8 @@ int main() {
 */
 
 int main() {
-    /*
-    unsigned int h_priv[8] = {
-        0x97c603c9, 0x28b88cf8, 0x5359f04f, 0x3e766570, 0x00000003, 0x00000000, 0x00000000, 0x00000000
-    };
-    */
-
+    
+    //MSB
     unsigned int h_priv[8] = {
         0x00000000, 0x00000000, 0x00000000, 0x00000003, 0x3e766570, 0x5359f04f, 0x28b88cf8, 0x97c603c9
     };
