@@ -115,6 +115,14 @@ __device__ void bignum_zero(unsigned int *a) {
     }
 }
 
+__device__ int bignum_is_one(const unsigned int *a) {
+    if (a[0] != 1u) return 0;
+    for (int i = 1; i < 8; ++i) {
+        if (a[i] != 0u) return 0;
+    }
+    return 1;
+}
+
 __device__ void bignum_set_ui(unsigned int *a, unsigned int val) {
     bignum_zero(a);
     a[0] = val;
