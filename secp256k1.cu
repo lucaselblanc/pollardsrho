@@ -722,6 +722,78 @@ int main() {
 }
 */
 
+//TESTING BEGIN
+
+__device__ void print_bignum_hex_dev(const char *label, const unsigned int *a) {
+    printf("%s: 0x", label);
+    for (int i = 7; i >= 0; --i) {
+        printf("%08X", a[i]);
+    }
+    printf("\n");
+}
+
+__global__ void debug_montgomery() {
+    // 1) print constantes relevantes
+    print_bignum_hex_dev("P_CONST", (const unsigned int*)P_CONST);
+    print_bignum_hex_dev("GX_CONST", (const unsigned int*)GX_CONST);
+    print_bignum_hex_dev("GY_CONST", (const unsigned int*)GY_CONST);
+    print_bignum_hex_dev("R_MOD_P (ONE_MONT)", (const unsigned int*)R_MOD_P);
+    print_bignum_hex_dev("R2_MOD_P", (const unsigned int*)R2_MOD_P);
+    printf("MU_P = 0x%08X\n", MU_P);
+
+    // 2) roundtrip to_montgomery/from_montgomery for Gx
+    unsigned int gx_norm[8]; bignum_copy(gx_norm, GX_CONST);
+    unsigned int gx_mont[8], gx_round[8];
+    to_montgomery_p(gx_mont, gx_norm);
+    from_montgomery_p(gx_round, gx_mont);
+    print_bignum_hex_dev("GX (normal)", gx_norm);
+    print_bignum_hex_dev("GX (montgomery)", gx_mont);
+    print_bignum_hex_dev("GX (roundtrip)", gx_round);
+
+    // 3) teste inverso: a * inv(a) mod p == 1 ?
+    unsigned int a[8]; bignum_zero(a); a[0] = 3; // a = 3
+    unsigned int inv[8];
+    mod_inverse_p(inv, a); // retorna inv em MONTGOMERY
+
+    unsigned int a_mont[8], prod[8];
+    to_montgomery_p(a_mont, a);             // a em mont
+    mod_mul_mont_p(prod, a_mont, inv);      // produto em mont
+    from_montgomery_p(prod, prod);          // normaliza
+    print_bignum_hex_dev("a * inv(a) mod p (deve ser 1)", prod);
+
+    // 4) scalar mult k = 1 (usando convensão LSW=word0)
+    ECPoint G; bignum_copy(G.x, GX_CONST); bignum_copy(G.y, GY_CONST); G.infinity = 0;
+    // coloque G em Montgomery para jacobian_scalar_mult path
+    to_montgomery_p(G.x, G.x);
+    to_montgomery_p(G.y, G.y);
+
+    ECPointJacobian G_jac; affine_to_jacobian(&G_jac, &G);
+
+    unsigned int one[8]; bignum_zero(one); one[0] = 1; // LSW = 1
+    ECPointJacobian out;
+    jacobian_scalar_mult(&out, one, &G_jac);
+
+    print_bignum_hex_dev("G_jac.X (mont)", G_jac.X);
+    print_bignum_hex_dev("out.X (mont)", out.X);
+
+    ECPoint out_aff;
+    jacobian_to_affine(&out_aff, &out); // deve sair em NORMAL
+    print_bignum_hex_dev("out_aff.x (normal)", out_aff.x);
+    print_bignum_hex_dev("expected Gx (normal)", GX_CONST);
+}
+
+int main() {
+    debug_montgomery<<<1,1>>>();
+
+    cudaDeviceSynchronize();
+    cudaDeviceReset();
+
+    return 0;
+}
+
+//TESTING END
+
+/*
 int main() {
     
     //MSB
@@ -755,3 +827,4 @@ int main() {
     cudaFree(d_out);
     return 0;
 }
+*/
