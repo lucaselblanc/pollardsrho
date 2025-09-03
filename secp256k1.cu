@@ -256,6 +256,7 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
     mod_mul_mont_p(result, a, a);
 }
 
+/*
 //Divstep / Almost Inverse
 __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
     const uint32_t p[8] = {
@@ -357,6 +358,63 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
 
     bignum_copy(result, q);
     to_montgomery_p(result, q);
+}
+*/
+
+__device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
+    // p = modulus (little-word order: word0 = LSW)
+    const uint32_t p[8] = {
+        0xFFFFFC2Fu, 0xFFFFFFFEu, 0xFFFFFFFFu, 0xFFFFFFFFu,
+        0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu
+    };
+
+    // Se a == 0 -> zero
+    if (bignum_is_zero(a_normal)) {
+        bignum_zero(result);
+        return;
+    }
+
+    // Exponente = p - 2 (armazenado em little-word order)
+    uint32_t exp[8];
+    // copia p para exp
+    for (int i = 0; i < 8; ++i) exp[i] = p[i];
+    // subtrai 2
+    uint64_t borrow = 0;
+    uint64_t sub = (uint64_t)2;
+    for (int i = 0; i < 8; ++i) {
+        uint64_t wi = (uint64_t)exp[i];
+        uint64_t v = wi - (sub & 0xFFFFFFFFull) - borrow;
+        exp[i] = (uint32_t)v;
+        borrow = ((wi < (sub & 0xFFFFFFFFull)) || (borrow && wi == (sub & 0xFFFFFFFFull))) ? 1 : 0;
+        sub = 0; // só subtrair 2 na primeira iteração
+    }
+
+    // base_mont = a_normal converted to Montgomery
+    unsigned int base_mont[8];
+    to_montgomery_p(base_mont, a_normal); // base em MONT
+
+    // result_mont = 1 (na representação MONT, 1 == R mod p == ONE_MONT)
+    unsigned int res_mont[8];
+    bignum_copy(res_mont, ONE_MONT);
+
+    // Exponenciação binária: do MSB -> LSB do exp
+    for (int bit_idx = 255; bit_idx >= 0; --bit_idx) {
+        // res = res^2
+        unsigned int tmp[8];
+        mod_sqr_mont_p(tmp, res_mont);
+        bignum_copy(res_mont, tmp);
+
+        int word = bit_idx / 32;   // palavra (0 = LSW)
+        int bit  = bit_idx % 32;
+        if ((exp[word] >> bit) & 1u) {
+            // res = res * base
+            mod_mul_mont_p(tmp, res_mont, base_mont);
+            bignum_copy(res_mont, tmp);
+        }
+    }
+
+    // res_mont é a^(p-2) em MONTGOMERY -> copiar para result (uint32_t*)
+    for (int i = 0; i < 8; ++i) result[i] = res_mont[i];
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
@@ -724,66 +782,50 @@ int main() {
 
 //TESTING BEGIN
 
-__device__ void print_bignum_hex_dev(const char *label, const unsigned int *a) {
-    printf("%s: 0x", label);
-    for (int i = 7; i >= 0; --i) {
-        printf("%08X", a[i]);
-    }
+__global__ void debug_inverse() {
+    uint32_t a[8] = {
+        0x12345678u, 0x9abcdef0u, 0x0fedcba9u, 0x87654321u,
+        0x11111111u, 0x22222222u, 0x33333333u, 0x44444444u
+    };
+
+    uint32_t inv_mont[8];
+    uint32_t a_mont[8];
+    uint32_t prod_mont[8], prod_norm[8];
+
+    // calcula inverso
+    mod_inverse_p(inv_mont, a);
+
+    // a em montgomery
+    to_montgomery_p(a_mont, a);
+
+    // produto = a * inv(a) em montgomery
+    mod_mul_mont_p(prod_mont, a_mont, inv_mont);
+
+    // converte de volta para normal
+    from_montgomery_p(prod_norm, prod_mont);
+
+    // log
+    printf("a (normal): ");
+    for (int i = 7; i >= 0; --i) printf("%08X", a[i]);
     printf("\n");
-}
 
-__global__ void debug_montgomery() {
-    // 1) print constantes relevantes
-    print_bignum_hex_dev("P_CONST", (const unsigned int*)P_CONST);
-    print_bignum_hex_dev("GX_CONST", (const unsigned int*)GX_CONST);
-    print_bignum_hex_dev("GY_CONST", (const unsigned int*)GY_CONST);
-    print_bignum_hex_dev("R_MOD_P (ONE_MONT)", (const unsigned int*)R_MOD_P);
-    print_bignum_hex_dev("R2_MOD_P", (const unsigned int*)R2_MOD_P);
-    printf("MU_P = 0x%08X\n", MU_P);
+    printf("inv(a) (mont): ");
+    for (int i = 7; i >= 0; --i) printf("%08X", inv_mont[i]);
+    printf("\n");
 
-    // 2) roundtrip to_montgomery/from_montgomery for Gx
-    unsigned int gx_norm[8]; bignum_copy(gx_norm, GX_CONST);
-    unsigned int gx_mont[8], gx_round[8];
-    to_montgomery_p(gx_mont, gx_norm);
-    from_montgomery_p(gx_round, gx_mont);
-    print_bignum_hex_dev("GX (normal)", gx_norm);
-    print_bignum_hex_dev("GX (montgomery)", gx_mont);
-    print_bignum_hex_dev("GX (roundtrip)", gx_round);
+    printf("a * inv(a) mod p (normal): ");
+    for (int i = 7; i >= 0; --i) printf("%08X", prod_norm[i]);
+    printf("\n");
 
-    // 3) teste inverso: a * inv(a) mod p == 1 ?
-    unsigned int a[8]; bignum_zero(a); a[0] = 3; // a = 3
-    unsigned int inv[8];
-    mod_inverse_p(inv, a); // retorna inv em MONTGOMERY
-
-    unsigned int a_mont[8], prod[8];
-    to_montgomery_p(a_mont, a);             // a em mont
-    mod_mul_mont_p(prod, a_mont, inv);      // produto em mont
-    from_montgomery_p(prod, prod);          // normaliza
-    print_bignum_hex_dev("a * inv(a) mod p (deve ser 1)", prod);
-
-    // 4) scalar mult k = 1 (usando convensão LSW=word0)
-    ECPoint G; bignum_copy(G.x, GX_CONST); bignum_copy(G.y, GY_CONST); G.infinity = 0;
-    // coloque G em Montgomery para jacobian_scalar_mult path
-    to_montgomery_p(G.x, G.x);
-    to_montgomery_p(G.y, G.y);
-
-    ECPointJacobian G_jac; affine_to_jacobian(&G_jac, &G);
-
-    unsigned int one[8]; bignum_zero(one); one[0] = 1; // LSW = 1
-    ECPointJacobian out;
-    jacobian_scalar_mult(&out, one, &G_jac);
-
-    print_bignum_hex_dev("G_jac.X (mont)", G_jac.X);
-    print_bignum_hex_dev("out.X (mont)", out.X);
-
-    ECPoint out_aff;
-    jacobian_to_affine(&out_aff, &out); // deve sair em NORMAL
-    print_bignum_hex_dev("out_aff.x (normal)", out_aff.x);
-    print_bignum_hex_dev("expected Gx (normal)", GX_CONST);
+    if (bignum_is_one(prod_norm)) {
+        printf("VERIFICADO: inverso correto!\\n");
+    } else {
+        printf("ERRO: inverso incorreto!\\n");
+    }
 }
 
 int main() {
-    debug_montgomery<<<1,1>>>();
+    debug_inverse<<<1,1>>>();
 
     cudaDeviceSynchronize();
     cudaDeviceReset();
