@@ -405,21 +405,20 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
     unsigned int res_mont[8];
     bignum_copy(res_mont, ONE_MONT);
 
-    // Exponenciação binária: do MSB -> LSB do exp
-    for (int bit_idx = 255; bit_idx >= 0; --bit_idx) {
-        // res = res^2
-        unsigned int tmp[8];
-        mod_sqr_mont_p(tmp, res_mont);
-        bignum_copy(res_mont, tmp);
+    // Exponenciação binária: do LSB -> MSB do exp
+    for (int bit_idx = 0; bit_idx < 256; ++bit_idx) {
+    // square
+    unsigned int tmp[8];
+    mod_sqr_mont_p(tmp, res_mont);
+    bignum_copy(res_mont, tmp);
 
-        int word = bit_idx / 32;   // palavra (0 = LSW)
-        int bit  = bit_idx % 32;
-        if ((exp[word] >> bit) & 1u) {
-            // res = res * base
-            mod_mul_mont_p(tmp, res_mont, base_mont);
-            bignum_copy(res_mont, tmp);
-        }
+    int word = bit_idx / 32;   // LSW primeiro
+    int bit  = bit_idx % 32;
+    if ((exp[word] >> bit) & 1u) {
+        mod_mul_mont_p(tmp, res_mont, base_mont);
+        bignum_copy(res_mont, tmp);
     }
+}
 
     // res_mont é a^(p-2) em MONTGOMERY -> copiar para result (uint32_t*)
     for (int i = 0; i < 8; ++i) result[i] = res_mont[i];
