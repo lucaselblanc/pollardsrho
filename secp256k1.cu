@@ -380,7 +380,7 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
         return;
     }
 
-    // exp = p - 2 (little-endian words)
+    // exp = p - 2  (little-endian words)
     uint32_t exp[8];
     for (int i = 0; i < 8; ++i) exp[i] = p[i];
     uint64_t borrow = 0, sub = 2;
@@ -392,27 +392,33 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
         sub = 0;
     }
 
+    // base_mont = a_normal -> MONT
     unsigned int base_mont[8];
     to_montgomery_p(base_mont, a_normal);
 
+    // res_mont = 1 (ONE_MONT)
     unsigned int res_mont[8];
     bignum_copy(res_mont, ONE_MONT);
 
-    unsigned int tmp[8];
+    // tmp holders
+    unsigned int tmp1[8], tmp2[8];
 
-    // square & multiply: percorre bits do exp (LSB → MSB)
+    // LSB -> MSB exponentiation: for each bit, if bit==1: res *= base; then base = base^2
     for (int bit_idx = 0; bit_idx < 256; ++bit_idx) {
-        mod_sqr_mont_p(tmp, res_mont);
-        bignum_copy(res_mont, tmp);
-
-        int word = bit_idx / 32;
+        int word = bit_idx / 32;   // little-endian word index (0 = LSW)
         int bit  = bit_idx % 32;
         if ((exp[word] >> bit) & 1u) {
-            mod_mul_mont_p(tmp, res_mont, base_mont);
-            bignum_copy(res_mont, tmp);
+            // res_mont = res_mont * base_mont
+            mod_mul_mont_p(tmp1, res_mont, base_mont);
+            bignum_copy(res_mont, tmp1);
         }
+
+        // base_mont = base_mont^2
+        mod_sqr_mont_p(tmp2, base_mont);
+        bignum_copy(base_mont, tmp2);
     }
 
+    // devolve resultado em MONTGOMERY
     bignum_copy(result, res_mont);
 }
 
