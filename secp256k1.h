@@ -31,7 +31,7 @@ __global__ void point_is_valid(int *result, const ECPoint *point);
 __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub);
 
 //test
-__global__ void debug_montgomery();
+__global__ void debug_inverse();
 
 /*
 //test
