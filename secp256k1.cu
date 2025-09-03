@@ -370,58 +370,50 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
 */
 
 __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
-    // p = modulus (little-word order: word0 = LSW)
     const uint32_t p[8] = {
         0xFFFFFC2Fu, 0xFFFFFFFEu, 0xFFFFFFFFu, 0xFFFFFFFFu,
         0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu
     };
 
-    // Se a == 0 -> zero
     if (bignum_is_zero(a_normal)) {
         bignum_zero(result);
         return;
     }
 
-    // Exponente = p - 2 (armazenado em little-word order)
+    // exp = p - 2 (little-endian words)
     uint32_t exp[8];
-    // copia p para exp
     for (int i = 0; i < 8; ++i) exp[i] = p[i];
-    // subtrai 2
-    uint64_t borrow = 0;
-    uint64_t sub = (uint64_t)2;
+    uint64_t borrow = 0, sub = 2;
     for (int i = 0; i < 8; ++i) {
-        uint64_t wi = (uint64_t)exp[i];
-        uint64_t v = wi - (sub & 0xFFFFFFFFull) - borrow;
+        uint64_t wi = exp[i];
+        uint64_t v  = wi - (sub & 0xFFFFFFFFull) - borrow;
         exp[i] = (uint32_t)v;
         borrow = ((wi < (sub & 0xFFFFFFFFull)) || (borrow && wi == (sub & 0xFFFFFFFFull))) ? 1 : 0;
-        sub = 0; // só subtrair 2 na primeira iteração
+        sub = 0;
     }
 
-    // base_mont = a_normal converted to Montgomery
     unsigned int base_mont[8];
-    to_montgomery_p(base_mont, a_normal); // base em MONT
+    to_montgomery_p(base_mont, a_normal);
 
-    // result_mont = 1 (na representação MONT, 1 == R mod p == ONE_MONT)
     unsigned int res_mont[8];
     bignum_copy(res_mont, ONE_MONT);
 
-    // Exponenciação binária: do LSB -> MSB do exp
-    for (int bit_idx = 0; bit_idx < 256; ++bit_idx) {
-    // square
     unsigned int tmp[8];
-    mod_sqr_mont_p(tmp, res_mont);
-    bignum_copy(res_mont, tmp);
 
-    int word = bit_idx / 32;   // LSW primeiro
-    int bit  = bit_idx % 32;
-    if ((exp[word] >> bit) & 1u) {
-        mod_mul_mont_p(tmp, res_mont, base_mont);
+    // square & multiply: percorre bits do exp (LSB → MSB)
+    for (int bit_idx = 0; bit_idx < 256; ++bit_idx) {
+        mod_sqr_mont_p(tmp, res_mont);
         bignum_copy(res_mont, tmp);
-    }
-}
 
-    // res_mont é a^(p-2) em MONTGOMERY -> copiar para result (uint32_t*)
-    for (int i = 0; i < 8; ++i) result[i] = res_mont[i];
+        int word = bit_idx / 32;
+        int bit  = bit_idx % 32;
+        if ((exp[word] >> bit) & 1u) {
+            mod_mul_mont_p(tmp, res_mont, base_mont);
+            bignum_copy(res_mont, tmp);
+        }
+    }
+
+    bignum_copy(result, res_mont);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
