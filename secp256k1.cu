@@ -264,7 +264,6 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
     mod_mul_mont_p(result, a, a);
 }
 
-/*
 //Divstep / Almost Inverse
 __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
     const uint32_t p[8] = {
@@ -366,59 +365,6 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
 
     bignum_copy(result, q);
     to_montgomery_p(result, q);
-}
-*/
-
-__device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
-    const uint32_t p[8] = {
-        0xFFFFFC2Fu, 0xFFFFFFFEu, 0xFFFFFFFFu, 0xFFFFFFFFu,
-        0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu
-    };
-
-    if (bignum_is_zero(a_normal)) {
-        bignum_zero(result);
-        return;
-    }
-
-    // expoente = p - 2
-    uint32_t exp[8];
-    for (int i = 0; i < 8; ++i) exp[i] = p[i];
-    uint64_t borrow = 0, sub = 2;
-    for (int i = 0; i < 8; ++i) {
-        uint64_t wi = exp[i];
-        uint64_t v  = wi - (sub & 0xFFFFFFFFull) - borrow;
-        exp[i] = (uint32_t)v;
-        borrow = ((wi < (sub & 0xFFFFFFFFull)) || (borrow && wi == (sub & 0xFFFFFFFFull))) ? 1 : 0;
-        sub = 0;
-    }
-
-    // base em Montgomery
-    unsigned int base_mont[8];
-    to_montgomery_p(base_mont, a_normal);
-
-    // res = 1 em Montgomery
-    unsigned int res_mont[8];
-    bignum_copy(res_mont, ONE_MONT);
-
-    unsigned int tmp[8];
-
-    // square-and-multiply MSB → LSB
-    for (int bit_idx = 255; bit_idx >= 0; --bit_idx) {
-        // res = res^2
-        mod_sqr_mont_p(tmp, res_mont);
-        bignum_copy(res_mont, tmp);
-
-        int word = bit_idx / 32;
-        int bit  = bit_idx % 32;
-        if ((exp[word] >> bit) & 1u) {
-            // res = res * base
-            mod_mul_mont_p(tmp, res_mont, base_mont);
-            bignum_copy(res_mont, tmp);
-        }
-    }
-
-    // resultado final em Montgomery
-    bignum_copy(result, res_mont);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
@@ -744,19 +690,15 @@ __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
     kernel_get_compressed_public_key(out, pub);
 }
 
-/*
-//test
 __global__ void test_inverse_kernel(unsigned int *a, unsigned int *result) {
     mod_inverse_p(result, a);
 }
-*/
 
-/*
 int main() {
 
     //MSB
     unsigned int h_priv[8] = {
-        0x00000000, 0x00000000, 0x00000000, 0x00000003, 0x3e766570, 0x5359f04f, 0x28b88cf8, 0x97c603c9
+        0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000001
     };
 
     unsigned int h_result[8];
@@ -782,62 +724,17 @@ int main() {
 
     return 0;
 }
-*/
 
-//TESTING BEGIN
-
-__global__ void debug_inverse() {
-    uint32_t a[8] = {
-        0x12345678u, 0x9abcdef0u, 0x0fedcba9u, 0x87654321u,
-        0x11111111u, 0x22222222u, 0x33333333u, 0x44444444u
-    };
-
-    uint32_t inv_mont[8];
-    uint32_t a_mont[8];
-    uint32_t prod_mont[8], prod_norm[8];
-
-    // calcula inverso
-    mod_inverse_p(inv_mont, a);
-
-    // a em montgomery
-    to_montgomery_p(a_mont, a);
-
-    // produto = a * inv(a) em montgomery
-    mod_mul_mont_p(prod_mont, a_mont, inv_mont);
-
-    // converte de volta para normal
-    from_montgomery_p(prod_norm, prod_mont);
-
-    // log
-    printf("a (normal): ");
-    for (int i = 7; i >= 0; --i) printf("%08X", a[i]);
-    printf("\n");
-
-    printf("inv(a) (mont): ");
-    for (int i = 7; i >= 0; --i) printf("%08X", inv_mont[i]);
-    printf("\n");
-
-    printf("a * inv(a) mod p (normal): ");
-    for (int i = 7; i >= 0; --i) printf("%08X", prod_norm[i]);
-    printf("\n");
-
-    if (bignum_is_one(prod_norm)) {
-        printf("VERIFICADO: inverso correto!\\n");
-    } else {
-        printf("ERRO: inverso incorreto!\\n");
-    }
-}
-
+/*
 int main() {
-    debug_inverse<<<1,1>>>();
+    [global_function_name]<<<1,1>>>();
 
     cudaDeviceSynchronize();
     cudaDeviceReset();
 
     return 0;
 }
-
-//TESTING END
+*/
 
 /*
 int main() {
