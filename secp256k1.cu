@@ -726,8 +726,10 @@ int main() {
     
     //MSB
     unsigned int h_priv[8] = {
-        0x00000000, 0x00000000, 0x00000000, 0x00000003, 0x3e766570, 0x5359f04f, 0x28b88cf8, 0x97c603c9
+        0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000001
     };
+
+    //pub key: 0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798
 
     unsigned int *d_priv;
     unsigned char *d_out, h_out[33];
