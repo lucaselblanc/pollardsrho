@@ -683,8 +683,8 @@ __device__ void kernel_scalar_mult(ECPoint *R, const unsigned int *k, const ECPo
 __device__ int kernel_point_is_valid(const ECPoint *point) {
     if (point->infinity) return 1;
 
-    unsigned int lhs[8], rhs[8];
-    
+    uint64_t lhs[4], rhs[4];
+
     mod_sqr_mont_p(lhs, point->y);
     mod_sqr_mont_p(rhs, point->x);
     mod_mul_mont_p(rhs, rhs, point->x);
@@ -694,15 +694,19 @@ __device__ int kernel_point_is_valid(const ECPoint *point) {
 }
 
 __device__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
-    unsigned char prefix = (public_key->y[0] & 1) ? 0x03 : 0x02;
+    unsigned char prefix = (public_key->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
 
-    for (int i = 0; i < 8; i++) {
-        unsigned int word = public_key->x[7 - i];
-        out[1 + i*4]     = (word >> 24) & 0xFF;
-        out[1 + i*4 + 1] = (word >> 16) & 0xFF;
-        out[1 + i*4 + 2] = (word >> 8)  & 0xFF;
-        out[1 + i*4 + 3] = word & 0xFF;
+    for (int i = 0; i < 4; i++) {
+        uint64_t word = public_key->x[3 - i];
+        out[1 + i*8 + 0] = (word >> 56) & 0xFF;
+        out[1 + i*8 + 1] = (word >> 48) & 0xFF;
+        out[1 + i*8 + 2] = (word >> 40) & 0xFF;
+        out[1 + i*8 + 3] = (word >> 32) & 0xFF;
+        out[1 + i*8 + 4] = (word >> 24) & 0xFF;
+        out[1 + i*8 + 5] = (word >> 16) & 0xFF;
+        out[1 + i*8 + 6] = (word >> 8)  & 0xFF;
+        out[1 + i*8 + 7] = word & 0xFF;
     }
 }
 
