@@ -240,35 +240,35 @@ __device__ void from_montgomery_p(uint64_t *result, const uint64_t *a) {
     montgomery_reduce_p(result, zero, a);
 }
 
-__device__ void mod_add_p(unsigned int *result, const unsigned int *a, const unsigned int *b) {
-    unsigned int temp[8];
-    unsigned int carry = bignum_add_carry(temp, a, b);
-    
-    if (carry || bignum_cmp(temp, P_CONST) >= 0) {
-        bignum_sub_borrow(result, temp, P_CONST);
+__device__ void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+    uint64_t temp[4];
+    uint64_t carry = bignum_add_carry(temp, a, b);
+
+    if (carry || bignum_cmp(temp, (uint64_t*)P_CONST) >= 0) {
+        bignum_sub_borrow(result, temp, (uint64_t*)P_CONST);
     } else {
         bignum_copy(result, temp);
     }
 }
 
-__device__ void mod_sub_p(unsigned int *result, const unsigned int *a, const unsigned int *b) {
-    unsigned int temp[8];
-    unsigned int borrow = bignum_sub_borrow(temp, a, b);
-    
+__device__ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+    uint64_t temp[4];
+    uint64_t borrow = bignum_sub_borrow(temp, a, b);
+
     if (borrow) {
-        bignum_add_carry(result, temp, P_CONST);
+        bignum_add_carry(result, temp, (uint64_t*)P_CONST);
     } else {
         bignum_copy(result, temp);
     }
 }
 
-__device__ void mod_mul_mont_p(unsigned int *result, const unsigned int *a, const unsigned int *b) {
-    unsigned int high[8], low[8];
+__device__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+    uint64_t high[4], low[4];
     bignum_mul_full(high, low, a, b);
     montgomery_reduce_p(result, high, low);
 }
 
-__device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
+__device__ void mod_sqr_mont_p(uint64_t *result, const uint64_t *a) {
     mod_mul_mont_p(result, a, a);
 }
 
