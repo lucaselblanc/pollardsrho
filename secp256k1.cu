@@ -72,15 +72,15 @@ __constant__ unsigned int SEVEN_MONT[8] = {
 };
 
 typedef struct {
-    unsigned int x[8];
-    unsigned int y[8];
+    uint64_t x[4];
+    uint64_t y[4];
     int infinity;
 } ECPoint;
 
 typedef struct {
-    unsigned int X[8];
-    unsigned int Y[8];
-    unsigned int Z[8];
+    uint64_t X[4];
+    uint64_t Y[4];
+    uint64_t Z[4];
     int infinity;
 } ECPointJacobian;
 
