@@ -264,6 +264,7 @@ __device__ void mod_sqr_mont_p(unsigned int *result, const unsigned int *a) {
     mod_mul_mont_p(result, a, a);
 }
 
+/*
 //Divstep / Almost Inverse
 __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
     const uint32_t p[8] = {
@@ -365,6 +366,133 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
 
     bignum_copy(result, q);
     to_montgomery_p(result, q);
+}
+*/
+
+__device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
+
+    const uint64_t p[4] = {
+        0xFFFFFC2FULL | (0xFFFFFFFEULL << 32), // = 0xFFFFFFFEFFFFFC2F
+        0xFFFFFFFFFFFFFFFFULL,
+        0xFFFFFFFFFFFFFFFFULL,
+        0xFFFFFFFFFFFFFFFFULL
+    };
+
+    auto is_zero = [] __device__ (const uint64_t *x) {
+        return (x[0]|x[1]|x[2]|x[3]) == 0ULL;
+    };
+
+    auto copy = [] __device__ (uint64_t *dst, const uint64_t *src) {
+        dst[0]=src[0]; dst[1]=src[1]; dst[2]=src[2]; dst[3]=src[3];
+    };
+
+    auto set_ui = [] __device__ (uint64_t *dst, uint64_t v) {
+        dst[0]=v; dst[1]=0; dst[2]=0; dst[3]=0;
+    };
+
+    auto zero = [] __device__ (uint64_t *dst) {
+        dst[0]=dst[1]=dst[2]=dst[3]=0ULL;
+    };
+
+    auto shr1 = [] __device__ (uint64_t *x) {
+        uint64_t carry = 0ULL;
+        for (int k=3;k>=0;--k) {
+            uint64_t next = (x[k] & 1ULL) << 63;
+            x[k] = (x[k] >> 1) | carry;
+            carry = next;
+        }
+    };
+
+    auto add_cond = [] __device__ (uint64_t *dst, const uint64_t *src, uint64_t mask) {
+        unsigned __int128 carry = 0;
+        for (int t=0;t<4;++t) {
+            unsigned __int128 addend = (unsigned __int128)(src[t] & mask);
+            unsigned __int128 sum = (unsigned __int128)dst[t] + addend + carry;
+            dst[t] = (uint64_t)sum;
+            carry = sum >> 64;
+        }
+    };
+
+    if (is_zero(a_normal)) {
+        zero(result);
+        return;
+    }
+
+    int32_t delta = 1;
+    uint64_t u[4], v[4], q[4], r[4];
+    uint64_t temp_u[4], temp_q[4], q_minus_p[4];
+
+    copy(u, a_normal);
+    {
+        unsigned __int128 borrow=0;
+        for (int i=0;i<4;i++) {
+            unsigned __int128 diff = (unsigned __int128)u[i] - p[i] - borrow;
+            q_minus_p[i] = (uint64_t)diff;
+            borrow = (diff >> 127) & 1; // 1 se underflow
+        }
+        if (!borrow) { // u >= p
+            copy(u, q_minus_p);
+        }
+    }
+
+    copy(v, p);
+    set_ui(q, 1);
+    zero(r);
+
+    for (int i = 0; i < 128; ++i) {
+        #pragma unroll 4
+        for (int j = 0; j < 4; ++j) {
+            uint64_t v_odd = v[0] & 1ULL;
+            int32_t swap_flag = ((delta > 0) & (int32_t)v_odd);
+            int64_t m = - (int64_t)swap_flag;
+            uint64_t mask = (uint64_t)m;
+            uint64_t inv_mask = ~mask;
+
+            copy(temp_u, u);
+            copy(temp_q, q);
+
+            for (int t=0;t<4;++t) {
+                uint64_t ut=u[t], vt=v[t], qt=q[t], rt=r[t];
+                u[t] = (vt & mask) | (ut & inv_mask);
+                v[t] = (ut & mask) | (vt & inv_mask);
+                q[t] = (rt & mask) | (qt & inv_mask);
+                r[t] = (temp_q[t] & mask) | (rt & inv_mask);
+            }
+
+            int32_t temp_delta = delta;
+            int32_t neg = -temp_delta;
+            delta = (neg & (int32_t)m) | (delta & ~(int32_t)m);
+            delta++;
+
+            uint64_t v_odd_mask = 0ULL - v_odd;
+            add_cond(v, u, v_odd_mask);
+            add_cond(r, q, v_odd_mask);
+
+            shr1(v);
+
+            uint64_t r_odd = r[0] & 1ULL;
+            uint64_t r_odd_mask = 0ULL - r_odd;
+            add_cond(r, p, r_odd_mask);
+            shr1(r);
+        }
+    }
+
+    unsigned __int128 borrow=0;
+    for (int t=0;t<4;++t) {
+        unsigned __int128 tmp = (unsigned __int128)p[t] + borrow;
+        uint64_t qi = q[t];
+        uint64_t diff = (uint64_t)((unsigned __int128)qi - tmp);
+        q_minus_p[t] = diff;
+        borrow = (qi < tmp) ? 1 : 0;
+    }
+
+    uint64_t sel_mask = 0ULL - (borrow ^ 1ULL);
+    uint64_t sel_inv = ~sel_mask;
+    for (int t=0;t<4;++t) {
+        q[t] = (q_minus_p[t] & sel_mask) | (q[t] & sel_inv);
+    }
+
+    copy(result, q);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
