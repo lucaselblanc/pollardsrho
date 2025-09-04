@@ -201,12 +201,13 @@ __device__ void bignum_mul_full(uint64_t *result_high, uint64_t *result_low,
     }
 }
 
-__device__ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uint64_t *input_low) {
-
+__device__ void montgomery_reduce_p(uint64_t *result,
+                                    const uint64_t *input_high,
+                                    const uint64_t *input_low) {
     uint64_t temp[8];
 
     for (int i = 0; i < 4; i++) {
-        temp[i] = input_low[i];
+        temp[i]     = input_low[i];
         temp[i + 4] = input_high[i];
     }
 
@@ -215,15 +216,21 @@ __device__ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high
 
         uint64_t carry = 0ULL;
         for (int j = 0; j < 4; j++) {
-            uint64_t prod = ui * ((uint64_t)P_CONST[j]) + temp[i + j] + carry;
-            temp[i + j] = prod & 0xFFFFFFFFFFFFFFFFULL;
-            carry = prod >> 64;
+            unsigned __int128 prod =
+                (unsigned __int128)ui * (unsigned __int128)P_CONST[j] +
+                (unsigned __int128)temp[i + j] +
+                (unsigned __int128)carry;
+
+            temp[i + j] = (uint64_t)prod;
+            carry       = (uint64_t)(prod >> 64);
         }
 
         for (int j = i + 4; j < 8; j++) {
-            uint64_t tmp = temp[j] + carry;
-            temp[j] = tmp & 0xFFFFFFFFFFFFFFFFULL;
-            carry = tmp >> 64;
+            unsigned __int128 tmp = (unsigned __int128)temp[j] +
+                                    (unsigned __int128)carry;
+
+            temp[j] = (uint64_t)tmp;
+            carry   = (uint64_t)(tmp >> 64);
         }
     }
 
@@ -231,8 +238,8 @@ __device__ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high
         result[i] = temp[i + 4];
     }
 
-    if (bignum_cmp(result, (uint64_t*)P_CONST) >= 0) {
-        bignum_sub_borrow(result, result, (uint64_t*)P_CONST);
+    if (bignum_cmp(result, (const uint64_t*)P_CONST) >= 0) {
+        bignum_sub_borrow(result, result, (const uint64_t*)P_CONST);
     }
 }
 
@@ -680,9 +687,9 @@ __device__ void kernel_point_double(ECPoint *R, const ECPoint *P) {
     jacobian_to_affine(R, &R_jac);
 }
 
-__device__ void kernel_scalar_mult(ECPoint *R, const unsigned int *k, const ECPoint *P) {
+__device__ void kernel_scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
-    
+
     affine_to_jacobian(&P_jac, P);
     jacobian_scalar_mult(&R_jac, k, &P_jac);
     jacobian_to_affine(R, &R_jac);
