@@ -577,9 +577,9 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
     result->infinity = 0;
 }
 
-__device__ void scalar_reduce_n(unsigned int *r, const unsigned int *k) {
-    unsigned int t[8];
-    unsigned int borrow = bignum_sub_borrow(t, k, N_CONST);
+__device__ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
+    uint64_t t[4];
+    uint64_t borrow = bignum_sub_borrow(t, k, (uint64_t*)N_CONST);
 
     if (borrow == 0) {
         bignum_copy(r, t);
