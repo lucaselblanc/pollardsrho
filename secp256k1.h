@@ -18,8 +18,8 @@
 #include <cuda_runtime.h>
 
 typedef struct {
-    unsigned int x[8];
-    unsigned int y[8];
+    uint64_t x[4];
+    uint64_t y[4];
     int infinity;
 } ECPoint;
 
