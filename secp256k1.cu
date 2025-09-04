@@ -372,7 +372,7 @@ __device__ void mod_inverse_p(uint32_t *result, const uint32_t *a_normal) {
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
     const uint64_t p[4] = {
-        0xFFFFFC2FULL | (0xFFFFFFFEULL << 32), // = 0xFFFFFFFEFFFFFC2F
+        0xFFFFFC2FULL | (0xFFFFFFFEULL << 32),
         0xFFFFFFFFFFFFFFFFULL,
         0xFFFFFFFFFFFFFFFFULL,
         0xFFFFFFFFFFFFFFFFULL
