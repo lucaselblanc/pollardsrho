@@ -549,6 +549,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                             Verificar se: (d * G ≡ 0), caso verdadeiro: found_key = (k2 + d) % n;
                         */
 
+/*
+
                         uint256_t tortoise_key = hare.k2;
                         uint256_t hare_key = hare.k1;
                         uint256_t d = (compare_uint256(hare_key, tortoise_key) >= 0) ? 
