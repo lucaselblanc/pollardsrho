@@ -84,105 +84,112 @@ typedef struct {
     int infinity;
 } ECPointJacobian;
 
-__device__ int bignum_cmp(const unsigned int *a, const unsigned int *b) {
-    for (int i = 7; i >= 0; i--) {
+__device__ int bignum_cmp(const uint64_t *a, const uint64_t *b) {
+    for (int i = 3; i >= 0; i--) {
         if (a[i] > b[i]) return 1;
         if (a[i] < b[i]) return -1;
     }
     return 0;
 }
 
-__device__ int bignum_is_zero(const unsigned int *a) {
-    for (int i = 0; i < 8; i++) {
-        if (a[i] != 0) return 0;
+__device__ int bignum_is_zero(const uint64_t *a) {
+    for (int i = 0; i < 4; i++) {
+        if (a[i] != 0ULL) return 0;
     }
     return 1;
 }
 
-__device__ int bignum_is_odd(const unsigned int *a) {
-    return a[0] & 1;
+__device__ int bignum_is_odd(const uint64_t *a) {
+    return a[0] & 1ULL;
 }
 
-__device__ void bignum_copy(unsigned int *dst, const unsigned int *src) {
-    for (int i = 0; i < 8; i++) {
+__device__ void bignum_copy(uint64_t *dst, const uint64_t *src) {
+    for (int i = 0; i < 4; i++) {
         dst[i] = src[i];
     }
 }
 
-__device__ void bignum_zero(unsigned int *a) {
-    for (int i = 0; i < 8; i++) {
-        a[i] = 0;
+__device__ void bignum_zero(uint64_t *a) {
+    for (int i = 0; i < 4; i++) {
+        a[i] = 0ULL;
     }
 }
 
-__device__ int bignum_is_one(const unsigned int *a) {
-    if (a[0] != 1u) return 0;
-    for (int i = 1; i < 8; ++i) {
-        if (a[i] != 0u) return 0;
+__device__ int bignum_is_one(const uint64_t *a) {
+    if (a[0] != 1ULL) return 0;
+    for (int i = 1; i < 4; i++) {
+        if (a[i] != 0ULL) return 0;
     }
     return 1;
 }
 
-__device__ void bignum_set_ui(unsigned int *a, unsigned int val) {
+__device__ void bignum_set_ui(uint64_t *a, uint64_t val) {
     bignum_zero(a);
     a[0] = val;
 }
 
-__device__ unsigned int bignum_add_carry(unsigned int *result, const unsigned int *a, const unsigned int *b) {
-    unsigned long long carry = 0;
-    for (int i = 0; i < 8; i++) {
-        carry += (unsigned long long)a[i] + b[i];
-        result[i] = (unsigned int)carry;
-        carry >>= 32;
+__device__ uint64_t bignum_add_carry(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+    uint64_t carry = 0ULL;
+    for (int i = 0; i < 4; i++) {
+        uint64_t temp = a[i] + b[i] + carry;
+        carry = (temp < a[i]) || (carry && temp == a[i]);
+        result[i] = temp;
     }
-    return (unsigned int)carry;
+    return carry;
 }
 
-__device__ unsigned int bignum_sub_borrow(unsigned int *result, const unsigned int *a, const unsigned int *b) {
-    long long carry = 0;
-    for (int i = 0; i < 8; i++) {
-        long long tmp = (long long)a[i] - (long long)b[i] - carry;
-        if (tmp < 0) {
-            result[i] = (unsigned int)(tmp + (1ULL << 32));
-            carry = 1;
-        } else {
-            result[i] = (unsigned int)tmp;
-            carry = 0;
+__device__ uint64_t bignum_sub_borrow(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+    uint64_t borrow = 0ULL;
+    for (int i = 0; i < 4; i++) {
+        uint64_t temp = a[i] - b[i] - borrow;
+        borrow = (a[i] < b[i] + borrow);
+        result[i] = temp;
+    }
+    return borrow;
+}
+
+__device__ void bignum_shr1(uint64_t *result, const uint64_t *a) {
+    uint64_t carry = 0ULL;
+    for (int i = 3; i >= 0; i--) {
+        uint64_t next = (a[i] & 1ULL) << 63;
+        result[i] = (a[i] >> 1) | carry;
+        carry = next;
+    }
+}
+
+__device__ void bignum_mul_full(uint64_t *result_high, uint64_t *result_low,
+                                const uint64_t *a, const uint64_t *b) {
+    uint64_t temp_low[8] = {0};
+    uint64_t temp_high[8] = {0};
+
+    for (int i = 0; i < 4; i++) {
+        uint64_t carry = 0ULL;
+        for (int j = 0; j < 4; j++) {
+            uint64_t a_hi = a[i] >> 32, a_lo = a[i] & 0xFFFFFFFFULL;
+            uint64_t b_hi = b[j] >> 32, b_lo = b[j] & 0xFFFFFFFFULL;
+
+            uint64_t p0 = a_lo * b_lo;
+            uint64_t p1 = a_lo * b_hi;
+            uint64_t p2 = a_hi * b_lo;
+            uint64_t p3 = a_hi * b_hi;
+
+            uint64_t mid = (p0 >> 32) + (p1 & 0xFFFFFFFFULL) + (p2 & 0xFFFFFFFFULL);
+            uint64_t high = p3 + (p1 >> 32) + (p2 >> 32) + (mid >> 32);
+
+            uint64_t low = (mid << 32) | (p0 & 0xFFFFFFFFULL);
+
+            uint64_t sum_low = temp_low[i + j] + low + carry;
+            carry = (sum_low < temp_low[i + j]) || (sum_low < low);
+            temp_low[i + j] = sum_low;
+
+            temp_high[i + j] += high + carry;
         }
+        temp_high[i + 4] += carry;
     }
-    return (unsigned int)carry;
-}
 
-__device__ void bignum_shr1(unsigned int *result, const unsigned int *a) {
-    unsigned int carry = 0;
-    for (int i = 7; i >= 0; i--) {
-        unsigned int new_carry = a[i] & 1;
-        result[i] = (a[i] >> 1) | (carry << 31);
-        carry = new_carry;
-    }
-}
-
-__device__ void bignum_mul_full(unsigned int *result_high, unsigned int *result_low, 
-                                const unsigned int *a, const unsigned int *b) {
-    unsigned int temp[16];
-    
-    for (int i = 0; i < 16; i++) {
-        temp[i] = 0;
-    }
-    
-    for (int i = 0; i < 8; i++) {
-        unsigned long long carry = 0;
-        for (int j = 0; j < 8; j++) {
-            unsigned long long prod = (unsigned long long)a[i] * b[j] + temp[i + j] + carry;
-            temp[i + j] = (unsigned int)prod;
-            carry = prod >> 32;
-        }
-        temp[i + 8] = (unsigned int)carry;
-    }
-    
-    for (int i = 0; i < 8; i++) {
-        result_low[i] = temp[i];
-        result_high[i] = temp[i + 8];
+    for (int i = 0; i < 4; i++) {
+        result_low[i] = temp_low[i];
+        result_high[i] = temp_high[i];
     }
 }
 
