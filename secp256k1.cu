@@ -193,43 +193,44 @@ __device__ void bignum_mul_full(uint64_t *result_high, uint64_t *result_low,
     }
 }
 
-__device__ void montgomery_reduce_p(unsigned int *result, const unsigned int *input_high, const unsigned int *input_low) {
-    unsigned int temp[16];
-    
-    for (int i = 0; i < 8; i++) {
+__device__ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uint64_t *input_low) {
+
+    uint64_t temp[8];
+
+    for (int i = 0; i < 4; i++) {
         temp[i] = input_low[i];
-        temp[i + 8] = input_high[i];
+        temp[i + 4] = input_high[i];
     }
-    
-    for (int i = 0; i < 8; i++) {
-        unsigned int ui = (temp[i] * MU_P) & 0xFFFFFFFF;
-        unsigned long long carry = 0;
-        
-        for (int j = 0; j < 8; j++) {
-            unsigned long long prod = (unsigned long long)ui * P_CONST[j] + temp[i + j] + carry;
-            temp[i + j] = (unsigned int)prod;
-            carry = prod >> 32;
+
+    for (int i = 0; i < 4; i++) {
+        uint64_t ui = temp[i] * (uint64_t)MU_P;
+
+        uint64_t carry = 0ULL;
+        for (int j = 0; j < 4; j++) {
+            uint64_t prod = ui * ((uint64_t)P_CONST[j]) + temp[i + j] + carry;
+            temp[i + j] = prod & 0xFFFFFFFFFFFFFFFFULL;
+            carry = prod >> 64;
         }
-        
-        for (int j = i + 8; j < 16; j++) {
-            unsigned long long tmp = (unsigned long long)temp[j] + carry;
-            temp[j] = (unsigned int)tmp;
-            carry = tmp >> 32;
+
+        for (int j = i + 4; j < 8; j++) {
+            uint64_t tmp = temp[j] + carry;
+            temp[j] = tmp & 0xFFFFFFFFFFFFFFFFULL;
+            carry = tmp >> 64;
         }
     }
-    
-    for (int i = 0; i < 8; i++) {
-        result[i] = temp[i + 8];
+
+    for (int i = 0; i < 4; i++) {
+        result[i] = temp[i + 4];
     }
-    
-    if (bignum_cmp(result, P_CONST) >= 0) {
-        bignum_sub_borrow(result, result, P_CONST);
+
+    if (bignum_cmp(result, (uint64_t*)P_CONST) >= 0) {
+        bignum_sub_borrow(result, result, (uint64_t*)P_CONST);
     }
 }
 
-__device__ void to_montgomery_p(unsigned int *result, const unsigned int *a) {
-    unsigned int high[8], low[8];
-    bignum_mul_full(high, low, a, R2_MOD_P);
+__device__ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
+    uint64_t high[4], low[4];
+    bignum_mul_full(high, low, a, (uint64_t*)R2_MOD_P);
     montgomery_reduce_p(result, high, low);
 }
 
