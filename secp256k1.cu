@@ -710,7 +710,7 @@ __device__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoi
     }
 }
 
-__global__ void generate_public_key(unsigned char *out, unsigned int *PRIV_KEY) {
+__global__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     ECPoint pub;
     ECPoint G;
     ECPointJacobian G_jac, pub_jac;
