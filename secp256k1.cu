@@ -592,7 +592,7 @@ __device__ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     }
 }
 
-__device__ void jacobian_scalar_mult(ECPointJacobian *result, const unsigned int *scalar, const ECPointJacobian *point) {
+__device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, const ECPointJacobian *point) {
     if (bignum_is_zero(scalar) || jacobian_is_infinity(point)) {
         jacobian_set_infinity(result);
         return;
@@ -602,24 +602,23 @@ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const unsigned int
     jacobian_set_infinity(&R0);
     R1 = *point;
 
-    unsigned int k[8];
+    uint64_t k[4];
     bignum_copy(k, scalar);
 
     scalar_reduce_n(k, k);
 
-    //(MSB > LSB)
     int msb = 255;
     while (msb >= 0) {
-        int word = 7 - (msb / 32);
-        int bit  = 31 - (msb % 32);
-        if ((k[word] >> bit) & 1) break;
+        int word = 3 - (msb / 64);
+        int bit  = 63 - (msb % 64);
+        if ((k[word] >> bit) & 1ULL) break;
         msb--;
     }
 
     for (int i = msb; i >= 0; i--) {
-        int word = 7 - (i / 32);
-        int bit  = 31 - (i % 32);
-        int kbit = (k[word] >> bit) & 1;
+        int word = 3 - (i / 64);
+        int bit  = 63 - (i % 64);
+        int kbit = (k[word] >> bit) & 1ULL;
 
         if (kbit == 0) {
             ECPointJacobian temp;
