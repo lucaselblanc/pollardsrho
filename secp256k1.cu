@@ -341,8 +341,9 @@ static __device__ __forceinline__ uint64_t sub_with_borrow_4(const uint64_t *u, 
 
 //Almost Inverse & Divstep
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
+
     const uint64_t p[4] = {
-        (0xFFFFFC2FULL) | (0xFFFFFFFEULL << 32),
+        0xFFFFFFFEFFFFFC2FULL,
         0xFFFFFFFFFFFFFFFFULL,
         0xFFFFFFFFFFFFFFFFULL,
         0xFFFFFFFFFFFFFFFFULL
