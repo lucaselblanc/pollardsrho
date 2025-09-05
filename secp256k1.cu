@@ -426,8 +426,8 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         }
     }
 
-    //copy_4(result, q);
-    to_montgomery_p(result, q);
+    copy_4(result, q);
+    //to_montgomery_p(result, q);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
@@ -765,7 +765,8 @@ __global__ void test_inverse_kernel(uint64_t *a, uint64_t *result) {
 }
 
 int main() {
-    uint64_t h_priv[4] = {1ULL, 0ULL, 0ULL, 0ULL};
+    //LSB
+    uint64_t h_priv[4] = {7ULL, 0ULL, 0ULL, 0ULL};
     uint64_t h_result[4];
     uint64_t *d_priv = nullptr;
     uint64_t *d_result = nullptr;
