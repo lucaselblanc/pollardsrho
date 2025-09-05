@@ -768,12 +768,12 @@ void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *res) {
 
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
-            prod[i+j] += (__uint128_t)a[i] * b[j];
+            prod[i + j] += (__uint128_t)a[i] * b[j];
         }
     }
 
     for (int i = 0; i < 7; i++) {
-        prod[i+1] += prod[i] >> 64;
+        prod[i + 1] += prod[i] >> 64;
         prod[i] &= 0xFFFFFFFFFFFFFFFFULL;
     }
 
@@ -782,7 +782,7 @@ void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *res) {
         full[i] = (uint64_t)prod[i];
     }
 
-    montgomery_reduce_p(full, res);
+    montgomery_reduce_p(res, &full[4], &full[0]);
 }
 
 void test_inverse(uint64_t *d_priv, uint64_t *d_result, uint64_t *h_priv) {
