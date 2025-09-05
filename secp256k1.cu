@@ -779,11 +779,8 @@ int main() {
     cudaDeviceSynchronize();
     cudaMemcpy(h_result, d_result, 4 * sizeof(uint64_t), cudaMemcpyDeviceToHost);
 
-    printf("Resultado do inverso modular:\n");
-    for (int i = 3; i >= 0; i--) {
-        printf("%016llx ", h_result[i]);
-    }
-    printf("\n");
+    printf("%016llx%016llx%016llx%016llx\n",
+           h_result[3], h_result[2], h_result[1], h_result[0]);
 
     cudaFree(d_priv);
     cudaFree(d_result);
