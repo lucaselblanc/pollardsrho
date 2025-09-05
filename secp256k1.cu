@@ -432,7 +432,8 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         }
     }
 
-    copy_4(result, q);
+    //copy_4(result, q);
+    to_montgomery_p(result, q);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
