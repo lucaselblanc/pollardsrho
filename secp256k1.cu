@@ -753,7 +753,7 @@ __global__ void point_double(ECPoint *R, const ECPoint *P) {
     kernel_point_double(R, P);
 }
 
-__global__ void scalar_mult(ECPoint *R, const unsigned int *k, const ECPoint *P) {
+__global__ void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
     kernel_scalar_mult(R, k, P);
 }
 
