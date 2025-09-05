@@ -339,14 +339,6 @@ static __device__ __forceinline__ uint64_t sub_with_borrow_4(const uint64_t *u, 
     return borrow;
 }
 
-static __device__ __forceinline__ int32_t bignum_cmp_4(const uint64_t *a, const uint64_t *b) {
-    for (int i = 3; i >= 0; --i) {
-        if (a[i] < b[i]) return -1;
-        if (a[i] > b[i]) return 1;
-    }
-    return 0;
-}
-
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     const uint64_t p[4] = {
         (0xFFFFFC2FULL) | (0xFFFFFFFEULL << 32),
