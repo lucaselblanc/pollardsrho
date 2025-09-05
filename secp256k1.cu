@@ -793,7 +793,6 @@ __global__ void test_inverse_kernel(uint64_t *d_priv, uint64_t *d_result, uint64
     uint64_t priv_mont[4];
 
     mod_inverse_p(h_result, d_priv);
-    to_montgomery_p(priv_mont, d_priv);
     multiply_mod_p(priv_mont, h_result, d_check);
     from_montgomery_p(d_result, h_result);
 }
