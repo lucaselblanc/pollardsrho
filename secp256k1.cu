@@ -371,7 +371,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     set_ui_4(q, 1ULL);
     zero_4(r);
 
-    for (int i = 0; i < 128; ++i) {
+    for (int i = 0; i < 256; ++i) {
         #pragma unroll 4
         for (int j = 0; j < 4; ++j) {
             uint64_t v_odd = v[0] & 1ULL;
