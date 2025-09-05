@@ -789,10 +789,12 @@ __device__ void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *r
 
 __global__ void test_inverse_kernel(uint64_t *d_priv, uint64_t *d_result, uint64_t *d_check) {
     uint64_t h_result[4];
+    uint64_t priv_norm[4];
     uint64_t priv_mont[4];
 
-    to_montgomery_p(priv_mont, d_priv);
-    mod_inverse_p(h_result, priv_mont);
+    from_montgomery_p(priv_norm, d_priv);  
+    mod_inverse_p(h_result, priv_norm);
+    to_montgomery_p(priv_mont, priv_norm);
     multiply_mod_p(priv_mont, h_result, d_check);
     from_montgomery_p(d_result, h_result);
 }
