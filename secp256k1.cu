@@ -763,7 +763,7 @@ __global__ void test_inverse_kernel(uint64_t *a, uint64_t *result) {
     mod_inverse_p(result, a);
 }
 
-void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *res) {
+__device__ void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *res) {
     __uint128_t prod[8] = {0};
 
     for (int i = 0; i < 4; i++) {
@@ -785,7 +785,7 @@ void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *res) {
     montgomery_reduce_p(res, &full[4], &full[0]);
 }
 
-void test_inverse(uint64_t *d_priv, uint64_t *d_result, uint64_t *h_priv) {
+__device__ void test_inverse(uint64_t *d_priv, uint64_t *d_result, uint64_t *h_priv) {
     uint64_t h_result[4];
 
     test_inverse_kernel<<<1,1>>>(d_priv, d_result);
