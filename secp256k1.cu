@@ -759,9 +759,11 @@ __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
     kernel_get_compressed_public_key(out, pub);
 }
 
+/*
 __global__ void test_inverse_kernel(uint64_t *a, uint64_t *result) {
     mod_inverse_p(result, a);
 }
+*/
 
 __device__ void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *res) {
     __uint128_t prod[8] = {0};
@@ -785,20 +787,39 @@ __device__ void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *r
     montgomery_reduce_p(res, &full[4], &full[0]);
 }
 
-__device__ void test_inverse(uint64_t *d_priv, uint64_t *d_result, uint64_t *h_priv) {
+__global__ void test_inverse_kernel(uint64_t *d_priv, uint64_t *d_result, uint64_t *d_check) {
     uint64_t h_result[4];
 
-    test_inverse_kernel<<<1,1>>>(d_priv, d_result);
-    cudaDeviceSynchronize();
-    cudaMemcpy(h_result, d_result, sizeof(h_result), cudaMemcpyDeviceToHost);
+    mod_inverse_p(h_result, d_priv);
 
     uint64_t h_result_normal[4];
     from_montgomery_p(h_result_normal, h_result);
 
-    uint64_t check[4];
-    multiply_mod_p(h_priv, h_result_normal, check);
+    multiply_mod_p(d_priv, h_result_normal, d_check);
 
-    int correct = (check[0] == 1ULL && check[1] == 0ULL && check[2] == 0ULL && check[3] == 0ULL);
+    for (int i = 0; i < 4; i++)
+        d_result[i] = h_result_normal[i];
+}
+
+int main() {
+    uint64_t h_priv[4] = {1ULL, 0ULL, 0ULL, 0ULL};
+    uint64_t h_result[4], h_check[4];
+
+    uint64_t *d_priv, *d_result, *d_check;
+
+    cudaMalloc(&d_priv, sizeof(h_priv));
+    cudaMalloc(&d_result, sizeof(h_result));
+    cudaMalloc(&d_check, sizeof(h_check));
+
+    cudaMemcpy(d_priv, h_priv, sizeof(h_priv), cudaMemcpyHostToDevice);
+
+    test_inverse_kernel<<<1,1>>>(d_priv, d_result, d_check);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(h_result, d_result, sizeof(h_result), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_check, d_check, sizeof(h_check), cudaMemcpyDeviceToHost);
+
+    int correct = (h_check[0] == 1ULL && h_check[1] == 0ULL && h_check[2] == 0ULL && h_check[3] == 0ULL);
 
     if (correct)
         printf("Inverse is correct!\n");
@@ -807,25 +828,13 @@ __device__ void test_inverse(uint64_t *d_priv, uint64_t *d_result, uint64_t *h_p
 
     printf("Inverse a mod P (LSB first, 64-bit words):\n");
     for (int i = 3; i >= 0; i--) {
-        printf("%016llX ", h_result_normal[i]);
+        printf("%016llX ", h_result[i]);
     }
     printf("\n");
-}
-
-int main() {
-    uint64_t h_priv[4] = {1ULL, 0ULL, 0ULL, 0ULL};
-
-    uint64_t *d_priv, *d_result;
-
-    cudaMalloc(&d_priv, sizeof(h_priv));
-    cudaMalloc(&d_result, sizeof(h_priv));
-
-    cudaMemcpy(d_priv, h_priv, sizeof(h_priv), cudaMemcpyHostToDevice);
-
-    test_inverse(d_priv, d_result, h_priv);
 
     cudaFree(d_priv);
     cudaFree(d_result);
+    cudaFree(d_check);
 
     return 0;
 }
