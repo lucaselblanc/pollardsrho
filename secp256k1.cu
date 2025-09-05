@@ -339,6 +339,7 @@ static __device__ __forceinline__ uint64_t sub_with_borrow_4(const uint64_t *u, 
     return borrow;
 }
 
+//Almost Inverse & Divstep
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     const uint64_t p[4] = {
         (0xFFFFFC2FULL) | (0xFFFFFFFEULL << 32),
@@ -424,8 +425,8 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         }
     }
 
-    //copy_4(result, q);
-    to_montgomery_p(result, q);
+    copy_4(result, q);
+    //to_montgomery_p(result, q);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
