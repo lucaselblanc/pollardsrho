@@ -792,8 +792,11 @@ void test_inverse(uint64_t *d_priv, uint64_t *d_result, uint64_t *h_priv) {
     cudaDeviceSynchronize();
     cudaMemcpy(h_result, d_result, sizeof(h_result), cudaMemcpyDeviceToHost);
 
+    uint64_t h_result_normal[4];
+    from_montgomery_p(h_result_normal, h_result);
+
     uint64_t check[4];
-    multiply_mod_p(h_priv, h_result, check);
+    multiply_mod_p(h_priv, h_result_normal, check);
 
     int correct = (check[0] == 1ULL && check[1] == 0ULL && check[2] == 0ULL && check[3] == 0ULL);
 
@@ -804,7 +807,7 @@ void test_inverse(uint64_t *d_priv, uint64_t *d_result, uint64_t *h_priv) {
 
     printf("Inverse a mod P (LSB first, 64-bit words):\n");
     for (int i = 3; i >= 0; i--) {
-        printf("%016llX ", h_result[i]);
+        printf("%016llX ", h_result_normal[i]);
     }
     printf("\n");
 }
