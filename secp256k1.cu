@@ -425,8 +425,8 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         }
     }
 
-    copy_4(result, q);
-    //to_montgomery_p(result, q);
+    //copy_4(result, q);
+    to_montgomery_p(result, q);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
@@ -763,25 +763,9 @@ __global__ void test_inverse_kernel(uint64_t *a, uint64_t *result) {
     mod_inverse_p(result, a);
 }
 
-static int cmp_256(const uint64_t *a, const uint64_t *b) {
-    for (int i = 3; i >= 0; i--) {
-        if (a[i] < b[i]) return -1;
-        if (a[i] > b[i]) return 1;
-    }
-    return 0;
-}
-
-static void sub_256(uint64_t *res, const uint64_t *a, const uint64_t *b) {
-    __uint128_t borrow = 0;
-    for (int i = 0; i < 4; i++) {
-        __uint128_t diff = (__uint128_t)a[i] - b[i] - borrow;
-        res[i] = (uint64_t)diff;
-        borrow = (diff >> 127) & 1;
-    }
-}
-
 void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *res) {
     __uint128_t prod[8] = {0};
+
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             prod[i+j] += (__uint128_t)a[i] * b[j];
@@ -793,15 +777,12 @@ void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *res) {
         prod[i] &= 0xFFFFFFFFFFFFFFFFULL;
     }
 
-    for (int i = 0; i < 4; i++) {
-        res[i] = (uint64_t)prod[i];
+    uint64_t full[8];
+    for (int i = 0; i < 8; i++) {
+        full[i] = (uint64_t)prod[i];
     }
 
-    uint64_t tmp[4];
-    while (cmp_256(res, P_CONST) >= 0) {
-        sub_256(tmp, res, P_CONST);
-        memcpy(res, tmp, sizeof(tmp));
-    }
+    montgomery_reduce_p(full, res);
 }
 
 void test_inverse(uint64_t *d_priv, uint64_t *d_result, uint64_t *h_priv) {
