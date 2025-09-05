@@ -763,33 +763,44 @@ __global__ void test_inverse_kernel(uint64_t *a, uint64_t *result) {
     mod_inverse_p(result, a);
 }
 
-void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *res) {
+static int cmp_256(const uint64_t *a, const uint64_t *b) {
+    for (int i = 3; i >= 0; i--) {
+        if (a[i] < b[i]) return -1;
+        if (a[i] > b[i]) return 1;
+    }
+    return 0;
+}
 
-    const uint64_t p[4] = {
-        0xFFFFFFFFFFFFFFFEULL << 32 | 0xFFFFFC2FULL,
-        0xFFFFFFFFFFFFFFFFULL,
-        0xFFFFFFFFFFFFFFFFULL,
-        0xFFFFFFFFFFFFFFFFULL
-    };
-
-    uint64_t temp[8] = {0};
-
+static void sub_256(uint64_t *res, const uint64_t *a, const uint64_t *b) {
+    __uint128_t borrow = 0;
     for (int i = 0; i < 4; i++) {
-        uint64_t carry = 0;
+        __uint128_t diff = (__uint128_t)a[i] - b[i] - borrow;
+        res[i] = (uint64_t)diff;
+        borrow = (diff >> 127) & 1;
+    }
+}
+
+void multiply_mod_p(const uint64_t *a, const uint64_t *b, uint64_t *res) {
+    __uint128_t prod[8] = {0};
+    for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
-            __uint128_t prod = (__uint128_t)a[i] * b[j] + temp[i+j] + carry;
-            temp[i+j] = (uint64_t)prod;
-            carry = (uint64_t)(prod >> 64);
+            prod[i+j] += (__uint128_t)a[i] * b[j];
         }
-        temp[i+4] = carry;
     }
 
-    for (int i = 0; i < 4; i++) res[i] = temp[i];
-    int carry = 0;
+    for (int i = 0; i < 7; i++) {
+        prod[i+1] += prod[i] >> 64;
+        prod[i] &= 0xFFFFFFFFFFFFFFFFULL;
+    }
+
     for (int i = 0; i < 4; i++) {
-        uint64_t diff = res[i] - p[i] - carry;
-        carry = (res[i] < p[i] + carry) ? 1 : 0;
-        res[i] = diff;
+        res[i] = (uint64_t)prod[i];
+    }
+
+    uint64_t tmp[4];
+    while (cmp_256(res, P_CONST) >= 0) {
+        sub_256(tmp, res, P_CONST);
+        memcpy(res, tmp, sizeof(tmp));
     }
 }
 
