@@ -369,9 +369,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     set_ui_4(q, 1ULL);
     zero_4(r);
 
-    for (int i = 0; i < 64; ++i) {
-        #pragma unroll 4
-        for (int j = 0; j < 4; ++j) {
+    for (int i = 0; i < 256; ++i) {
             uint64_t v_odd = v[0] & 1ULL;
             int32_t swap_flag = ((delta > 0 && v_odd) || (delta < 0 && !v_odd)) ? 1 : 0;
             int64_t m = - (int64_t)swap_flag;
@@ -404,7 +402,6 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
             uint64_t r_odd_mask = 0ULL - r_odd;
             add_cond_4(r, p, r_odd_mask);
             shr1_4(r);
-        }
     }
 
     {
