@@ -287,6 +287,7 @@ __device__ void mod_sqr_mont_p(uint64_t *result, const uint64_t *a) {
     mod_mul_mont_p(result, a, a);
 }
 
+/*
 static __device__ __forceinline__ bool is_zero_4(const uint64_t *x) {
     return (x[0] | x[1] | x[2] | x[3]) == 0ULL;
 }
@@ -414,6 +415,109 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
     copy_4(result, q);
     //to_montgomery_p(result, q);
+}
+*/
+
+static __device__ __forceinline__ void zero_4(uint64_t *x) {
+    x[0] = x[1] = x[2] = x[3] = 0ULL;
+}
+
+static __device__ __forceinline__ void copy_4(uint64_t *dst, const uint64_t *src) {
+    dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2]; dst[3] = src[3];
+}
+
+static __device__ __forceinline__ bool is_zero_4(const uint64_t *x) {
+    return (x[0] | x[1] | x[2] | x[3]) == 0ULL;
+}
+
+static __device__ __forceinline__ void shr1_4(uint64_t *x) {
+    uint64_t carry = 0ULL;
+    for (int i = 0; i < 4; i++) {
+        uint64_t next = (i < 3) ? (x[i+1] & 1ULL) << 63 : 0ULL;
+        x[i] = (x[i] >> 1) | carry;
+        carry = next;
+    }
+}
+
+static __device__ __forceinline__ void add_4(uint64_t *x, const uint64_t *y) {
+    unsigned __int128 carry = 0;
+    for (int i = 0; i < 4; i++) {
+        unsigned __int128 tmp = (unsigned __int128)x[i] + y[i] + carry;
+        x[i] = (uint64_t)tmp;
+        carry = tmp >> 64;
+    }
+}
+
+static __device__ __forceinline__ void sub_4(uint64_t *x, const uint64_t *y) {
+    uint64_t borrow = 0;
+    for (int i = 0; i < 4; i++) {
+        unsigned __int128 tmp = (unsigned __int128)x[i] - y[i] - borrow;
+        x[i] = (uint64_t)tmp;
+        borrow = (tmp >> 127) & 1ULL; // borrow = 1 if underflow
+    }
+}
+
+static __device__ __forceinline__ int cmp_4(const uint64_t *x, const uint64_t *y) {
+    for (int i = 3; i >= 0; i--) {
+        if (x[i] > y[i]) return 1;
+        if (x[i] < y[i]) return -1;
+    }
+    return 0;
+}
+
+static __device__ __forceinline__ void mod_reduce_4(uint64_t *x, const uint64_t *p) {
+    if (cmp_4(x, p) >= 0) sub_4(x, p);
+}
+
+__device__ void mod_inverse_p(uint64_t *result, const uint64_t *a) {
+    const uint64_t p[4] = {
+        0xFFFFFFFEFFFFFC2FULL,
+        0xFFFFFFFFFFFFFFFFULL,
+        0xFFFFFFFFFFFFFFFFULL,
+        0xFFFFFFFFFFFFFFFFULL
+    };
+
+    if (is_zero_4(a)) {
+        zero_4(result);
+        return;
+    }
+
+    uint64_t u[4], v[4], x1[4], x2[4];
+    copy_4(u, a);
+    copy_4(v, p);
+
+    zero_4(x1); x1[0] = 1ULL;
+    zero_4(x2);
+
+    while (!is_zero_4(u) && !is_zero_4(v)) {
+        while ((u[0] & 1ULL) == 0) {
+            shr1_4(u);
+            if ((x1[0] & 1ULL) != 0) add_4(x1, p);
+            shr1_4(x1);
+        }
+        while ((v[0] & 1ULL) == 0) {
+            shr1_4(v);
+            if ((x2[0] & 1ULL) != 0) add_4(x2, p);
+            shr1_4(x2);
+        }
+        if (cmp_4(u, v) >= 0) {
+            sub_4(u, v);
+            sub_4(x1, x2);
+            mod_reduce_4(x1, p);
+        } else {
+            sub_4(v, u);
+            sub_4(x2, x1);
+            mod_reduce_4(x2, p);
+        }
+    }
+
+    if (!is_zero_4(u)) {
+        mod_reduce_4(x1, p);
+        copy_4(result, x1);
+    } else {
+        mod_reduce_4(x2, p);
+        copy_4(result, x2);
+    }
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
