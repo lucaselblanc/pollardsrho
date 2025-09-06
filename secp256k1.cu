@@ -399,7 +399,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
             if (swap_flag) {
               delta = -delta;
             }
-            delta++;
+            delta -= 1;
             
             // DEBUG 2
             if (step < 20) {
