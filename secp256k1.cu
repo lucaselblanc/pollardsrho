@@ -357,14 +357,6 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     uint64_t temp_u[4], temp_q[4], q_minus_p[4], tmp_sub[4];
 
     copy_4(u, a_normal);
-
-    {
-        uint64_t borrow = sub_with_borrow_4(u, p, tmp_sub);
-        if (borrow == 0ULL) {
-            copy_4(u, tmp_sub);
-        }
-    }
-
     copy_4(v, p);
     set_ui_4(q, 1ULL);
     zero_4(r);
