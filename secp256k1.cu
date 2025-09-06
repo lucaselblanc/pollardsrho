@@ -368,7 +368,6 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
             uint64_t mask = (uint64_t)m;
             uint64_t inv_mask = ~mask;
 
-            copy_4(temp_u, u);
             copy_4(temp_q, q);
 
             for (int t = 0; t < 4; ++t) {
