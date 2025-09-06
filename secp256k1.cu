@@ -314,28 +314,26 @@ static __device__ __forceinline__ void shr1_4(uint64_t *x) {
 }
 
 static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t *src, uint64_t mask) {
+    unsigned __int128 tmp;
     uint64_t carry = 0ULL;
+
     for (int t = 0; t < 4; ++t) {
-        uint64_t addend = src[t] & mask;
-        uint64_t tmp = dst[t] + addend;
-        uint64_t carry_out = (tmp < dst[t]) ? 1ULL : 0ULL;
-        uint64_t tmp2 = tmp + carry;
-        carry_out |= (tmp2 < tmp) ? 1ULL : 0ULL;
-        dst[t] = tmp2;
-        carry = carry_out;
+        tmp = (unsigned __int128)dst[t] + (src[t] & mask) + carry;
+        dst[t] = (uint64_t)tmp;
+        carry  = (uint64_t)(tmp >> 64);
     }
 }
 
 static __device__ __forceinline__ uint64_t sub_with_borrow_4(const uint64_t *u, const uint64_t *p, uint64_t *out_tmp) {
+    unsigned __int128 tmp;
     uint64_t borrow = 0ULL;
+
     for (int i = 0; i < 4; ++i) {
-        uint64_t pi = p[i];
-        uint64_t ui = u[i];
-        uint64_t need = pi + borrow;
-        uint64_t diff = ui - need;
-        out_tmp[i] = diff;
-        borrow = (ui < need) ? 1ULL : 0ULL;
+        tmp = (unsigned __int128)u[i] - p[i] - borrow;
+        out_tmp[i] = (uint64_t)tmp;
+        borrow = (tmp >> 127) & 1ULL;
     }
+
     return borrow;
 }
 
