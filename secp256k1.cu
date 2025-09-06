@@ -398,7 +398,9 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
             int32_t temp_delta = delta;
             int32_t neg = -temp_delta;
-            delta = (neg & (int32_t)m) | (delta & ~(int32_t)m);
+            if (swap_flag) {
+              delta = -delta;
+            }
             delta++;
             
             // DEBUG 2
