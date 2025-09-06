@@ -354,7 +354,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
     int32_t delta = 1;
     uint64_t u[4], v[4], q[4], r[4];
-    uint64_t temp_u[4], temp_q[4], q_minus_p[4], tmp_sub[4];
+    uint64_t temp_q[4], q_minus_p[4];
 
     copy_4(u, a_normal);
     copy_4(v, p);
