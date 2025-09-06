@@ -378,6 +378,13 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
             uint64_t mask = (uint64_t)m;
             uint64_t inv_mask = ~mask;
 
+            // DEBUG 1
+            int step = i * 4 + j;
+            if (step < 20) {
+                printf("Step %d: swap_flag=%d delta(before)=%d v_odd=%llu\n",
+                   step, swap_flag, delta, (unsigned long long)v_odd);
+            }
+
             copy_4(temp_u, u);
             copy_4(temp_q, q);
 
@@ -393,6 +400,11 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
             int32_t neg = -temp_delta;
             delta = (neg & (int32_t)m) | (delta & ~(int32_t)m);
             delta++;
+            
+            // DEBUG 2
+            if (step < 20) {
+            printf("Step %d: delta(after)=%d\n", step, delta);
+            }
 
             uint64_t v_odd_mask = 0ULL - v_odd;
             add_cond_4(v, u, v_odd_mask);
