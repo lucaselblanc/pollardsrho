@@ -763,8 +763,15 @@ __global__ void test_inverse_kernel(uint64_t *a, uint64_t *result) {
 }
 
 int main() {
-    //LSB
-    uint64_t h_priv[4] = {7ULL, 0ULL, 0ULL, 0ULL};
+
+    //LSB 130 Bits:
+    uint64_t h_priv[4] = {
+    0x28b88cf897c603c9ULL,
+    0x3e7665705359f04fULL,
+    0x0000000000000003ULL,
+    0x0000000000000000ULL
+    };
+
     uint64_t h_result[4];
     uint64_t *d_priv = nullptr;
     uint64_t *d_result = nullptr;
