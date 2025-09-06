@@ -305,8 +305,8 @@ static __device__ __forceinline__ void zero_4(uint64_t *dst) {
 
 static __device__ __forceinline__ void shr1_4(uint64_t *x) {
     uint64_t carry = 0ULL;
-    for (int k = 3; k >= 0; --k) {
-        uint64_t next = (x[k] & 1ULL) << 63;
+    for (int k = 0; k < 4; ++k) {
+        uint64_t next = (k < 3) ? ((x[k+1] & 1ULL) << 63) : 0ULL;
         uint64_t cur = x[k];
         x[k] = (cur >> 1) | carry;
         carry = next;
