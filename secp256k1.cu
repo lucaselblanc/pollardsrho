@@ -793,39 +793,3 @@ int main() {
     cudaDeviceReset();
     return 0;
 }
-
-/*
-int main() {
-    
-    //LSB
-    unsigned int h_priv[8] = {
-        0x10000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
-    };
-
-    //pub key: 0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798
-
-    unsigned int *d_priv;
-    unsigned char *d_out, h_out[33];
-
-    cudaMalloc(&d_priv, sizeof(h_priv));
-    cudaMalloc(&d_out, 33);
-
-    cudaMemcpy(d_priv, h_priv, sizeof(h_priv), cudaMemcpyHostToDevice);
-
-    generate_public_key<<<1,1>>>(d_out, d_priv);
-
-    cudaDeviceSynchronize();
-
-    cudaMemcpy(h_out, d_out, 33, cudaMemcpyDeviceToHost);
-
-    printf("Public key compressed: ");
-    for (int i = 0; i < 33; i++) {
-        printf("%02X", h_out[i]);
-    }
-    printf("\n");
-
-    cudaFree(d_priv);
-    cudaFree(d_out);
-    return 0;
-}
-*/
