@@ -331,7 +331,7 @@ static __device__ __forceinline__ uint64_t sub_with_borrow_4(const uint64_t *u, 
     for (int i = 0; i < 4; ++i) {
         tmp = (unsigned __int128)u[i] - p[i] - borrow;
         out_tmp[i] = (uint64_t)tmp;
-        borrow = (tmp >> 127) & 1ULL;
+        borrow = (tmp > (unsigned __int128)u[i]) ? 1ULL : 0ULL;
     }
 
     return borrow;
