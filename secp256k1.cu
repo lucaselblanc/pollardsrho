@@ -412,52 +412,40 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
     int32_t delta = 1;
     uint64_t f[4], g[4], q[4], r[4];
-    uint64_t temp_q[4];
 
     copy_4(f, a_normal);
     copy_4(g, p);
     set_ui_4(q, 1ULL);
     zero_4(r);
 
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < 512; ++i) { // use 512 iterações
         uint64_t g_odd = g[0] & 1ULL;
 
         int32_t swap_flag = (delta > 0 && g_odd) ? 1 : 0;
-        uint64_t mask = (uint64_t)0 - (uint64_t)swap_flag;
-        uint64_t inv_mask = ~mask;
 
-        copy_4(temp_q, q);
-
-        // Antes do swap
-        if (i < 5) print_state("antes swap", f, g, q, r, i);
-
-        for (int t = 0; t < 4; ++t) {
-            uint64_t ft = f[t], gt = g[t], qt = q[t], rt = r[t], tmpq = temp_q[t];
-            f[t] = (gt & mask) | (ft & inv_mask);
-            g[t] = (ft & mask) | (gt & inv_mask);
-            q[t] = (rt & mask) | (qt & inv_mask);
-            r[t] = (tmpq & mask) | (rt & inv_mask);
-        }
-
-        // Depois do swap
-        if (i < 5) print_state("depois swap", f, g, q, r, i);
-
+        // --- SWAP Manual ---
         if (swap_flag) {
+            for (int t = 0; t < 4; ++t) {
+                uint64_t tmp;
+                tmp = f[t]; f[t] = g[t]; g[t] = tmp;
+                tmp = q[t]; q[t] = r[t]; r[t] = tmp;
+            }
             delta = -delta;
         } else {
             delta = delta + 1;
         }
 
-        uint64_t g_odd_mask = 0ULL - g_odd;
-        add_cond_4(g, f, g_odd_mask);
-        add_cond_4(r, q, g_odd_mask);
+        // --- adição condicional ---
+        add_cond_4(g, f, g_odd ? 0xFFFFFFFFFFFFFFFFULL : 0ULL);
+        add_cond_4(r, q, g_odd ? 0xFFFFFFFFFFFFFFFFULL : 0ULL);
 
-        if (i < 5) print_state("apos add_cond", f, g, q, r, i);
-
+        // --- shift à direita ---
         shr1_4(g);
         shr1_4(r);
 
-        if (i < 5) print_state("apos shr1", f, g, q, r, i);
+        if (i < 5) {
+            print_state("estado iteracao", f, g, q, r, i);
+        }
     }
 
     copy_4(result, q);
