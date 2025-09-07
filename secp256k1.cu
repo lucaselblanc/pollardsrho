@@ -348,7 +348,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     set_ui_4(q, 1ULL);
     zero_4(r);
 
-    for (int i = 0; i < 256; ++i) {
+    for (int i = 0; i < 512; ++i) {
         uint64_t g_odd = g[0] & 1ULL;
 
         int32_t swap_flag = (delta > 0 && g_odd) ? 1 : 0;
@@ -367,8 +367,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         if (swap_flag) {
             delta = 1 - delta;
         } else {
-            //delta = delta + 1;
-            delta = delta - 1;
+            delta = delta + 1;
         }
 
         uint64_t g_odd_mask = 0ULL - g_odd;
