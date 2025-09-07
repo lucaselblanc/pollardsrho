@@ -365,9 +365,10 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         }
 
         if (swap_flag) {
-            delta = -delta;
+            delta = 1 - delta;
+        } else {
+            delta = delta + 1;
         }
-        delta = delta + 1;
 
         uint64_t v_odd_mask = 0ULL - v_odd;
         add_cond_4(v, u, v_odd_mask);
