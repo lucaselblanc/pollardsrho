@@ -295,8 +295,8 @@ static __device__ __forceinline__ void copy_4(uint64_t *dst, const uint64_t *src
     dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2]; dst[3] = src[3];
 }
 
-static __device__ __forceinline__ void set_ui_4(uint64_t *dst, uint64_t v) {
-    dst[0] = v; dst[1] = 0ULL; dst[2] = 0ULL; dst[3] = 0ULL;
+static __device__ __forceinline__ void set_ui_4(uint64_t *dst, uint64_t g) {
+    dst[0] = g; dst[1] = 0ULL; dst[2] = 0ULL; dst[3] = 0ULL;
 }
 
 static __device__ __forceinline__ void zero_4(uint64_t *dst) {
@@ -340,26 +340,26 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     }
 
     int32_t delta = 1;
-    uint64_t u[4], v[4], q[4], r[4];
+    uint64_t f[4], g[4], q[4], r[4];
     uint64_t temp_q[4], q_minus_p[4];
 
-    copy_4(u, a_normal);
-    copy_4(v, p);
+    copy_4(f, a_normal);
+    copy_4(g, p);
     set_ui_4(q, 1ULL);
     zero_4(r);
 
     for (int i = 0; i < 256; ++i) {
-        uint64_t v_odd = v[0] & 1ULL;
+        uint64_t g_odd = g[0] & 1ULL;
 
-        int32_t swap_flag = (delta > 0 && v_odd) ? 1 : 0;
+        int32_t swap_flag = (delta > 0 && g_odd) ? 1 : 0;
         uint64_t mask = (uint64_t)0 - (uint64_t)swap_flag;
         uint64_t inv_mask = ~mask;
 
         copy_4(temp_q, q);
         for (int t = 0; t < 4; ++t) {
-            uint64_t ut = u[t], vt = v[t], qt = q[t], rt = r[t], tmpq = temp_q[t];
-            u[t] = (vt & mask) | (ut & inv_mask);
-            v[t] = (ut & mask) | (vt & inv_mask);
+            uint64_t ft = f[t], gt = g[t], qt = q[t], rt = r[t], tmpq = temp_q[t];
+            f[t] = (gt & mask) | (ft & inv_mask);
+            g[t] = (ft & mask) | (gt & inv_mask);
             q[t] = (rt & mask) | (qt & inv_mask);
             r[t] = (tmpq & mask) | (rt & inv_mask);
         }
@@ -370,11 +370,11 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
             delta = delta + 1;
         }
 
-        uint64_t v_odd_mask = 0ULL - v_odd;
-        add_cond_4(v, u, v_odd_mask);
-        add_cond_4(r, q, v_odd_mask);
+        uint64_t g_odd_mask = 0ULL - g_odd;
+        add_cond_4(g, f, g_odd_mask);
+        add_cond_4(r, q, g_odd_mask);
 
-        shr1_4(v);
+        shr1_4(g);
 
         uint64_t r_odd = r[0] & 1ULL;
         uint64_t r_odd_mask = 0ULL - r_odd;
