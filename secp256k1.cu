@@ -383,15 +383,6 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     }
 
     {
-        uint64_t borrow = 0ULL;
-        for (int t = 0; t < 4; ++t) {
-            uint64_t tmp = p[t] + borrow;
-            uint64_t qi = q[t];
-            uint64_t diff = qi - tmp;
-            q_minus_p[t] = diff;
-            borrow = (qi < tmp) ? 1ULL : 0ULL;
-        }
-
         uint64_t sel_mask = 0ULL - (borrow ^ 1ULL);
         uint64_t sel_inv = ~sel_mask;
         for (int t = 0; t < 4; ++t) {
