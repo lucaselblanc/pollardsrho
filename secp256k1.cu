@@ -349,37 +349,36 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     zero_4(r);
 
     for (int i = 0; i < 256; ++i) {
-            uint64_t v_odd = v[0] & 1ULL;
-            int32_t swap_flag = ((delta > 0 && v_odd) || (delta < 0 && !v_odd)) ? 1 : 0;
-            int64_t m = - (int64_t)swap_flag;
-            uint64_t mask = (uint64_t)m;
-            uint64_t inv_mask = ~mask;
+        uint64_t v_odd = v[0] & 1ULL;
 
-            copy_4(temp_q, q);
+        int32_t swap_flag = (delta > 0 && v_odd) ? 1 : 0;
+        uint64_t mask = (uint64_t)0 - (uint64_t)swap_flag; // all-ones if swap_flag==1, else 0
+        uint64_t inv_mask = ~mask;
 
-            for (int t = 0; t < 4; ++t) {
-                uint64_t ut = u[t], vt = v[t], qt = q[t], rt = r[t];
-                u[t] = (vt & mask) | (ut & inv_mask);
-                v[t] = (ut & mask) | (vt & inv_mask);
-                q[t] = (rt & mask) | (qt & inv_mask);
-                r[t] = (temp_q[t] & mask) | (rt & inv_mask);
-            }
+        copy_4(temp_q, q);
+        for (int t = 0; t < 4; ++t) {
+            uint64_t ut = u[t], vt = v[t], qt = q[t], rt = r[t], tmpq = temp_q[t];
+            u[t] = (vt & mask) | (ut & inv_mask);
+            v[t] = (ut & mask) | (vt & inv_mask);
+            q[t] = (rt & mask) | (qt & inv_mask);
+            r[t] = (tmpq & mask) | (rt & inv_mask);
+        }
 
-            if (swap_flag) {
-              delta = -delta;
-            }
-            delta -= 1;
+        if (swap_flag) {
+            delta = -delta;
+        }
+        delta = delta + 1;
 
-            uint64_t v_odd_mask = 0ULL - v_odd;
-            add_cond_4(v, u, v_odd_mask);
-            add_cond_4(r, q, v_odd_mask);
+        uint64_t v_odd_mask = 0ULL - v_odd;
+        add_cond_4(v, u, v_odd_mask);
+        add_cond_4(r, q, v_odd_mask);
 
-            shr1_4(v);
+        shr1_4(v);
 
-            uint64_t r_odd = r[0] & 1ULL;
-            uint64_t r_odd_mask = 0ULL - r_odd;
-            add_cond_4(r, p, r_odd_mask);
-            shr1_4(r);
+        uint64_t r_odd = r[0] & 1ULL;
+        uint64_t r_odd_mask = 0ULL - r_odd;
+        add_cond_4(r, p, r_odd_mask);
+        shr1_4(r);
     }
 
     {
