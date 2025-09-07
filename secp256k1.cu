@@ -324,19 +324,6 @@ static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t 
     }
 }
 
-static __device__ __forceinline__ uint64_t sub_with_borrow_4(const uint64_t *u, const uint64_t *p, uint64_t *out_tmp) {
-    unsigned __int128 tmp;
-    uint64_t borrow = 0ULL;
-
-    for (int i = 0; i < 4; ++i) {
-        tmp = (unsigned __int128)u[i] - p[i] - borrow;
-        out_tmp[i] = (uint64_t)tmp;
-        borrow = (tmp > (unsigned __int128)u[i]) ? 1ULL : 0ULL;
-    }
-
-    return borrow;
-}
-
 //Almost Inverse - Benstein-Yang Variant
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
