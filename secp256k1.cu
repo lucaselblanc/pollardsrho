@@ -324,6 +324,7 @@ static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t 
     }
 }
 
+/*
 //Almost Inverse - Benstein-Yang Variant
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
@@ -384,6 +385,82 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
     copy_4(result, q);
     //to_montgomery_p(result, q);
+}
+*/
+
+__device__ void print_state(const char *label, const uint64_t *f, const uint64_t *g,
+                            const uint64_t *q, const uint64_t *r, int i) {
+    printf("[%03d] %s\n", i, label);
+    printf("   f = %016llx %016llx %016llx %016llx\n", f[3], f[2], f[1], f[0]);
+    printf("   g = %016llx %016llx %016llx %016llx\n", g[3], g[2], g[1], g[0]);
+    printf("   q = %016llx %016llx %016llx %016llx\n", q[3], q[2], q[1], q[0]);
+    printf("   r = %016llx %016llx %016llx %016llx\n", r[3], r[2], r[1], r[0]);
+}
+
+__device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
+    const uint64_t p[4] = {
+        0xFFFFFFFEFFFFFC2FULL,
+        0xFFFFFFFFFFFFFFFFULL,
+        0xFFFFFFFFFFFFFFFFULL,
+        0xFFFFFFFFFFFFFFFFULL
+    };
+
+    if (is_zero_4(a_normal)) {
+        zero_4(result);
+        return;
+    }
+
+    int32_t delta = 1;
+    uint64_t f[4], g[4], q[4], r[4];
+    uint64_t temp_q[4];
+
+    copy_4(f, a_normal);
+    copy_4(g, p);
+    set_ui_4(q, 1ULL);
+    zero_4(r);
+
+    for (int i = 0; i < 16; ++i) {
+        uint64_t g_odd = g[0] & 1ULL;
+
+        int32_t swap_flag = (delta > 0 && g_odd) ? 1 : 0;
+        uint64_t mask = (uint64_t)0 - (uint64_t)swap_flag;
+        uint64_t inv_mask = ~mask;
+
+        copy_4(temp_q, q);
+
+        // Antes do swap
+        if (i < 5) print_state("antes swap", f, g, q, r, i);
+
+        for (int t = 0; t < 4; ++t) {
+            uint64_t ft = f[t], gt = g[t], qt = q[t], rt = r[t], tmpq = temp_q[t];
+            f[t] = (gt & mask) | (ft & inv_mask);
+            g[t] = (ft & mask) | (gt & inv_mask);
+            q[t] = (rt & mask) | (qt & inv_mask);
+            r[t] = (tmpq & mask) | (rt & inv_mask);
+        }
+
+        // Depois do swap
+        if (i < 5) print_state("depois swap", f, g, q, r, i);
+
+        if (swap_flag) {
+            delta = -delta;
+        } else {
+            delta = delta + 1;
+        }
+
+        uint64_t g_odd_mask = 0ULL - g_odd;
+        add_cond_4(g, f, g_odd_mask);
+        add_cond_4(r, q, g_odd_mask);
+
+        if (i < 5) print_state("apos add_cond", f, g, q, r, i);
+
+        shr1_4(g);
+        shr1_4(r);
+
+        if (i < 5) print_state("apos shr1", f, g, q, r, i);
+    }
+
+    copy_4(result, q);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
