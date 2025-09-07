@@ -313,6 +313,7 @@ static __device__ __forceinline__ void shr1_4(uint64_t *x) {
     }
 }
 
+/*
 static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t *src, uint64_t mask) {
     uint64_t carry = 0ULL;
 
@@ -321,6 +322,21 @@ static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t 
         uint64_t old = dst[t];
         dst[t] = old + s + carry;
         carry = ((dst[t] < old) || (dst[t] < s && s != 0)) ? 1 : 0;
+    }
+}
+*/
+
+static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t *src, uint64_t mask) {
+    uint64_t carry = 0ULL;
+    for (int t = 0; t < 4; ++t) {
+        uint64_t s = src[t] & mask;
+        uint64_t old = dst[t];
+        uint64_t tmp = old + s;
+        uint64_t carry1 = (tmp < old) ? 1ULL : 0ULL;
+        uint64_t sum = tmp + carry;
+        uint64_t carry2 = (sum < tmp) ? 1ULL : 0ULL;
+        dst[t] = sum;
+        carry = carry1 | carry2;
     }
 }
 
