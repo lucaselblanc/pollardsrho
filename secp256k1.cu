@@ -314,13 +314,13 @@ static __device__ __forceinline__ void shr1_4(uint64_t *x) {
 }
 
 static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t *src, uint64_t mask) {
-    unsigned __int128 tmp;
     uint64_t carry = 0ULL;
 
     for (int t = 0; t < 4; ++t) {
-        tmp = (unsigned __int128)dst[t] + (src[t] & mask) + carry;
-        dst[t] = (uint64_t)tmp;
-        carry  = (uint64_t)(tmp >> 64);
+        uint64_t s = src[t] & mask;
+        uint64_t old = dst[t];
+        dst[t] = old + s + carry;
+        carry = ((dst[t] < old) || (dst[t] < s && s != 0)) ? 1 : 0;
     }
 }
 
