@@ -742,6 +742,7 @@ int main() {
     cudaDeviceSynchronize();
     cudaMemcpy(h_result, d_result, 4 * sizeof(uint64_t), cudaMemcpyDeviceToHost);
 
+    //Print in LSB
     printf("%016llx%016llx%016llx%016llx\n",
            h_result[3], h_result[2], h_result[1], h_result[0]);
 
