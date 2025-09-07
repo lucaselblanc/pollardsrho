@@ -352,7 +352,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         uint64_t v_odd = v[0] & 1ULL;
 
         int32_t swap_flag = (delta > 0 && v_odd) ? 1 : 0;
-        uint64_t mask = (uint64_t)0 - (uint64_t)swap_flag; // all-ones if swap_flag==1, else 0
+        uint64_t mask = (uint64_t)0 - (uint64_t)swap_flag;
         uint64_t inv_mask = ~mask;
 
         copy_4(temp_q, q);
