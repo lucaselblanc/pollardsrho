@@ -500,8 +500,8 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     uint64_t f[4], g[4], q[4], r[4];
     uint64_t tmp_f[4], tmp_q[4], neg_tmp_f[4], neg_tmp_q[4];
 
-    copy_4(f, p);
-    copy_4(g, a_normal);
+    copy_4(f, a_normal);
+    copy_4(g, p);
     zero_4(q);
     set_ui_4(r, 1ULL);
 
@@ -510,7 +510,6 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         uint64_t g_odd = g[0] & 1ULL;
         int32_t swap_flag = (delta > 0 && g_odd) ? 1 : 0;
         uint64_t mask = (uint64_t)0 - (uint64_t)swap_flag;
-        uint64_t inv_mask = ~mask;
 
         copy_4(tmp_f, f);
         copy_4(tmp_q, q);
@@ -538,13 +537,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         shr1_4(r);
     }
 
-    if (is_one_4(f)) {
-        copy_4(result, q);
-    } else if (is_neg1_4(f)) {
-        sub_4(result, p, q); // p - q
-    } else {
-        zero_4(result);
-    }
+    copy_4(result, q);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
