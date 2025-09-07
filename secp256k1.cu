@@ -379,23 +379,9 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
             q[t] = (rt & mask) | (qt & inv_mask);
             r[t] = (tmpq & mask) | (rt & inv_mask);
         }
-        
-        /*
+
         if (swap_flag) {
             delta = 1 - delta;
-        } else {
-            delta = delta + 1;
-        }
-        */
-        
-        // swap manual (debug)
-        if (swap_flag) {
-            for (int t = 0; t < 4; ++t) {
-                uint64_t tmp;
-                tmp = f[t]; f[t] = g[t]; g[t] = tmp;
-                tmp = q[t]; q[t] = r[t]; r[t] = tmp;
-            }
-            delta = -delta;
         } else {
             delta = delta + 1;
         }
