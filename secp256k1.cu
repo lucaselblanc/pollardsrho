@@ -382,14 +382,6 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         shr1_4(r);
     }
 
-    {
-        uint64_t sel_mask = 0ULL - (borrow ^ 1ULL);
-        uint64_t sel_inv = ~sel_mask;
-        for (int t = 0; t < 4; ++t) {
-            q[t] = (q_minus_p[t] & sel_mask) | (q[t] & sel_inv);
-        }
-    }
-
     copy_4(result, q);
     //to_montgomery_p(result, q);
 }
