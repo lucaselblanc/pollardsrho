@@ -466,12 +466,15 @@ static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_
 
 static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_low, const uint64_t *x_high, const uint64_t *p, const uint64_t *p_inv, int N) {
 
-    uint64_t m[4];
-    m[0] = (x_low[0] * p_inv[0]) & ((1ULL << N)-1);
+    uint64_t x_mod[4];
+    for(int i=0;i<4;i++) x_mod[i] = x_low[i];
+    uint64_t m[4] = {0};
+
+    m[0] = (x_mod[0] * p_inv[0]) & ((1ULL << N)-1);
     m[1] = m[2] = m[3] = 0ULL;
 
     uint64_t borrow = 0;
-    for(int i=0;i<4;i++) {
+    for(int i=0;i<4;i++){
         __uint128_t t = (__uint128_t)x_low[i] - (__uint128_t)m[i]*p[i] - borrow;
         res[i] = (uint64_t)t;
         borrow = (t >> 127) & 1ULL;
@@ -483,11 +486,10 @@ static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_
 static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1, uint64_t *x2, const uint64_t t[4], const uint64_t *p, const uint64_t *p_inv, int N) {
 
     uint64_t x1n_low[4], x1n_high[4], x2n_low[4], x2n_high[4];
+    uint64_t tmp_low[4], tmp_high[4];
 
     mul_4x4(x1n_low, x1n_high, x1, &t[0]);
-    uint64_t tmp_low[4], tmp_high[4];
     mul_4x4(tmp_low, tmp_high, x2, &t[1]);
-
     uint64_t carry = 0;
     for(int i=0;i<4;i++){
         __uint128_t sum = (__uint128_t)x1n_low[i] + tmp_low[i] + carry;
@@ -506,6 +508,11 @@ static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1
 
     div2n_4(x1, x1n_low, x1n_high, p, p_inv, N);
     div2n_4(x2, x2n_low, x2n_high, p, p_inv, N);
+
+    for(int i=0;i<4;i++){
+        if((int64_t)x1[i] < 0) x1[i] += p[i];
+        if((int64_t)x2[i] < 0) x2[i] += p[i];
+    }
 }
 
 static __device__ __forceinline__ void normalize_4(uint64_t *res, uint64_t *v, int32_t sign, const uint64_t *p) {
