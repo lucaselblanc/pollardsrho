@@ -356,7 +356,6 @@ static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_
 }
 
 static __device__ __forceinline__ void transition_matrix_4(int32_t *delta, uint64_t *u, uint64_t *v, uint64_t t[16], int N) {
-
     uint64_t m00[4], m01[4], m10[4], m11[4];
     set_ui_4(m00, 1ULL); zero_4(m01);
     zero_4(m10); set_ui_4(m11, 1ULL);
@@ -377,14 +376,14 @@ static __device__ __forceinline__ void transition_matrix_4(int32_t *delta, uint6
 
             uint64_t carry = 0;
             for (int w = 0; w < 4; ++w) {
-                __uint128_t s = ((__uint128_t)m10[w] << 1) | carry;
+                __uint128_t s = ((__uint128_t)m10[w] << 1) + carry;
                 new_m00[w] = (uint64_t)s;
                 carry = (uint64_t)(s >> 64);
             }
 
             carry = 0;
             for (int w = 0; w < 4; ++w) {
-                __uint128_t s = ((__uint128_t)m11[w] << 1) | carry;
+                __uint128_t s = ((__uint128_t)m11[w] << 1) + carry;
                 new_m01[w] = (uint64_t)s;
                 carry = (uint64_t)(s >> 64);
             }
@@ -421,16 +420,17 @@ static __device__ __forceinline__ void transition_matrix_4(int32_t *delta, uint6
             sub_and_shr1_4(v_copy, v_copy, u_copy);
 
             uint64_t new_m00[4], new_m01[4], new_m10[4], new_m11[4];
+
             uint64_t carry = 0;
             for (int w = 0; w < 4; ++w) {
-                __uint128_t s = ((__uint128_t)m00[w] << 1) | carry;
+                __uint128_t s = ((__uint128_t)m00[w] << 1) + carry;
                 new_m00[w] = (uint64_t)s;
                 carry = (uint64_t)(s >> 64);
             }
 
             carry = 0;
             for (int w = 0; w < 4; ++w) {
-                __uint128_t s = ((__uint128_t)m01[w] << 1) | carry;
+                __uint128_t s = ((__uint128_t)m01[w] << 1) + carry;
                 new_m01[w] = (uint64_t)s;
                 carry = (uint64_t)(s >> 64);
             }
@@ -467,13 +467,13 @@ static __device__ __forceinline__ void transition_matrix_4(int32_t *delta, uint6
             uint64_t new_m00[4], new_m01[4];
             uint64_t carry = 0;
             for (int w = 0; w < 4; ++w) {
-                __uint128_t s = ((__uint128_t)m00[w] << 1) | carry;
+                __uint128_t s = ((__uint128_t)m00[w] << 1) + carry;
                 new_m00[w] = (uint64_t)s;
                 carry = (uint64_t)(s >> 64);
             }
             carry = 0;
             for (int w = 0; w < 4; ++w) {
-                __uint128_t s = ((__uint128_t)m01[w] << 1) | carry;
+                __uint128_t s = ((__uint128_t)m01[w] << 1) + carry;
                 new_m01[w] = (uint64_t)s;
                 carry = (uint64_t)(s >> 64);
             }
@@ -571,10 +571,11 @@ static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1
     div2n_4(x1, x1n_low, x1n_high, p, p_inv, N);
     div2n_4(x2, x2n_low, x2n_high, p, p_inv, N);
 
-    for(int i = 0; i < 4; i++) {
-        if((int64_t)x1[i] < 0) x1[i] += p[i];
-        if((int64_t)x2[i] < 0) x2[i] += p[i];
-    }
+    uint64_t neg_mask_x1 = 0 - (x1[3] >> 63);
+    add_cond_4(x1, p, neg_mask_x1);
+
+    uint64_t neg_mask_x2 = 0 - (x2[3] >> 63);
+    add_cond_4(x2, p, neg_mask_x2);
 }
 
 static __device__ __forceinline__ void normalize_4(uint64_t *res, uint64_t *v, int32_t sign, const uint64_t *p) {
