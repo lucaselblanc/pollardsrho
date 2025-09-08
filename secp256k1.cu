@@ -343,7 +343,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     }
 
     int32_t delta = 1;
-    const int d = 512;
+    const int d = 256;
     const int m = (49*d + 57)/17;
     uint64_t f[4], g[4], q[4], r[4];
     uint64_t temp_q[4];
