@@ -339,10 +339,6 @@ static __device__ __forceinline__ uint64_t sub_4_with_borrow(uint64_t *res, cons
     return borrow;
 }
 
-static __device__ __forceinline__ bool eq_4(const uint64_t *a, const uint64_t *b) {
-    return (a[0] == b[0]) && (a[1] == b[1]) && (a[2] == b[2]) && (a[3] == b[3]);
-}
-
 //Almost Inverse - Benstein-Yang Variant
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
@@ -351,13 +347,6 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         0xFFFFFFFFFFFFFFFFULL,
         0xFFFFFFFFFFFFFFFFULL,
         0xFFFFFFFFFFFFFFFFULL
-    };
-
-    const uint64_t EXPECTED[4] = {
-        0x8E9766AA21BEBEAEULL,
-        0xED79CC82D13FF3ACULL,
-        0x4ABD664C95B7CEF2ULL,
-        0x7FDB62ED2D6FA087ULL
     };
 
     if (is_zero_4(a_normal)) {
@@ -397,16 +386,6 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         } else {
             delta = delta + 1;
         }
-
-        if (eq_4(result, EXPECTED)) {
-            printf("MATCH at thread %d, iter (delta) = %d => %016llx%016llx%016llx%016llx\n",
-           (int)threadIdx.x, delta,
-           (unsigned long long)result[3],
-           (unsigned long long)result[2],
-           (unsigned long long)result[1],
-           (unsigned long long)result[0]);
-           return;
-         }
 
         uint64_t g_odd_mask = 0ULL - g_odd;
         add_cond_4(g, f, g_odd_mask);
