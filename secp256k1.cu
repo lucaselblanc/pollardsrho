@@ -315,14 +315,14 @@ static __device__ __forceinline__ void shr1_4(uint64_t *x) {
 
 static __device__ __forceinline__ void sub_and_shr1_4(uint64_t *res, const uint64_t *a, const uint64_t *b) {
     uint64_t tmp[4];
-    uint64_t borrow = 0;
-    for(int i = 0; i < 4; i++) {
+    uint64_t borrow = 0ULL;
+    for (int i = 0; i < 4; ++i) {
         uint64_t bi = b[i] + borrow;
         tmp[i] = a[i] - bi;
-        borrow = (tmp[i] > a[i]) ? 1ULL : 0ULL;
+        borrow = (a[i] < bi) ? 1ULL : 0ULL;
     }
     shr1_4(tmp);
-    for(int i = 0; i < 4; i++) res[i] = tmp[i];
+    for (int i = 0; i < 4; ++i) res[i] = tmp[i];
 }
 
 static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t *src, uint64_t mask) {
@@ -356,6 +356,7 @@ static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_
 }
 
 static __device__ __forceinline__ void transition_matrix_4(int32_t *delta, uint64_t *u, uint64_t *v, uint64_t t[16], int N) {
+
     uint64_t m00[4], m01[4], m10[4], m11[4];
     set_ui_4(m00, 1ULL); zero_4(m01);
     zero_4(m10); set_ui_4(m11, 1ULL);
@@ -363,80 +364,205 @@ static __device__ __forceinline__ void transition_matrix_4(int32_t *delta, uint6
     uint64_t u_copy[4], v_copy[4];
     copy_4(u_copy, u); copy_4(v_copy, v);
 
-    for(int i = 0; i < N; i++) {
+    for (int i = 0; i < N; ++i) {
         uint64_t v_odd = v_copy[0] & 1ULL;
-        if(*delta > 0 && v_odd) {
+        if (*delta > 0 && v_odd) {
             int32_t delta_new = 1 - *delta;
+
             uint64_t tmp_u[4]; copy_4(tmp_u, u_copy);
             copy_4(u_copy, v_copy);
             sub_and_shr1_4(v_copy, tmp_u, v_copy);
 
-            uint64_t tmp_m00[4], tmp_m01[4], tmp_m10[4], tmp_m11[4];
-            copy_4(tmp_m00, m00); copy_4(tmp_m01, m01);
-            copy_4(tmp_m10, m10); copy_4(tmp_m11, m11);
+            uint64_t new_m00[4], new_m01[4], new_m10[4], new_m11[4];
 
-            mul_4x4(m00, m01, tmp_m10, tmp_m00);
-            mul_4x4(m10, m11, tmp_m00, tmp_m10);
+            uint64_t carry = 0;
+            for (int w = 0; w < 4; ++w) {
+                __uint128_t s = ((__uint128_t)m10[w] << 1) | carry;
+                new_m00[w] = (uint64_t)s;
+                carry = (uint64_t)(s >> 64);
+            }
+
+            carry = 0;
+            for (int w = 0; w < 4; ++w) {
+                __uint128_t s = ((__uint128_t)m11[w] << 1) | carry;
+                new_m01[w] = (uint64_t)s;
+                carry = (uint64_t)(s >> 64);
+            }
+
+            {
+                uint64_t br = 0;
+                for (int w = 0; w < 4; ++w) {
+                    uint64_t bi = m10[w] + br;
+                    uint64_t r = m00[w] - bi;
+                    new_m10[w] = r;
+                    br = (m00[w] < bi) ? 1ULL : 0ULL;
+                }
+            }
+
+            {
+                uint64_t br = 0;
+                for (int w = 0; w < 4; ++w) {
+                    uint64_t bi = m11[w] + br;
+                    uint64_t r = m01[w] - bi;
+                    new_m11[w] = r;
+                    br = (m01[w] < bi) ? 1ULL : 0ULL;
+                }
+            }
+
+            copy_4(m00, new_m00);
+            copy_4(m01, new_m01);
+            copy_4(m10, new_m10);
+            copy_4(m11, new_m11);
 
             *delta = delta_new;
-        } else if(v_odd) {
+
+        } else if (v_odd) {
             *delta += 1;
-            uint64_t tmp[4]; sub_and_shr1_4(v_copy, v_copy, u_copy);
+            sub_and_shr1_4(v_copy, v_copy, u_copy);
+
+            uint64_t new_m00[4], new_m01[4], new_m10[4], new_m11[4];
+            uint64_t carry = 0;
+            for (int w = 0; w < 4; ++w) {
+                __uint128_t s = ((__uint128_t)m00[w] << 1) | carry;
+                new_m00[w] = (uint64_t)s;
+                carry = (uint64_t)(s >> 64);
+            }
+
+            carry = 0;
+            for (int w = 0; w < 4; ++w) {
+                __uint128_t s = ((__uint128_t)m01[w] << 1) | carry;
+                new_m01[w] = (uint64_t)s;
+                carry = (uint64_t)(s >> 64);
+            }
+
+            {
+                uint64_t br = 0;
+                for (int w = 0; w < 4; ++w) {
+                    uint64_t bi = m00[w] + br;
+                    uint64_t r = m10[w] - bi;
+                    new_m10[w] = r;
+                    br = (m10[w] < bi) ? 1ULL : 0ULL;
+                }
+            }
+
+            {
+                uint64_t br = 0;
+                for (int w = 0; w < 4; ++w) {
+                    uint64_t bi = m01[w] + br;
+                    uint64_t r = m11[w] - bi;
+                    new_m11[w] = r;
+                    br = (m11[w] < bi) ? 1ULL : 0ULL;
+                }
+            }
+
+            copy_4(m00, new_m00);
+            copy_4(m01, new_m01);
+            copy_4(m10, new_m10);
+            copy_4(m11, new_m11);
+
         } else {
             *delta += 1;
             shr1_4(v_copy);
+
+            uint64_t new_m00[4], new_m01[4];
+            uint64_t carry = 0;
+            for (int w = 0; w < 4; ++w) {
+                __uint128_t s = ((__uint128_t)m00[w] << 1) | carry;
+                new_m00[w] = (uint64_t)s;
+                carry = (uint64_t)(s >> 64);
+            }
+            carry = 0;
+            for (int w = 0; w < 4; ++w) {
+                __uint128_t s = ((__uint128_t)m01[w] << 1) | carry;
+                new_m01[w] = (uint64_t)s;
+                carry = (uint64_t)(s >> 64);
+            }
+            copy_4(m00, new_m00);
+            copy_4(m01, new_m01);
         }
     }
 
-    copy_4(&t[0], m00); copy_4(&t[4], m01);
-    copy_4(&t[8], m10); copy_4(&t[12], m11);
+    copy_4(&t[0],  m00);
+    copy_4(&t[4],  m01);
+    copy_4(&t[8],  m10);
+    copy_4(&t[12], m11);
 }
 
 static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_low, const uint64_t *x_high, const uint64_t *p, const uint64_t *p_inv, int N) {
-    uint64_t tmp[4];
-    copy_4(tmp, x_low);
 
-    if(tmp[0] & 1ULL) {
-        uint64_t carry = 0;
-        for(int i = 0; i < 4; i++) {
-            __uint128_t sum = (__uint128_t)tmp[i] + p[i] + carry;
-            tmp[i] = (uint64_t)sum;
-            carry = (uint64_t)(sum >> 64);
+    uint64_t maskN = (N == 64) ? ~0ULL : ((1ULL << N) - 1ULL);
+
+    uint64_t m0 = (x_low[0] * p_inv[0]) & maskN;
+
+    uint64_t prod[5];
+    __uint128_t carry_prod = 0;
+    for (int i = 0; i < 4; ++i) {
+        __uint128_t t = (__uint128_t)m0 * p[i] + carry_prod;
+        prod[i] = (uint64_t)t;
+        carry_prod = t >> 64;
+    }
+    prod[4] = (uint64_t)carry_prod;
+
+    uint64_t full[8];
+    uint64_t borrow = 0ULL;
+
+    for (int i = 0; i < 4; ++i) {
+        __uint128_t sum = (__uint128_t)prod[i] + (__uint128_t)borrow;
+        uint64_t sum_lo = (uint64_t)sum;
+        full[i] = x_low[i] - sum_lo;
+        borrow = (x_low[i] < sum_lo) ? 1ULL : 0ULL;
+    }
+
+    __uint128_t sumh = (__uint128_t)prod[4] + (__uint128_t)borrow;
+    uint64_t sumh_lo = (uint64_t)sumh;
+    full[4] = x_high[0] - sumh_lo;
+    borrow = (x_high[0] < sumh_lo) ? 1ULL : 0ULL;
+
+    for (int i = 1; i < 4; ++i) {
+        uint64_t sub = borrow; // we are subtracting only the borrow (0 or 1)
+        full[4 + i] = x_high[i] - sub;
+        borrow = (x_high[i] < sub) ? 1ULL : 0ULL;
+    }
+
+    int wshift = N / 64;
+    int bshift = N % 64;
+    uint64_t shifted[8];
+
+    if (bshift == 0) {
+        for (int i = 0; i < 8; ++i) {
+            int idx = i + wshift;
+            shifted[i] = (idx < 8) ? full[idx] : 0ULL;
+        }
+    } else {
+        for (int i = 0; i < 8; ++i) {
+            int idx = i + wshift;
+            uint64_t low = (idx < 8) ? full[idx] : 0ULL;
+            uint64_t high = (idx + 1 < 8) ? full[idx + 1] : 0ULL;
+            shifted[i] = (low >> bshift) | (high << (64 - bshift));
         }
     }
 
-    for(int i = 0; i < N; i++) shr1_4(tmp);
-
-    uint64_t m[4] = {0};
-    m[0] = (tmp[0] * p_inv[0]) & ((1ULL << N) - 1);
-    m[1] = m[2] = m[3] = 0ULL;
-
-    uint64_t borrow = 0;
-    for(int i = 0; i < 4; i++) {
-        __uint128_t t = (__uint128_t)tmp[i] - (__uint128_t)m[i] * p[i] - borrow;
-        res[i] = (uint64_t)t;
-        borrow = (res[i] > tmp[i]) ? 1ULL : 0ULL;
-    }
+    for (int i = 0; i < 4; ++i) res[i] = shifted[i];
 }
 
-static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1, uint64_t *x2, const uint64_t t[4], const uint64_t *p, const uint64_t *p_inv, int N) {
+static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1, uint64_t *x2, const uint64_t t[16], const uint64_t *p, const uint64_t *p_inv, int N) {
 
     uint64_t x1n_low[4], x1n_high[4], x2n_low[4], x2n_high[4];
     uint64_t tmp_low[4], tmp_high[4];
 
     mul_4x4(x1n_low, x1n_high, x1, &t[0]);
-    mul_4x4(tmp_low, tmp_high, x2, &t[1]);
+    mul_4x4(tmp_low, tmp_high, x2, &t[4]);
     uint64_t carry = 0;
-    for(int i=0;i<4;i++){
+    for(int i = 0; i < 4; i++) {
         __uint128_t sum = (__uint128_t)x1n_low[i] + tmp_low[i] + carry;
         x1n_low[i] = (uint64_t)sum;
         carry = (uint64_t)(sum >> 64);
     }
 
-    mul_4x4(x2n_low, x2n_high, x1, &t[2]);
-    mul_4x4(tmp_low, tmp_high, x2, &t[3]);
+    mul_4x4(x2n_low, x2n_high, x1, &t[8]);
+    mul_4x4(tmp_low, tmp_high, x2, &t[12]);
     carry = 0;
-    for(int i=0;i<4;i++){
+    for(int i = 0; i < 4; i++) {
         __uint128_t sum = (__uint128_t)x2n_low[i] + tmp_low[i] + carry;
         x2n_low[i] = (uint64_t)sum;
         carry = (uint64_t)(sum >> 64);
@@ -445,26 +571,30 @@ static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1
     div2n_4(x1, x1n_low, x1n_high, p, p_inv, N);
     div2n_4(x2, x2n_low, x2n_high, p, p_inv, N);
 
-    for(int i=0;i<4;i++){
+    for(int i = 0; i < 4; i++) {
         if((int64_t)x1[i] < 0) x1[i] += p[i];
         if((int64_t)x2[i] < 0) x2[i] += p[i];
     }
 }
 
 static __device__ __forceinline__ void normalize_4(uint64_t *res, uint64_t *v, int32_t sign, const uint64_t *p) {
-    bool neg = (v[3] >> 63);
-    if(neg) add_cond_4(v, p, 0xFFFFFFFFFFFFFFFFULL);
+    uint64_t neg_mask = (v[3] >> 63) ? 0xFFFFFFFFFFFFFFFFULL : 0ULL;
+    if (neg_mask) {
+        add_cond_4(v, p, neg_mask);
+    }
 
-    if(sign == -1) {
-        uint64_t carry = 1;
-        for(int i = 0; i < 4; i++) {
-            v[i] = ~v[i] + carry;
-            carry = (carry && v[i] == 0) ? 1 : 0;
+    if (sign == -1) {
+        uint64_t carry = 1ULL;
+        for (int i = 0; i < 4; ++i) {
+            uint64_t inv = ~v[i];
+            __uint128_t s = (__uint128_t)inv + carry;
+            v[i] = (uint64_t)s;
+            carry = (uint64_t)(s >> 64);
         }
     }
 
-    neg = (v[3] >> 63);
-    if(neg) add_cond_4(v, p, 0xFFFFFFFFFFFFFFFFULL);
+    neg_mask = (v[3] >> 63) ? 0xFFFFFFFFFFFFFFFFULL : 0ULL;
+    if (neg_mask) add_cond_4(v, p, neg_mask);
 
     copy_4(res, v);
 }
@@ -496,7 +626,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     zero_4(x1);
     set_ui_4(x2, 1ULL);
 
-    uint64_t t[4];
+    uint64_t t[16];
 
     for(int i = 0; i < m; i++) {
 
