@@ -287,6 +287,7 @@ __device__ void mod_sqr_mont_p(uint64_t *result, const uint64_t *a) {
     mod_mul_mont_p(result, a, a);
 }
 
+/*
 static __device__ __forceinline__ bool is_zero_4(const uint64_t *x) {
     return (x[0] | x[1] | x[2] | x[3]) == 0ULL;
 }
@@ -390,6 +391,181 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     //Aqui deve conter a normalização...
 
     //to_montgomery_p(result, q);
+}
+*/
+
+static __device__ __forceinline__ bool is_zero_4(const uint64_t *x) {
+    return (x[0] | x[1] | x[2] | x[3]) == 0ULL;
+}
+
+static __device__ __forceinline__ void copy_4(uint64_t *dst, const uint64_t *src) {
+    dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2]; dst[3] = src[3];
+}
+
+static __device__ __forceinline__ void set_ui_4(uint64_t *dst, uint64_t g) {
+    dst[0] = g; dst[1] = 0ULL; dst[2] = 0ULL; dst[3] = 0ULL;
+}
+
+static __device__ __forceinline__ void zero_4(uint64_t *dst) {
+    dst[0] = dst[1] = dst[2] = dst[3] = 0ULL;
+}
+
+static __device__ __forceinline__ void shr1_4(uint64_t *x) {
+    uint64_t carry = 0ULL;
+    for (int k = 0; k < 4; ++k) {
+        uint64_t next = (k < 3) ? ((x[k+1] & 1ULL) << 63) : 0ULL;
+        uint64_t cur = x[k];
+        x[k] = (cur >> 1) | carry;
+        carry = next;
+    }
+}
+
+static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t *src, uint64_t mask) {
+    uint64_t carry = 0ULL;
+    for (int t = 0; t < 4; ++t) {
+        uint64_t s = src[t] & mask;
+        uint64_t old = dst[t];
+        uint64_t tmp = old + s;
+        uint64_t carry1 = (tmp < old) ? 1ULL : 0ULL;
+        uint64_t sum = tmp + carry;
+        uint64_t carry2 = (sum < tmp) ? 1ULL : 0ULL;
+        dst[t] = sum;
+        carry = carry1 | carry2;
+    }
+}
+
+static __device__ __forceinline__ void sub_and_shr1_4(uint64_t *res, const uint64_t *a, const uint64_t *b) {
+    uint64_t tmp[4];
+    uint64_t borrow = 0;
+    for (int i = 0; i < 4; ++i) {
+        uint64_t bi = b[i];
+        uint64_t ai = a[i];
+        uint64_t t = ai - bi - borrow;
+        borrow = (ai < bi + borrow) ? 1ULL : 0ULL;
+        tmp[i] = t;
+    }
+    copy_4(res, tmp);
+    shr1_4(res);
+}
+
+static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_high,
+                                               const uint64_t *a, const uint64_t *b) {
+    uint64_t tmp[8] = {0};
+    for(int i=0;i<4;i++) {
+        uint64_t carry = 0;
+        for(int j=0;j<4;j++) {
+            __uint128_t prod = (__uint128_t)a[i]*b[j] + tmp[i+j] + carry;
+            tmp[i+j] = (uint64_t)prod;
+            carry = (uint64_t)(prod >> 64);
+        }
+        tmp[i+4] = carry;
+    }
+    for(int k=0;k<4;k++) res_low[k] = tmp[k];
+    for(int k=0;k<4;k++) res_high[k] = tmp[k+4];
+}
+
+static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_low, const uint64_t *x_high, const uint64_t *p, const uint64_t *p_inv, int N) {
+
+    uint64_t m[4];
+    m[0] = (x_low[0] * p_inv[0]) & ((1ULL << N)-1);
+    m[1] = m[2] = m[3] = 0ULL;
+
+    uint64_t borrow = 0;
+    for(int i=0;i<4;i++) {
+        __uint128_t t = (__uint128_t)x_low[i] - (__uint128_t)m[i]*p[i] - borrow;
+        res[i] = (uint64_t)t;
+        borrow = (t >> 127) & 1ULL;
+    }
+
+    for(int i=0;i<N;i++) shr1_4(res);
+}
+
+static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1, uint64_t *x2, const uint64_t t[4], const uint64_t *p, const uint64_t *p_inv,
+                                                                   int N) {
+    uint64_t x1n_low[4], x1n_high[4], x2n_low[4], x2n_high[4];
+
+    mul_4x4(x1n_low, x1n_high, x1, &t[0]);
+    uint64_t tmp_low[4], tmp_high[4];
+    mul_4x4(tmp_low, tmp_high, x2, &t[1]);
+
+    uint64_t carry = 0;
+    for(int i=0;i<4;i++){
+        __uint128_t sum = (__uint128_t)x1n_low[i] + tmp_low[i] + carry;
+        x1n_low[i] = (uint64_t)sum;
+        carry = (uint64_t)(sum >> 64);
+    }
+
+    mul_4x4(x2n_low, x2n_high, x1, &t[2]);
+    mul_4x4(tmp_low, tmp_high, x2, &t[3]);
+    carry = 0;
+    for(int i=0;i<4;i++){
+        __uint128_t sum = (__uint128_t)x2n_low[i] + tmp_low[i] + carry;
+        x2n_low[i] = (uint64_t)sum;
+        carry = (uint64_t)(sum >> 64);
+    }
+
+    div2n_4(x1, x1n_low, x1n_high, p, p_inv, N);
+    div2n_4(x2, x2n_low, x2n_high, p, p_inv, N);
+}
+
+static __device__ __forceinline__ void normalize_4(uint64_t *res, uint64_t *v, int32_t sign, const uint64_t *p) {
+    if(v[3] >> 63) add_cond_4(v, p, 0xFFFFFFFFFFFFFFFFULL);
+    if(sign == -1){
+        for(int i=0;i<4;i++) v[i] = ~v[i]+1;
+    }
+    if(v[3] >> 63) add_cond_4(v, p, 0xFFFFFFFFFFFFFFFFULL);
+    copy_4(res,v);
+}
+
+__device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
+
+    const uint64_t p[4] = {
+        0xFFFFFFFEFFFFFC2FULL,
+        0xFFFFFFFFFFFFFFFFULL,
+        0xFFFFFFFFFFFFFFFFULL,
+        0xFFFFFFFFFFFFFFFFULL
+    };
+
+    const int N = 17;
+    const uint64_t p_inv[4] = {0x00000001000003D1ULL, 0ULL, 0ULL, 0ULL};
+
+    if (is_zero_4(a_normal)) { zero_4(result); return; }
+
+    int32_t delta = 1;
+    const int d = 256;
+    const int m = (49*d + 57 + 16)/17;
+
+    uint64_t f[4], g[4], q[4], r[4], temp_q[4];
+    copy_4(f,a_normal); copy_4(g,p); set_ui_4(q,1ULL); zero_4(r);
+
+    for(int i = 0; i < m; i++){
+        uint64_t g_odd = g[0]&1ULL;
+        int32_t swap_flag = (delta>0 && g_odd)?1:0;
+        uint64_t mask = 0ULL - (uint64_t)swap_flag;
+        uint64_t inv_mask = ~mask;
+
+        copy_4(temp_q,q);
+        for(int t=0;t<4;t++){
+            uint64_t ft=f[t],gt=g[t],qt=q[t],rt=r[t],tmpq=temp_q[t];
+            f[t] = (gt & mask)|(ft & inv_mask);
+            g[t] = (ft & mask)|(gt & inv_mask);
+            q[t] = (rt & mask)|(qt & inv_mask);
+            r[t] = (tmpq & mask)|(rt & inv_mask);
+        }
+
+        delta = swap_flag ? 1-delta : delta+1;
+
+        uint64_t g_odd_mask = 0ULL - g_odd;
+        add_cond_4(g,f,g_odd_mask);
+        add_cond_4(r,q,g_odd_mask);
+
+        shr1_4(g);
+        uint64_t r_odd = r[0]&1ULL;
+        add_cond_4(r,p,0ULL - r_odd);
+        shr1_4(r);
+    }
+
+    normalize_4(result,r,(delta>0)?1:-1,p);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
