@@ -619,7 +619,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
     int32_t delta = 1;
     const int d = 256;
-    const int m = (49*d + 57 + 16)/d;
+    //const int m = (49*d + 57 + 16)/d;
 
     uint64_t f[4], g[4], x1[4], x2[4];
     copy_4(f, a_normal);
@@ -629,7 +629,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
     uint64_t t[16];
 
-    for(int i = 0; i < m; i++) {
+    for(int i = 0; i < 256; i++) {
 
         uint64_t g_odd = g[0] & 1ULL;
         int32_t swap_flag = (delta > 0 && g_odd) ? 1 : 0;
