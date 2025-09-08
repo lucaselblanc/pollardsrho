@@ -328,7 +328,7 @@ static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t 
     }
 }
 
-//Almost Inverse - Benstein-Yang Variant
+//Almost Inverse - Bernstein-Yang Variant
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
     const uint64_t p[4] = {
@@ -464,13 +464,14 @@ static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_
     for(int k=0;k<4;k++) res_high[k] = tmp[k+4];
 }
 
-static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_low, const uint64_t *x_high, const uint64_t *p, const uint64_t *p_inv, int N) {
+static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_low, const uint64_t *x_high,
+                                               const uint64_t *p, const uint64_t *p_inv, int N) {
 
     uint64_t x_mod[4];
-    for(int i=0;i<4;i++) x_mod[i] = x_low[i];
-    uint64_t m[4] = {0};
+    copy_4(x_mod, x_low);
 
-    m[0] = (x_mod[0] * p_inv[0]) & ((1ULL << N)-1);
+    uint64_t m[4] = {0};
+    m[0] = (x_mod[0] * p_inv[0]) & ((1ULL << N) - 1);
     m[1] = m[2] = m[3] = 0ULL;
 
     uint64_t borrow = 0;
@@ -483,7 +484,10 @@ static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_
     for(int i=0;i<N;i++) shr1_4(res);
 }
 
-static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1, uint64_t *x2, const uint64_t t[4], const uint64_t *p, const uint64_t *p_inv, int N) {
+static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1, uint64_t *x2, 
+                                                                    const uint64_t t[4], 
+                                                                    const uint64_t *p, 
+                                                                    const uint64_t *p_inv, int N) {
 
     uint64_t x1n_low[4], x1n_high[4], x2n_low[4], x2n_high[4];
     uint64_t tmp_low[4], tmp_high[4];
@@ -533,46 +537,50 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         0xFFFFFFFFFFFFFFFFULL
     };
 
-    const int N = 17;
-    const uint64_t p_inv[4] = {0x00000001000003D1ULL, 0ULL, 0ULL, 0ULL};
-
-    if (is_zero_4(a_normal)) { zero_4(result); return; }
+    if (is_zero_4(a_normal)) { 
+        zero_4(result); 
+        return; 
+    }
 
     int32_t delta = 1;
     const int d = 256;
     const int m = (49*d + 57 + 16)/17;
 
-    uint64_t f[4], g[4], q[4], r[4], temp_q[4];
-    copy_4(f,a_normal); copy_4(g,p); set_ui_4(q,1ULL); zero_4(r);
+    uint64_t f[4], g[4], x1[4], x2[4];
+    copy_4(f, a_normal);
+    copy_4(g, p);
+    zero_4(x1);
+    set_ui_4(x2, 1ULL);
 
-    for(int i = 0; i < m; i++){
-        uint64_t g_odd = g[0]&1ULL;
-        int32_t swap_flag = (delta>0 && g_odd)?1:0;
+    uint64_t t[4];
+
+    for(int i = 0; i < m; i++) {
+
+        uint64_t g_odd = g[0] & 1ULL;
+        int32_t swap_flag = (delta>0 && g_odd) ? 1 : 0;
         uint64_t mask = 0ULL - (uint64_t)swap_flag;
         uint64_t inv_mask = ~mask;
 
-        copy_4(temp_q,q);
-        for(int t=0;t<4;t++){
-            uint64_t ft=f[t],gt=g[t],qt=q[t],rt=r[t],tmpq=temp_q[t];
-            f[t] = (gt & mask)|(ft & inv_mask);
-            g[t] = (ft & mask)|(gt & inv_mask);
-            q[t] = (rt & mask)|(qt & inv_mask);
-            r[t] = (tmpq & mask)|(rt & inv_mask);
+        uint64_t f_temp[4], g_temp[4], x1_temp[4], x2_temp[4];
+        copy_4(f_temp, f); copy_4(g_temp, g);
+        copy_4(x1_temp, x1); copy_4(x2_temp, x2);
+
+        for(int t_idx=0; t_idx<4; t_idx++){
+            f[t_idx]  = (g_temp[t_idx] & mask) | (f_temp[t_idx] & inv_mask);
+            g[t_idx]  = (f_temp[t_idx] & mask) | (g_temp[t_idx] & inv_mask);
+            x1[t_idx] = (x2_temp[t_idx] & mask) | (x1_temp[t_idx] & inv_mask);
+            x2[t_idx] = (x1_temp[t_idx] & mask) | (x2_temp[t_idx] & inv_mask);
         }
 
-        delta = swap_flag ? 1-delta : delta+1;
-
+        delta = swap_flag ? 1 - delta : delta + 1;
         uint64_t g_odd_mask = 0ULL - g_odd;
-        add_cond_4(g,f,g_odd_mask);
-        add_cond_4(r,q,g_odd_mask);
+        add_cond_4(g, f, g_odd_mask);
+        add_cond_4(x2, x1, g_odd_mask);
 
         shr1_4(g);
-        uint64_t r_odd = r[0]&1ULL;
-        add_cond_4(r,p,0ULL - r_odd);
-        shr1_4(r);
     }
 
-    normalize_4(result,r,(delta>0)?1:-1,p);
+    normalize_4(result, x2, (delta>0)?1:-1, p);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
