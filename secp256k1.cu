@@ -386,7 +386,8 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         add_cond_4(r, p, r_odd_mask);
         shr1_4(r);
     }
-
+    
+    /*
     if (delta < 0) {
     // result = p - q
     uint64_t carry = 0;
@@ -395,10 +396,16 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         carry = (q[i] + carry > p[i]) ? 1 : 0;
         result[i] = tmp;
     }
-} else {
-    // result = q
-    copy_4(result, q);
-}
+    } else {
+        copy_4(result, q);
+    }
+    */
+     
+     copy_4(result, q);
+     if (result * a % p != 1) {
+         result = p - result;
+     }
+
 
     //to_montgomery_p(result, q);
 }
