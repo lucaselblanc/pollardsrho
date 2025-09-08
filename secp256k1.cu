@@ -327,12 +327,6 @@ static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t 
     }
 }
 
-void mul_4(uint64_t *res, const uint64_t *a, const uint64_t *b);
-
-void mod_4(uint64_t *res, const uint64_t *x, const uint64_t *p);
-
-bool is_one_4(const uint64_t *x);
-
 //Almost Inverse - Benstein-Yang Variant
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
@@ -393,7 +387,6 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         shr1_4(r);
     }
     
-    /*
     if (delta < 0) {
     // result = p - q
     uint64_t carry = 0;
@@ -405,14 +398,6 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     } else {
         copy_4(result, q);
     }
-    */
-     
-     uint64_t tmp[4];
-     mul_4(tmp, result, a);
-     mod_4(tmp, tmp, p);
-     if (!is_one_4(tmp)) {
-        sub_4(result, p, result);
-     }
 
     //to_montgomery_p(result, q);
 }
