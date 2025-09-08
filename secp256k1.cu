@@ -450,6 +450,55 @@ static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_
     for(int k=0;k<4;k++) res_high[k] = tmp[k+4];
 }
 
+static __device__ __forceinline__ void transition_matrix_4(int32_t *delta, uint64_t *u, uint64_t *v, uint64_t t[4], int N) {
+    uint64_t m00[4], m01[4], m10[4], m11[4];
+    set_ui_4(m00, 1ULL);
+    zero_4(m01);
+    zero_4(m10);
+    set_ui_4(m11, 1ULL);
+
+    uint64_t u_copy[4], v_copy[4];
+    copy_4(u_copy, u);
+    copy_4(v_copy, v);
+
+    for (int i = 0; i < N; i++) {
+        uint64_t v_odd = v_copy[0] & 1ULL;
+        if (*delta > 0 && v_odd) {
+            int32_t delta_new = 1 - *delta;
+            uint64_t tmp[4];
+            copy_4(tmp, u_copy);
+            copy_4(u_copy, v_copy);
+            sub_and_shr1_4(v_copy, tmp, v_copy);
+
+            uint64_t tmp_m[4];
+            copy_4(tmp_m, m10); mul_4x4(m10, tmp, m10, &m10[0]);
+            copy_4(tmp_m, m11); mul_4x4(m11, tmp, m11, &m11[0]);
+            copy_4(m00, tmp_m);
+            copy_4(m01, tmp_m);
+
+            *delta = delta_new;
+        } else if (v_odd) {
+            *delta += 1;
+            uint64_t tmp[4];
+            sub_and_shr1_4(v_copy, v_copy, u_copy);
+
+            uint64_t tmp_m[4];
+            copy_4(tmp_m, m10); mul_4x4(m10, tmp, m10, &m10[0]);
+            copy_4(tmp_m, m11); mul_4x4(m11, tmp, m11, &m11[0]);
+        } else {
+            *delta += 1;
+            shr1_4(v_copy);
+            mul_4x4(m00, m00, m00, &m00[0]);
+            mul_4x4(m01, m01, m01, &m01[0]);
+        }
+    }
+
+    copy_4(&t[0], m00);
+    copy_4(&t[1], m01);
+    copy_4(&t[2], m10);
+    copy_4(&t[3], m11);
+}
+
 static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_low, const uint64_t *x_high, const uint64_t *p, const uint64_t *p_inv, int N) {
 
     uint64_t x_mod[4];
