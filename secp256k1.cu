@@ -467,19 +467,32 @@ static __device__ __forceinline__ int ge_4(const uint64_t *a, const uint64_t *b)
     return 1;
 }
 
-static __device__ __forceinline__ int is_one_4(const uint64_t *x) {
-    return (x[0] == 1ULL && x[1] == 0 && x[2] == 0 && x[3] == 0);
+static __device__ __forceinline__ void reduce_mod_p_4(uint64_t *x, const uint64_t *p) {
+    uint64_t tmp[4];
+    sub_4(tmp, x, p);
+    uint64_t ge_mask = -(uint64_t)ge_4(x, p); // ~0 se x >= p
+    for (int i = 0; i < 4; ++i) {
+        x[i] = (x[i] & ~ge_mask) | (tmp[i] & ge_mask);
+    }
 }
 
-static __device__ __forceinline__ int is_neg1_4(const uint64_t *x) {
-    return (x[0] == ~0ULL && x[1] == ~0ULL && x[2] == ~0ULL && x[3] == ~0ULL);
+static __device__ void mul_pow2_mod_4(uint64_t *res, const uint64_t *x, int m, const uint64_t *p) {
+    uint64_t tmp[4];
+    copy_4(tmp, x);
+    for (int i = 0; i < m; ++i) {
+        uint64_t carry = 0ULL;
+        for (int k = 0; k < 4; ++k) {
+            uint64_t next = tmp[k] >> 63;
+            tmp[k] = (tmp[k] << 1) | carry;
+            carry = next;
+        }
+        reduce_mod_p_4(tmp, p);
+    }
+    copy_4(res, tmp);
 }
 
-// ---------------------------------
 // Almost Inverse / Bernstein-Yang
-// ---------------------------------
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
-
     const uint64_t p[4] = {
         0xFFFFFFFEFFFFFC2FULL,
         0xFFFFFFFFFFFFFFFFULL,
@@ -500,13 +513,12 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     uint64_t f[4], g[4], q[4], r[4];
     uint64_t tmp_f[4], tmp_q[4], neg_tmp_f[4], neg_tmp_q[4];
 
-    copy_4(f, a_normal);
-    copy_4(g, p);
+    copy_4(f, p);
+    copy_4(g, a_normal);
     zero_4(q);
     set_ui_4(r, 1ULL);
 
     for (int i = 0; i < m; ++i) {
-
         uint64_t g_odd = g[0] & 1ULL;
         int32_t swap_flag = (delta > 0 && g_odd) ? 1 : 0;
         uint64_t mask = (uint64_t)0 - (uint64_t)swap_flag;
@@ -537,7 +549,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         shr1_4(r);
     }
 
-    copy_4(result, q);
+    mul_pow2_mod_4(result, q, m, p);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
