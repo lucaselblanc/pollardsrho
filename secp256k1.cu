@@ -410,6 +410,18 @@ static __device__ __forceinline__ void zero_4(uint64_t *dst) {
     dst[0] = dst[1] = dst[2] = dst[3] = 0ULL;
 }
 
+static __device__ __forceinline__ void sub_and_shr1_4(uint64_t *res, const uint64_t *a, const uint64_t *b) {
+    uint64_t tmp[4];
+    uint64_t borrow = 0;
+    for(int i=0;i<4;i++){
+        __uint128_t t = (__uint128_t)a[i] - b[i] - borrow;
+        tmp[i] = (uint64_t)t;
+        borrow = (t >> 127) & 1ULL;
+    }
+    shr1_4(tmp); // shift right de 1
+    for(int i=0;i<4;i++) res[i] = tmp[i];
+}
+
 static __device__ __forceinline__ void shr1_4(uint64_t *x) {
     uint64_t carry = 0ULL;
     for (int k = 0; k < 4; ++k) {
