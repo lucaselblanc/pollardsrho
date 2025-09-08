@@ -353,6 +353,13 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         0xFFFFFFFFFFFFFFFFULL
     };
 
+    const uint64_t EXPECTED[4] = {
+        0x8E9766AA21BEBEAEULL,
+        0xED79CC82D13FF3ACULL,
+        0x4ABD664C95B7CEF2ULL,
+        0x7FDB62ED2D6FA087ULL
+    };
+
     if (is_zero_4(a_normal)) {
         zero_4(result);
         return;
@@ -391,6 +398,16 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
             delta = delta + 1;
         }
 
+        if (eq_4(result, EXPECTED)) {
+            printf("MATCH at thread %d, iter (delta) = %d => %016llx%016llx%016llx%016llx\n",
+           (int)threadIdx.x, delta,
+           (unsigned long long)result[3],
+           (unsigned long long)result[2],
+           (unsigned long long)result[1],
+           (unsigned long long)result[0]);
+           return;
+         }
+
         uint64_t g_odd_mask = 0ULL - g_odd;
         add_cond_4(g, f, g_odd_mask);
         add_cond_4(r, q, g_odd_mask);
@@ -420,24 +437,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
         for (int i = 0; i < 4; ++i) {
             result[i] = (candidate_minus_p[i] & mask2) | (candidate[i] & ~mask2);
-}
-
-        const uint64_t EXPECTED[4] = {
-           0x8E9766AA21BEBEAEULL,
-           0xED79CC82D13FF3ACULL,
-           0x4ABD664C95B7CEF2ULL,
-           0x7FDB62ED2D6FA087ULL
-        };
-
-        if (eq_4(result, EXPECTED)) {
-            printf("MATCH at thread %d, iter (delta) = %d => %016llx%016llx%016llx%016llx\n",
-           (int)threadIdx.x, delta,
-           (unsigned long long)result[3],
-           (unsigned long long)result[2],
-           (unsigned long long)result[1],
-           (unsigned long long)result[0]);
-           return;
-         }
+        }
 
     //to_montgomery_p(result, q);
 }
