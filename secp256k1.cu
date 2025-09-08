@@ -519,7 +519,7 @@ static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_
     borrow = (x_high[0] < sumh_lo) ? 1ULL : 0ULL;
 
     for (int i = 1; i < 4; ++i) {
-        uint64_t sub = borrow; // we are subtracting only the borrow (0 or 1)
+        uint64_t sub = borrow;
         full[4 + i] = x_high[i] - sub;
         borrow = (x_high[i] < sub) ? 1ULL : 0ULL;
     }
