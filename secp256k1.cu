@@ -434,20 +434,6 @@ static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t 
     }
 }
 
-static __device__ __forceinline__ void sub_and_shr1_4(uint64_t *res, const uint64_t *a, const uint64_t *b) {
-    uint64_t tmp[4];
-    uint64_t borrow = 0;
-    for (int i = 0; i < 4; ++i) {
-        uint64_t bi = b[i];
-        uint64_t ai = a[i];
-        uint64_t t = ai - bi - borrow;
-        borrow = (ai < bi + borrow) ? 1ULL : 0ULL;
-        tmp[i] = t;
-    }
-    copy_4(res, tmp);
-    shr1_4(res);
-}
-
 static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_high,
                                                const uint64_t *a, const uint64_t *b) {
     uint64_t tmp[8] = {0};
