@@ -327,6 +327,18 @@ static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t 
     }
 }
 
+static __device__ __forceinline__ uint64_t sub_4_with_borrow(uint64_t *res, const uint64_t *a, const uint64_t *b) {
+    uint64_t borrow = 0ULL;
+    for (int i = 0; i < 4; ++i) {
+        uint64_t ai = a[i], bi = b[i];
+        uint64_t tmp = ai - bi - borrow;
+        uint64_t new_borrow = ((bi + borrow) > ai) ? 1ULL : 0ULL;
+        res[i] = tmp;
+        borrow = new_borrow;
+    }
+    return borrow;
+}
+
 //Almost Inverse - Benstein-Yang Variant
 __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
@@ -387,17 +399,24 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         shr1_4(r);
     }
     
-    if (delta < 0) {
-    // result = p - q
-    uint64_t carry = 0;
-    for (int i = 0; i < 4; i++) {
-        uint64_t tmp = p[i] - q[i] - carry;
-        carry = (q[i] + carry > p[i]) ? 1 : 0;
-        result[i] = tmp;
-    }
-    } else {
-        copy_4(result, q);
-    }
+        uint64_t p_minus_q[4];
+        sub_4_with_borrow(p_minus_q, p, q);
+
+        uint64_t sel_mask = (uint64_t)0 - (uint64_t)(delta < 0); // all-ones if delta<0
+
+        uint64_t candidate[4];
+        for (int i = 0; i < 4; ++i) {
+            candidate[i] = (p_minus_q[i] & sel_mask) | (q[i] & ~sel_mask);
+}
+
+        uint64_t candidate_minus_p[4];
+        uint64_t borrow2 = sub_4_with_borrow(candidate_minus_p, candidate, p);
+
+        uint64_t mask2 = (uint64_t)0 - (uint64_t)(borrow2 == 0);
+
+        for (int i = 0; i < 4; ++i) {
+            result[i] = (candidate_minus_p[i] & mask2) | (candidate[i] & ~mask2);
+}
 
     //to_montgomery_p(result, q);
 }
