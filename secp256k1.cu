@@ -533,6 +533,9 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         0xFFFFFFFFFFFFFFFFULL
     };
 
+    const int N = 17;
+    const uint64_t p_inv[4] = {0x00000001000003D1ULL, 0ULL, 0ULL, 0ULL};
+
     if (is_zero_4(a_normal)) { 
         zero_4(result); 
         return; 
@@ -553,7 +556,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
     for(int i = 0; i < m; i++) {
 
         uint64_t g_odd = g[0] & 1ULL;
-        int32_t swap_flag = (delta>0 && g_odd) ? 1 : 0;
+        int32_t swap_flag = (delta > 0 && g_odd) ? 1 : 0;
         uint64_t mask = 0ULL - (uint64_t)swap_flag;
         uint64_t inv_mask = ~mask;
 
@@ -561,7 +564,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         copy_4(f_temp, f); copy_4(g_temp, g);
         copy_4(x1_temp, x1); copy_4(x2_temp, x2);
 
-        for(int t_idx=0; t_idx<4; t_idx++){
+        for(int t_idx = 0; t_idx < 4; t_idx++){
             f[t_idx]  = (g_temp[t_idx] & mask) | (f_temp[t_idx] & inv_mask);
             g[t_idx]  = (f_temp[t_idx] & mask) | (g_temp[t_idx] & inv_mask);
             x1[t_idx] = (x2_temp[t_idx] & mask) | (x1_temp[t_idx] & inv_mask);
@@ -569,14 +572,17 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         }
 
         delta = swap_flag ? 1 - delta : delta + 1;
+
         uint64_t g_odd_mask = 0ULL - g_odd;
         add_cond_4(g, f, g_odd_mask);
         add_cond_4(x2, x1, g_odd_mask);
 
         shr1_4(g);
+
+        update_x1x2_optimized_ver2_4(x1, x2, t, p, p_inv, N);
     }
 
-    normalize_4(result, x2, (delta>0)?1:-1, p);
+    normalize_4(result, x2, (delta > 0) ? 1 : -1, p);
 }
 
 __device__ void jacobian_init(ECPointJacobian *point) {
