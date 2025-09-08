@@ -480,8 +480,8 @@ static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_
     for(int i=0;i<N;i++) shr1_4(res);
 }
 
-static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1, uint64_t *x2, const uint64_t t[4], const uint64_t *p, const uint64_t *p_inv,
-                                                                   int N) {
+static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1, uint64_t *x2, const uint64_t t[4], const uint64_t *p, const uint64_t *p_inv, int N) {
+
     uint64_t x1n_low[4], x1n_high[4], x2n_low[4], x2n_high[4];
 
     mul_4x4(x1n_low, x1n_high, x1, &t[0]);
