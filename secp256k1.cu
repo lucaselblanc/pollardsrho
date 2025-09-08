@@ -614,6 +614,8 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
         shr1_4(g);
 
+        transition_matrix_4(&delta, f, g, t, N);
+
         update_x1x2_optimized_ver2_4(x1, x2, t, p, p_inv, N);
     }
 
