@@ -609,8 +609,8 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         0xFFFFFFFFFFFFFFFFULL
     };
 
-    const int N = 17;
-    const uint64_t p_inv[4] = {0x00000001000003D1ULL, 0ULL, 0ULL, 0ULL};
+    const int N = 17
+    const uint64_t p_inv[4] = {0xcacfULL, 0ULL, 0ULL, 0ULL};
 
     if (is_zero_4(a_normal)) { 
         zero_4(result); 
