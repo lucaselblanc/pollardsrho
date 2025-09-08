@@ -464,8 +464,7 @@ static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_
     for(int k=0;k<4;k++) res_high[k] = tmp[k+4];
 }
 
-static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_low, const uint64_t *x_high,
-                                               const uint64_t *p, const uint64_t *p_inv, int N) {
+static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_low, const uint64_t *x_high, const uint64_t *p, const uint64_t *p_inv, int N) {
 
     uint64_t x_mod[4];
     copy_4(x_mod, x_low);
@@ -484,10 +483,7 @@ static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_
     for(int i=0;i<N;i++) shr1_4(res);
 }
 
-static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1, uint64_t *x2, 
-                                                                    const uint64_t t[4], 
-                                                                    const uint64_t *p, 
-                                                                    const uint64_t *p_inv, int N) {
+static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(uint64_t *x1, uint64_t *x2, const uint64_t t[4], const uint64_t *p, const uint64_t *p_inv, int N) {
 
     uint64_t x1n_low[4], x1n_high[4], x2n_low[4], x2n_high[4];
     uint64_t tmp_low[4], tmp_high[4];
