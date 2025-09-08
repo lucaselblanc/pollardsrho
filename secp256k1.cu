@@ -410,18 +410,6 @@ static __device__ __forceinline__ void zero_4(uint64_t *dst) {
     dst[0] = dst[1] = dst[2] = dst[3] = 0ULL;
 }
 
-static __device__ __forceinline__ void sub_and_shr1_4(uint64_t *res, const uint64_t *a, const uint64_t *b) {
-    uint64_t tmp[4];
-    uint64_t borrow = 0;
-    for(int i=0;i<4;i++){
-        __uint128_t t = (__uint128_t)a[i] - b[i] - borrow;
-        tmp[i] = (uint64_t)t;
-        borrow = (t >> 127) & 1ULL;
-    }
-    shr1_4(tmp); // shift right de 1
-    for(int i=0;i<4;i++) res[i] = tmp[i];
-}
-
 static __device__ __forceinline__ void shr1_4(uint64_t *x) {
     uint64_t carry = 0ULL;
     for (int k = 0; k < 4; ++k) {
@@ -430,6 +418,18 @@ static __device__ __forceinline__ void shr1_4(uint64_t *x) {
         x[k] = (cur >> 1) | carry;
         carry = next;
     }
+}
+
+static __device__ __forceinline__ void sub_and_shr1_4(uint64_t *res, const uint64_t *a, const uint64_t *b) {
+    uint64_t tmp[4];
+    uint64_t borrow = 0;
+    for(int i=0;i<4;i++){
+        __uint128_t t = (__uint128_t)a[i] - b[i] - borrow;
+        tmp[i] = (uint64_t)t;
+        borrow = (t >> 127) & 1ULL;
+    }
+    shr1_4(tmp);
+    for(int i=0;i<4;i++) res[i] = tmp[i];
 }
 
 static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t *src, uint64_t mask) {
@@ -604,6 +604,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
         uint64_t g_odd = g[0] & 1ULL;
         int32_t swap_flag = (delta > 0 && g_odd) ? 1 : 0;
+
         uint64_t mask = 0ULL - (uint64_t)swap_flag;
         uint64_t inv_mask = ~mask;
 
@@ -618,7 +619,11 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
             x2[t_idx] = (x1_temp[t_idx] & mask) | (x2_temp[t_idx] & inv_mask);
         }
 
-        delta = swap_flag ? 1 - delta : delta + 1;
+        if (swap_flag) {
+            delta = 1 - delta;
+        } else {
+            delta = delta + 1;
+        }
 
         uint64_t g_odd_mask = 0ULL - g_odd;
         add_cond_4(g, f, g_odd_mask);
