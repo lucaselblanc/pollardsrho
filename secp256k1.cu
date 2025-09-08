@@ -387,7 +387,19 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         shr1_4(r);
     }
 
+    if (delta < 0) {
+    // result = p - q
+    uint64_t carry = 0;
+    for (int i = 0; i < 4; i++) {
+        uint64_t tmp = p[i] - q[i] - carry;
+        carry = (q[i] + carry > p[i]) ? 1 : 0;
+        result[i] = tmp;
+    }
+} else {
+    // result = q
     copy_4(result, q);
+}
+
     //to_montgomery_p(result, q);
 }
 
