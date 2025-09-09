@@ -733,6 +733,41 @@ static __device__ __forceinline__ void div2n_4(uint64_t *res, const uint64_t *x_
     copy_4(res, shifted);
 }
 
+static __device__ __forceinline__ void update_x1x2_optimized_ver2_4(
+    uint64_t *x1, uint64_t *x2,
+    const uint64_t t[16],
+    const uint64_t *p, const uint64_t *p_inv, int N)
+{
+    uint64_t x1n_low[4], x1n_high[4], x2n_low[4], x2n_high[4];
+    uint64_t tmp_low[4], tmp_high[4];
+
+    mul_4x4(x1n_low, x1n_high, x1, &t[0]);
+    mul_4x4(tmp_low, tmp_high, x2, &t[4]);
+    uint64_t carry = 0;
+    for (int i = 0; i < 4; i++) {
+        __uint128_t s = (__uint128_t)x1n_low[i] + tmp_low[i] + carry;
+        x1n_low[i] = (uint64_t)s;
+        carry = (uint64_t)(s >> 64);
+    }
+
+    mul_4x4(x2n_low, x2n_high, x1, &t[8]);
+    mul_4x4(tmp_low, tmp_high, x2, &t[12]);
+    carry = 0;
+    for (int i = 0; i < 4; i++) {
+        __uint128_t s = (__uint128_t)x2n_low[i] + tmp_low[i] + carry;
+        x2n_low[i] = (uint64_t)s;
+        carry = (uint64_t)(s >> 64);
+    }
+
+    div2n_4(x1, x1n_low, x1n_high, p, p_inv, N);
+    div2n_4(x2, x2n_low, x2n_high, p, p_inv, N);
+
+    uint64_t neg_mask_x1 = 0ULL - (x1[3] >> 63);
+    add_cond_4(x1, p, neg_mask_x1);
+    uint64_t neg_mask_x2 = 0ULL - (x2[3] >> 63);
+    add_cond_4(x2, p, neg_mask_x2);
+}
+
 static __device__ __forceinline__ void normalize_4(uint64_t *res, uint64_t *v, int32_t sign, const uint64_t *p) {
     uint64_t neg_mask = 0ULL - (v[3] >> 63);
     add_cond_4(v, p, neg_mask);
@@ -1183,6 +1218,7 @@ int main() {
     cudaDeviceReset();
     return 0;
 }
+
 
 
 
