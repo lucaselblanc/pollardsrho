@@ -988,6 +988,10 @@ int main() {
     0x0000000000000000ULL
     };
 
+    /* h_priv ≡ 1 (mod p): */
+    //Hex: 7FDB62ED2D6FA0874ABD664C95B7CEF2ED79CC82D13FF3AC8E9766AA21BEBEAE
+    //Dec: 57831354042695616917422878622316954017183908093256327737334808907053491207854
+
     uint64_t h_result[4];
     uint64_t *d_priv = nullptr;
     uint64_t *d_result = nullptr;
@@ -1010,5 +1014,6 @@ int main() {
     cudaDeviceReset();
     return 0;
 }
+
 
 
