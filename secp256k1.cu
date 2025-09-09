@@ -339,8 +339,7 @@ static __device__ __forceinline__ void add_cond_4(uint64_t *dst, const uint64_t 
     }
 }
 
-static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_high,
-                                               const uint64_t *a, const uint64_t *b) {
+static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_high, const uint64_t *a, const uint64_t *b) {
     uint64_t tmp[8] = {0};
     for(int i=0;i<4;i++) {
         uint64_t carry = 0;
@@ -355,8 +354,28 @@ static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_
     for(int k=0;k<4;k++) res_high[k] = tmp[k+4];
 }
 
+static __device__ __forceinline__ void sub_4(uint64_t *res, const uint64_t *a, const uint64_t *b) {
+    uint64_t borrow = 0ULL;
+    for (int i = 0; i < 4; ++i) {
+        uint64_t bi = b[i] + borrow;
+        uint64_t ri = a[i] - bi;
+        borrow = (a[i] < bi) ? 1ULL : 0ULL;
+        res[i] = ri;
+    }
+}
+
+static __device__ __forceinline__ void lshift1_4(uint64_t *dst, const uint64_t *src) {
+    uint64_t carry = 0ULL;
+    for (int k = 0; k < 4; ++k) {
+        uint64_t cur = src[k];
+        uint64_t next_carry = cur >> 63;
+        dst[k] = (cur << 1) | carry;
+        carry = next_carry;
+    }
+}
+
 static __device__ __forceinline__ void transition_matrix_4(
-    int32_t *delta, uint64_t *u, uint64_t *v, uint64_t t[16], int N) 
+    int32_t *delta, uint64_t *u, uint64_t *v, uint64_t t[16], int N)
 {
     uint64_t m00[4], m01[4], m10[4], m11[4];
     set_ui_4(m00, 1ULL); zero_4(m01);
@@ -370,7 +389,7 @@ static __device__ __forceinline__ void transition_matrix_4(
         uint64_t delta_pos = (uint64_t)(*delta > 0);
 
         uint64_t cond0 = (uint64_t)(delta_pos & v_odd);
-        uint64_t cond1 = (uint64_t)(!delta_pos & v_odd);
+        uint64_t cond1 = (uint64_t)((!delta_pos) & v_odd);
         uint64_t cond2 = (uint64_t)(!v_odd);
 
         uint64_t mask0 = 0ULL - cond0;
@@ -388,35 +407,39 @@ static __device__ __forceinline__ void transition_matrix_4(
         uint64_t sub0[4], sub1[4];
 
         copy_4(u_tmp, v_copy);
-        sub_4(sub0, u_copy, v_copy);
-        shr1_4(sub0);
-        copy_4(v_tmp, sub0);
-
-        sub_4(sub1, v_copy, u_copy);
-        shr1_4(sub1);
-
-        uint64_t v_half[4];
-        copy_4(v_half, v_copy);
-        shr1_4(v_half);
+        sub_4(sub0, u_copy, v_copy); shr1_4(sub0); copy_4(v_tmp, sub0);
+        sub_4(sub1, v_copy, u_copy); shr1_4(sub1);
+        uint64_t v_half[4]; copy_4(v_half, v_copy); shr1_4(v_half);
 
         for (int w = 0; w < 4; w++) {
             u_copy[w] = (u_tmp[w] & mask0) | (u_copy[w] & ~mask0);
             v_copy[w] = (v_tmp[w] & mask0) |
-                        (sub1[w] & mask1) |
+                        (sub1[w]   & mask1) |
                         (v_half[w] & mask2);
         }
 
         uint64_t new_m00[4], new_m01[4], new_m10[4], new_m11[4];
-
-        // duplicações
         lshift1_4(new_m00, (cond0 ? m10 : m00));
         lshift1_4(new_m01, (cond0 ? m11 : m01));
 
+        uint64_t tmp0[4], tmp1[4];
+        sub_4(tmp0, m00, m10);
+        sub_4(tmp1, m01, m11);
+
+        uint64_t tmp2[4], tmp3[4];
+        sub_4(tmp2, m10, m00);
+        sub_4(tmp3, m11, m01);
+
         for (int w = 0; w < 4; w++) {
-            new_m10[w] = (cond0 ? m00[w] - m10[w] :
-                         (cond1 ? m10[w] - m00[w] : m10[w]));
-            new_m11[w] = (cond0 ? m01[w] - m11[w] :
-                         (cond1 ? m11[w] - m01[w] : m11[w]));
+            uint64_t t0 = tmp0[w] & mask0;
+            uint64_t t1 = tmp2[w] & mask1;
+            uint64_t t2 = m10[w] & ~(mask0 | mask1);
+            new_m10[w] = t0 | t1 | t2;
+
+            uint64_t s0 = tmp1[w] & mask0;
+            uint64_t s1 = tmp3[w] & mask1;
+            uint64_t s2 = m11[w] & ~(mask0 | mask1);
+            new_m11[w] = s0 | s1 | s2;
         }
 
         copy_4(m00, new_m00);
@@ -987,4 +1010,5 @@ int main() {
     cudaDeviceReset();
     return 0;
 }
+
 
