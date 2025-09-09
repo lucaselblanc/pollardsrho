@@ -556,7 +556,7 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
         0xFFFFFFFFFFFFFFFFULL
     };
 
-    const int N = 64;
+    const int N = 62;
     const uint64_t p_inv[4] = {0x27c7f6e22ddacacfULL, 0x0ULL, 0x0ULL, 0x0ULL}; // Compute x/2^N mod p, given p_inv = 1/p mod 2^N.
 
     if (is_zero_4(a_normal)) { 
@@ -566,29 +566,12 @@ __device__ void mod_inverse_p(uint64_t *result, const uint64_t *a_normal) {
 
     int32_t delta = 1;
     const int d = 256;
-    const int m = (49*d + 57);
+    const int m = (49*d + 57)/17;
 
     /* --- From Paper (Daniel J. Bernstein and Bo-Yin Yang)
     from divsteps2 import divsteps2
-
     def iterations(d):
         return (49*d+80)//17 if d<46 else (49*d+57)//17
-
-    def gcd2(f,g):
-        assert f & 1
-        d = max(f.nbits(),g.nbits())
-        m = iterations(d)
-        delta,fm,gm,P = divsteps2(m,m+d,1,f,g)
-        return abs(fm)
-
-    def recip2(f,g):
-        assert f & 1
-        d = max(f.nbits(),g.nbits())
-        m = iterations(d)
-        precomp = Integers(f)((f+1)/2)^(m-1)
-        delta,fm,gm,P␣=␣divsteps2(m,m+1,1,f,g)
-        V = sign(fm)*ZZ(P[0][1]*2^(m-1))
-        return ZZ(V*precomp)
     */
 
     uint64_t f[4], g[4], x1[4], x2[4];
