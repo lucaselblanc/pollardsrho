@@ -573,6 +573,10 @@ static __device__ __forceinline__ void normalize_4(
 }
 */
 
+__device__ void mod_sqr_mont_p(uint64_t *result, const uint64_t *a) {
+    mod_mul_mont_p(result, a, a);
+}
+
 static __device__ __forceinline__ void copy_4(uint64_t *dst, const uint64_t *src) {
     dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2]; dst[3] = src[3];
 }
@@ -597,6 +601,21 @@ static __device__ __forceinline__ void shr1_4(uint64_t *x) {
         x[k] = (cur >> 1) | carry;
         carry = next;
     }
+}
+
+static __device__ __forceinline__ void mul_4x4(uint64_t *res_low, uint64_t *res_high, const uint64_t *a, const uint64_t *b) {
+    uint64_t tmp[8] = {0};
+    for(int i=0;i<4;i++) {
+        uint64_t carry = 0;
+        for(int j=0;j<4;j++) {
+            __uint128_t prod = (__uint128_t)a[i]*b[j] + tmp[i+j] + carry;
+            tmp[i+j] = (uint64_t)prod;
+            carry = (uint64_t)(prod >> 64);
+        }
+        tmp[i+4] = carry;
+    }
+    for(int k=0;k<4;k++) res_low[k] = tmp[k];
+    for(int k=0;k<4;k++) res_high[k] = tmp[k+4];
 }
 
 static __device__ __forceinline__ void sub_4(uint64_t *res, const uint64_t *a, const uint64_t *b) {
@@ -1218,6 +1237,7 @@ int main() {
     cudaDeviceReset();
     return 0;
 }
+
 
 
 
