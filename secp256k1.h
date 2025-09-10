@@ -27,9 +27,9 @@ struct uint256_t {
     __uint128_t low;
     __uint128_t high;
 
-    //__device__ __host__ uint256_t() : low(0), high(0) {}
-    //__device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
-    //__device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
+    __device__ __host__ uint256_t() : low(0), high(0) {}
+    __device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
+    __device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
 };
 
 struct Fraction256 {
