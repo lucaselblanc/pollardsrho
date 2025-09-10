@@ -369,6 +369,13 @@ __device__ uint256_t mul256_hi(const uint256_t& a, const uint256_t& b) {
     return uint256_t(high, temp_low);
 }
 
+__device__ uint256_t sub256(const uint256_t& a, const uint256_t& b) {
+    uint256_t res;
+    res.low = a.low - b.low;
+    res.high = a.high - b.high - (a.low < b.low ? 1 : 0);
+    return res;
+}
+
 __device__ uint256_t mod256(const uint256_t& x, const uint256_t& m) {
     uint256_t q = mul256_hi(x, mu);
     uint256_t r = sub256(x, mul256(q, m));
@@ -380,13 +387,6 @@ __device__ uint256_t add256(const uint256_t& a, const uint256_t& b) {
     uint256_t res;
     res.low = a.low + b.low;
     res.high = a.high + b.high + (res.low < a.low ? 1 : 0);
-    return res;
-}
-
-__device__ uint256_t sub256(const uint256_t& a, const uint256_t& b) {
-    uint256_t res;
-    res.low = a.low - b.low;
-    res.high = a.high - b.high - (a.low < b.low ? 1 : 0);
     return res;
 }
 
@@ -895,6 +895,7 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
 
