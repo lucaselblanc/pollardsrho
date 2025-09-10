@@ -303,32 +303,32 @@ struct Fraction256 {
     __device__ Fraction256(int64_t n) : num(n<0 ? uint256_t(-n) : uint256_t(n)), den(1), negative(n<0) {}
 };
 
-__device__ __host__ bool is_zero(const uint256_t& a) {
+__device__ bool is_zero(const uint256_t& a) {
     return a.high == 0 && a.low == 0;
 }
 
-__device__ __host__ bool is_odd(const uint256_t& a) {
+__device__ bool is_odd(const uint256_t& a) {
     return (a.low & 1) != 0;
 }
 
-__device__ __host__ bool is_negative(const uint256_t& a) {
+__device__ bool is_negative(const uint256_t& a) {
     return (a.high & ((__uint128_t)1 << 127)) != 0;
 }
 
-__device__ __host__ uint256_t negate256(const uint256_t& a) {
+__device__ uint256_t negate256(const uint256_t& a) {
     uint256_t res;
     res.low = ~a.low + 1;
     res.high = ~a.high + (res.low == 0 ? 1 : 0);
     return res;
 }
 
-__device__ __host__ bool lt256(const uint256_t& a, const uint256_t& b) {
+__device__ bool lt256(const uint256_t& a, const uint256_t& b) {
     if(a.high < b.high) return true;
     if(a.high > b.high) return false;
     return a.low < b.low;
 }
 
-__device__ __host__ uint256_t mul256(const uint256_t& a, const uint256_t& b) {
+__device__ uint256_t mul256(const uint256_t& a, const uint256_t& b) {
     __uint128_t a_lo = a.low, a_hi = a.high;
     __uint128_t b_lo = b.low, b_hi = b.high;
 
@@ -376,21 +376,21 @@ __device__ uint256_t mod256(const uint256_t& x, const uint256_t& m) {
     return r;
 }
 
-__device__ __host__ uint256_t add256(const uint256_t& a, const uint256_t& b) {
+__device__ uint256_t add256(const uint256_t& a, const uint256_t& b) {
     uint256_t res;
     res.low = a.low + b.low;
     res.high = a.high + b.high + (res.low < a.low ? 1 : 0);
     return res;
 }
 
-__device__ __host__ uint256_t sub256(const uint256_t& a, const uint256_t& b) {
+__device__ uint256_t sub256(const uint256_t& a, const uint256_t& b) {
     uint256_t res;
     res.low = a.low - b.low;
     res.high = a.high - b.high - (a.low < b.low ? 1 : 0);
     return res;
 }
 
-__device__ __host__ uint256_t shiftr256(const uint256_t& a, int s) {
+__device__ uint256_t shiftr256(const uint256_t& a, int s) {
     if (s == 0) return a;
     if (s >= 256) return uint256_t(0);
     if (s < 128)
@@ -399,7 +399,7 @@ __device__ __host__ uint256_t shiftr256(const uint256_t& a, int s) {
         return uint256_t(0, a.high >> (s - 128));
 }
 
-__device__ __host__ uint256_t shiftl256(const uint256_t& a, int s) {
+__device__ uint256_t shiftl256(const uint256_t& a, int s) {
     if (s == 0) return a;
     if (s >= 256) return uint256_t(0);
     if (s < 128)
@@ -894,4 +894,5 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
