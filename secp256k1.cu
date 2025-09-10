@@ -872,8 +872,8 @@ int main() {
 
     // g = 0x33e7665705359f04f28b88cf897c603c9
     uint256_t g(
-        (__uint128_t)0x33e7665705359f04ULL,
-        (__uint128_t)0xf28b88cf897c603c9ULL
+        (__uint128_t)0x33e7665705359f04ULL,  // high 128 bits
+        ((__uint128_t)0xf << 64) | (__uint128_t)0x28b88cf897c603c9ULL
     );
 
     /* g ≡ 1 (mod f): */
@@ -894,4 +894,5 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
