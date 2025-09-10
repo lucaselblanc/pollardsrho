@@ -533,13 +533,13 @@ __device__ void almost_inverse_p(uint256_t f, uint256_t g, uint256_t* result) {
     int delta = 1;
     uint256_t f_work = f, g_work = g;
     Fraction256 u, v, q, r;
+
     divsteps2_cuda(m, m+1, &delta, &f_work, &g_work, &u, &v, &q, &r);
 
-    uint256_t den_inv;
-    almost_inverse_p(f, v.den, &den_inv);
+    uint256_t V_scaled = shiftl256(v.num, m-1);
 
-    uint256_t V_scaled = mod256(mul256(v.num, den_inv), f);
-    if(v.negative) V_scaled = negate256(V_scaled);
+    if(v.negative ^ is_negative(f_work)) 
+        V_scaled = negate256(V_scaled);
 
     *result = mod256(mul256(V_scaled, precomp), f);
 }
