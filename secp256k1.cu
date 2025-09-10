@@ -526,6 +526,7 @@ __device__ int iterations_cuda(int d) {
     else       return (49 * d + 57) / 17;
 }
 
+/*
 __device__ void almost_inverse_p(uint256_t f, uint256_t g, uint256_t* result) {
     int d = 256; 
     int m = iterations_cuda(d);
@@ -541,6 +542,42 @@ __device__ void almost_inverse_p(uint256_t f, uint256_t g, uint256_t* result) {
     if(v.negative ^ is_negative(f_work)) V_int = negate256(V_int);
 
     *result = mod256(mul256(V_int,precomp), f);
+}
+*/
+
+__device__ void almost_inverse_p(uint256_t f, uint256_t g, uint256_t* result) {
+    int d = 256; 
+    int m = iterations_cuda(d);
+
+    uint256_t f_plus_1 = add256(f, uint256_t(1));
+    uint256_t f_div2 = div2_uint256(f_plus_1);
+    uint256_t precomp = powmod256(f_div2, uint256_t(m-1), f);
+
+    printf("[LOG] f: high=%llx low=%llx\n", (unsigned long long)f.high, (unsigned long long)f.low);
+    printf("[LOG] g: high=%llx low=%llx\n", (unsigned long long)g.high, (unsigned long long)g.low);
+    printf("[LOG] f+1 / 2: high=%llx low=%llx\n", (unsigned long long)f_div2.high, (unsigned long long)f_div2.low);
+    printf("[LOG] precomp: high=%llx low=%llx\n", (unsigned long long)precomp.high, (unsigned long long)precomp.low);
+
+    int delta = 1;
+    uint256_t f_work = f, g_work = g;
+    Fraction256 u,v,q,r;
+
+    divsteps2_cuda(m, m+1, &delta, &f_work, &g_work, &u,&v,&q,&r);
+
+    printf("[LOG] delta: %d\n", delta);
+    printf("[LOG] f_work: high=%llx low=%llx\n", (unsigned long long)f_work.high, (unsigned long long)f_work.low);
+    printf("[LOG] g_work: high=%llx low=%llx\n", (unsigned long long)g_work.high, (unsigned long long)g_work.low);
+    printf("[LOG] v.num: high=%llx low=%llx\n", (unsigned long long)v.num.high, (unsigned long long)v.num.low);
+    printf("[LOG] v.den: high=%llx low=%llx\n", (unsigned long long)v.den.high, (unsigned long long)v.den.low);
+    printf("[LOG] v.negative: %d\n", v.negative);
+
+    uint256_t V_int = shiftl256(v.num, m-1);
+    if(v.negative ^ is_negative(f_work)) V_int = negate256(V_int);
+
+    printf("[LOG] V_int: high=%llx low=%llx\n", (unsigned long long)V_int.high, (unsigned long long)V_int.low);
+
+    *result = mod256(mul256(V_int,precomp), f);
+    printf("[LOG] result: high=%llx low=%llx\n", (unsigned long long)result->high, (unsigned long long)result->low);
 }
 
 //Final
