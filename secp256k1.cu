@@ -285,6 +285,24 @@ __device__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64
 
 //mod_inverse
 
+struct uint256_t {
+    __uint128_t low;
+    __uint128_t high;
+
+    __device__ __host__ uint256_t() : low(0), high(0) {}
+    __device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
+    __device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
+};
+
+struct Fraction256 {
+    uint256_t num;
+    uint256_t den;
+    bool negative;
+
+    __device__ Fraction256() : num(0), den(1), negative(false) {}
+    __device__ Fraction256(int64_t n) : num(n<0 ? uint256_t(-n) : uint256_t(n)), den(1), negative(n<0) {}
+};
+
 __device__ __host__ bool is_zero(const uint256_t& a) {
     return a.high == 0 && a.low == 0;
 }
@@ -358,15 +376,6 @@ __device__ uint256_t mod256(const uint256_t& x, const uint256_t& m) {
     return r;
 }
 
-struct uint256_t {
-    __uint128_t low;
-    __uint128_t high;
-
-    __device__ __host__ uint256_t() : low(0), high(0) {}
-    __device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
-    __device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
-};
-
 __device__ __host__ uint256_t add256(const uint256_t& a, const uint256_t& b) {
     uint256_t res;
     res.low = a.low + b.low;
@@ -403,15 +412,6 @@ __device__ uint256_t div2_uint256(uint256_t x) {
     if(x.low & 1) x = add256(x, uint256_t(1));
     return shiftr256(x,1);
 }
-
-struct Fraction256 {
-    uint256_t num;
-    uint256_t den;
-    bool negative;
-
-    __device__ Fraction256() : num(0), den(1), negative(false) {}
-    __device__ Fraction256(int64_t n) : num(n<0 ? uint256_t(-n) : uint256_t(n)), den(1), negative(n<0) {}
-};
 
 __device__ Fraction256 add_frac(const Fraction256& a, const Fraction256& b) {
     Fraction256 res;
@@ -894,3 +894,4 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
