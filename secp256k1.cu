@@ -294,9 +294,9 @@ struct uint256_t {
     __uint128_t low;
     __uint128_t high;
 
-    //__device__ __host__ uint256_t() : low(0), high(0) {}
-    //__device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
-    //__device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
+    __device__ __host__ uint256_t() : low(0), high(0) {}
+    __device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
+    __device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
 };
 
 struct Fraction256 {
@@ -308,11 +308,15 @@ struct Fraction256 {
     __device__ Fraction256(int64_t n) : num(n<0 ? uint256_t(-n) : uint256_t(n)), den(1), negative(n<0) {}
 };
 
-//0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
-__constant__ uint256_t MU = {
-    0x00000000000000001000003d1ULL,
-    0x10000000000000000000000000000000ULL
-};
+__device__ uint256_t MU;
+
+__global__ void init_constants() {
+    //0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
+    MU = uint256_t(
+        0x10000000000000000000000000000000ULL,
+        0x00000000000000001000003d1ULL
+    );
+}
 
 __device__ bool is_zero(const uint256_t& a) {
     return a.high == 0 && a.low == 0;
@@ -898,6 +902,9 @@ int main() {
     //Hex: 7FDB62ED2D6FA0874ABD664C95B7CEF2ED79CC82D13FF3AC8E9766AA21BEBEAE (bebeae kkk)
     //Dec: 57831354042695616917422878622316954017183908093256327737334808907053491207854
 
+    init_constants<<<1, 1>>>();
+    cudaDeviceSynchronize();
+
     uint256_t result_host;
     uint256_t* result_device;
     cudaMalloc(&result_device, sizeof(uint256_t));
@@ -912,6 +919,7 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
 
