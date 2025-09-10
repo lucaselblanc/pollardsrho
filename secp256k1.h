@@ -23,6 +23,24 @@ typedef struct {
     int infinity;
 } ECPoint;
 
+struct uint256_t {
+    __uint128_t low;
+    __uint128_t high;
+
+    __device__ __host__ uint256_t() : low(0), high(0) {}
+    __device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
+    __device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
+};
+
+struct Fraction256 {
+    uint256_t num;
+    uint256_t den;
+    bool negative;
+
+    __device__ __host__ Fraction256() : num(0), den(1), negative(false) {}
+    __device__ __host__ Fraction256(int64_t n) : num(n<0 ? uint256_t(-n) : uint256_t(n)), den(1), negative(n<0) {}
+};
+
 __global__ void point_init(ECPoint *point);
 __global__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q);
 __global__ void point_double(ECPoint *R, const ECPoint *P);
