@@ -283,13 +283,12 @@ __device__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64
     montgomery_reduce_p(result, high, low);
 }
 
-//mod_inverse
+__device__ void mod_sqr_mont_p(uint64_t out[4], const uint64_t in[4]) {
+    // out = in^2 mod P
+    mod_mul_mont_p(out, in, in);
+}
 
-//0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
-__device__ __constant__ uint256_t MU = uint256_t(
-    (((__uint128_t)0x10000000000000000ULL) << 64) | (__uint128_t)0x0000000000000000ULL,
-    (((__uint128_t)0x0000000000000000ULL) << 64) | (__uint128_t)0x1000003d1ULL
-);
+//mod_inverse
 
 struct uint256_t {
     __uint128_t low;
@@ -308,6 +307,12 @@ struct Fraction256 {
     __device__ Fraction256() : num(0), den(1), negative(false) {}
     __device__ Fraction256(int64_t n) : num(n<0 ? uint256_t(-n) : uint256_t(n)), den(1), negative(n<0) {}
 };
+
+//0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
+__device__ __constant__ uint256_t MU = uint256_t(
+    (((__uint128_t)0x10000000000000000ULL) << 64) | (__uint128_t)0x0000000000000000ULL,
+    (((__uint128_t)0x0000000000000000ULL) << 64) | (__uint128_t)0x1000003d1ULL
+);
 
 __device__ bool is_zero(const uint256_t& a) {
     return a.high == 0 && a.low == 0;
@@ -907,6 +912,7 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
 
