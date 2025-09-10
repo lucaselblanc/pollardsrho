@@ -360,13 +360,12 @@ __device__ uint256_t mul256_hi(const uint256_t& a, const uint256_t& b) {
     __uint128_t mid = lo_hi + hi_lo;
     bool carry_mid = (mid < lo_hi);
 
-    __uint128_t high = hi_hi + (mid >> 128) + (carry_mid ? 1 : 0);
-    __uint128_t low_high = mid << 128;
+    __uint128_t carry_low = (lo_lo + (mid << 64)) < lo_lo;
 
-    __uint128_t temp_low = lo_lo + low_high;
-    if (temp_low < lo_lo) high += 1;
+    __uint128_t high = hi_hi + (mid >> 64) + (carry_mid ? 1 : 0) + (carry_low ? 1 : 0);
+    __uint128_t low = lo_lo + (mid << 64);
 
-    return uint256_t(high, temp_low);
+    return uint256_t(high, low);
 }
 
 __device__ uint256_t sub256(const uint256_t& a, const uint256_t& b) {
@@ -895,6 +894,7 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
 
