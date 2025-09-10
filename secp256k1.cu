@@ -283,7 +283,251 @@ __device__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64
     montgomery_reduce_p(result, high, low);
 }
 
-//mod_inverse_p
+//mod_inverse
+
+__device__ __host__ bool is_zero(const uint256_t& a) {
+    return a.high == 0 && a.low == 0;
+}
+
+__device__ __host__ bool is_odd(const uint256_t& a) {
+    return (a.low & 1) != 0;
+}
+
+__device__ __host__ bool is_negative(const uint256_t& a) {
+    return (a.high & ((__uint128_t)1 << 127)) != 0;
+}
+
+__device__ __host__ uint256_t negate256(const uint256_t& a) {
+    uint256_t res;
+    res.low = ~a.low + 1;
+    res.high = ~a.high + (res.low == 0 ? 1 : 0);
+    return res;
+}
+
+__device__ __host__ bool lt256(const uint256_t& a, const uint256_t& b) {
+    if(a.high < b.high) return true;
+    if(a.high > b.high) return false;
+    return a.low < b.low;
+}
+
+__device__ __host__ uint256_t mul256(const uint256_t& a, const uint256_t& b) {
+    __uint128_t a_lo = a.low, a_hi = a.high;
+    __uint128_t b_lo = b.low, b_hi = b.high;
+
+    __uint128_t lo_lo = a_lo * b_lo;
+    __uint128_t lo_hi = a_lo * b_hi;
+    __uint128_t hi_lo = a_hi * b_lo;
+    __uint128_t hi_hi = a_hi * b_hi;
+
+    __uint128_t mid1 = lo_hi + hi_lo;
+    __uint128_t carry_mid1 = (mid1 < lo_hi) ? 1 : 0;
+    __uint128_t res_low = lo_lo + (mid1 << 128);
+    __uint128_t carry_low = (res_low < lo_lo) ? 1 : 0;
+    __uint128_t res_high = hi_hi + (mid1 >> 0) + carry_mid1 + carry_low;
+
+    return uint256_t(res_high, res_low);
+}
+
+__device__ uint256_t mul256_hi(const uint256_t& a, const uint256_t& b) {
+    __uint128_t a_lo = a.low;
+    __uint128_t a_hi = a.high;
+    __uint128_t b_lo = b.low;
+    __uint128_t b_hi = b.high;
+
+    __uint128_t lo_lo = a_lo * b_lo;
+    __uint128_t lo_hi = a_lo * b_hi;
+    __uint128_t hi_lo = a_hi * b_lo;
+    __uint128_t hi_hi = a_hi * b_hi;
+
+    __uint128_t mid = lo_hi + hi_lo;
+    bool carry_mid = (mid < lo_hi);
+
+    __uint128_t high = hi_hi + (mid >> 128) + (carry_mid ? 1 : 0);
+    __uint128_t low_high = mid << 128;
+
+    __uint128_t temp_low = lo_lo + low_high;
+    if (temp_low < lo_lo) high += 1;
+
+    return uint256_t(high, temp_low);
+}
+
+__device__ uint256_t mod256(const uint256_t& x, const uint256_t& m) {
+    uint256_t q = mul256_hi(x, mu);
+    uint256_t r = sub256(x, mul256(q, m));
+    if(lt256(m, r)) r = sub256(r, m);
+    return r;
+}
+
+struct uint256_t {
+    __uint128_t low;
+    __uint128_t high;
+
+    __device__ __host__ uint256_t() : low(0), high(0) {}
+    __device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
+    __device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
+};
+
+__device__ __host__ uint256_t add256(const uint256_t& a, const uint256_t& b) {
+    uint256_t res;
+    res.low = a.low + b.low;
+    res.high = a.high + b.high + (res.low < a.low ? 1 : 0);
+    return res;
+}
+
+__device__ __host__ uint256_t sub256(const uint256_t& a, const uint256_t& b) {
+    uint256_t res;
+    res.low = a.low - b.low;
+    res.high = a.high - b.high - (a.low < b.low ? 1 : 0);
+    return res;
+}
+
+__device__ __host__ uint256_t shiftr256(const uint256_t& a, int s) {
+    if (s == 0) return a;
+    if (s >= 256) return uint256_t(0);
+    if (s < 128)
+        return uint256_t(a.high >> s, (a.low >> s) | (a.high << (128 - s)));
+    else
+        return uint256_t(0, a.high >> (s - 128));
+}
+
+__device__ __host__ uint256_t shiftl256(const uint256_t& a, int s) {
+    if (s == 0) return a;
+    if (s >= 256) return uint256_t(0);
+    if (s < 128)
+        return uint256_t((a.high << s) | (a.low >> (128 - s)), a.low << s);
+    else
+        return uint256_t(a.low << (s - 128), 0);
+}
+
+__device__ uint256_t div2_uint256(uint256_t x) {
+    if(x.low & 1) x = add256(x, uint256_t(1));
+    return shiftr256(x,1);
+}
+
+struct Fraction256 {
+    uint256_t num;
+    uint256_t den;
+    bool negative;
+
+    __device__ Fraction256() : num(0), den(1), negative(false) {}
+    __device__ Fraction256(int64_t n) : num(n<0 ? uint256_t(-n) : uint256_t(n)), den(1), negative(n<0) {}
+};
+
+__device__ Fraction256 add_frac(const Fraction256& a, const Fraction256& b) {
+    Fraction256 res;
+    uint256_t na = mul256(a.num, b.den);
+    uint256_t nb = mul256(b.num, a.den);
+
+    if (a.negative == b.negative) {
+        res.num = add256(na, nb);
+        res.negative = a.negative;
+    } else {
+        if (lt256(na, nb)) { res.num = sub256(nb, na); res.negative = b.negative; }
+        else { res.num = sub256(na, nb); res.negative = a.negative; }
+    }
+    res.den = mul256(a.den, b.den);
+    return res;
+}
+
+__device__ Fraction256 div2_frac(const Fraction256& a) {
+    Fraction256 res = a;
+
+    if ((res.num.low & 1) == 0) {
+        res.num = shiftr256(res.num, 1);
+    } else {
+        res.den = mul256(res.den, uint256_t(2));
+    }
+    return res;
+}
+
+__device__ uint256_t truncate_cuda(uint256_t f, int t) {
+    if(t == 0) return uint256_t(0);
+    if(t >= 256) return f;
+
+    uint256_t mask;
+    if(t <= 128) mask = uint256_t(0, ((__uint128_t)1 << t) - 1);
+    else {
+        __uint128_t high_mask = ((__uint128_t)1 << (t - 128)) - 1;
+        __uint128_t low_mask = ~((__uint128_t)0) >> (256 - t);
+        mask = uint256_t(high_mask, low_mask);
+    }
+
+    uint256_t res = uint256_t(f.high & mask.high, f.low & mask.low);
+
+    bool neg;
+    if(t <= 128) neg = res.low >= ((__uint128_t)1 << (t-1));
+    else neg = (res.high & ((__uint128_t)1 << (t-129))) != 0;
+
+    if(neg) {
+        if(t <= 128) res.low -= ((__uint128_t)1 << t);
+        else res.high -= ((__uint128_t)1 << (t-128));
+    }
+    return res;
+}
+
+__device__ void divsteps2_cuda(int n, int t, int* delta, uint256_t* f, uint256_t* g,
+                               Fraction256* u, Fraction256* v, Fraction256* q, Fraction256* r) {
+    *f = truncate_cuda(*f, t);
+    *g = truncate_cuda(*g, t);
+    *u = Fraction256(1); *v = Fraction256(0); *q = Fraction256(0); *r = Fraction256(1);
+
+    while(n>0) {
+        *f = truncate_cuda(*f, t);
+        if(*delta>0 && is_odd(*g)) {
+            int temp_delta = -*delta;
+            uint256_t temp_f = *g;
+            uint256_t temp_g = negate256(*f);
+            Fraction256 temp_u = *q;
+            Fraction256 temp_v = *r;
+            Fraction256 temp_q = *u; temp_q.negative = !temp_q.negative;
+            Fraction256 temp_r = *v; temp_r.negative = !temp_r.negative;
+            *delta = temp_delta; *f = temp_f; *g = temp_g;
+            *u = temp_u; *v = temp_v; *q = temp_q; *r = temp_r;
+        }
+        bool g0 = is_odd(*g);
+        *delta = 1 + *delta;
+        if(g0) {
+            *g = shiftr256(add256(*g, *f),1);
+            *q = div2_frac(add_frac(*q,*u));
+            *r = div2_frac(add_frac(*r,*v));
+        } else {
+            *g = shiftr256(*g,1);
+            *q = div2_frac(*q);
+            *r = div2_frac(*r);
+        }
+        n--; t--;
+        *g = truncate_cuda(*g, t);
+    }
+}
+
+__device__ uint256_t powmod256(uint256_t base, uint256_t exp, uint256_t mod) {
+    uint256_t result(1);
+    while(!is_zero(exp)) {
+        if(is_odd(exp)) result = mod256(mul256(result,base),mod);
+        base = mod256(mul256(base,base),mod);
+        exp = shiftr256(exp,1);
+    }
+    return result;
+}
+
+__device__ void almost_inverse_p(uint256_t f, uint256_t g, uint256_t* result) {
+    int d = 256; 
+    int m = iterations_cuda(d);
+
+    uint256_t precomp = powmod256(div2_uint256(add256(f, uint256_t(1))), uint256_t(m-1), f);
+
+    int delta = 1;
+    uint256_t f_work = f, g_work = g;
+    Fraction256 u,v,q,r;
+    divsteps2_cuda(m, m+1, &delta, &f_work, &g_work, &u,&v,&q,&r);
+
+    uint256_t V_int = shiftl256(v.num, m-1);
+    if(v.negative ^ is_negative(f_work)) V_int = negate256(V_int);
+
+    *result = mod256(mul256(V_int,precomp), f);
+}
+
+//Final
 
 __device__ void jacobian_init(ECPointJacobian *point) {
     bignum_zero(point->X);
@@ -615,43 +859,38 @@ __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
     kernel_get_compressed_public_key(out, pub);
 }
 
-__global__ void test_inverse_kernel(uint64_t *a, uint64_t *result) {
-    mod_inverse_p(result, a);
+__global__ void test_mod_inverse(uint256_t f, uint256_t g, uint256_t* result) {
+    almost_inverse_p(f, g, result);
 }
 
 int main() {
+    // f = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+    uint256_t f(
+        0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,
+        0xFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+    );
 
-    //LSB 130 Bits:
-    uint64_t h_priv[4] = {
-    0x28b88cf897c603c9ULL,
-    0x3e7665705359f04fULL,
-    0x0000000000000003ULL,
-    0x0000000000000000ULL
-    };
+    // g = 0x33e7665705359f04f28b88cf897c603c9
+    uint256_t g(
+        0x33e7665705359f04ULL,
+        0xf28b88cf897c603c9ULL
+    );
 
-    /* h_priv ≡ 1 (mod p): */
-    //Hex: 7FDB62ED2D6FA0874ABD664C95B7CEF2ED79CC82D13FF3AC8E9766AA21BEBEAE
+    /* g ≡ 1 (mod f): */
+    //Hex: 7FDB62ED2D6FA0874ABD664C95B7CEF2ED79CC82D13FF3AC8E9766AA21BEBEAE (bebeae kkk)
     //Dec: 57831354042695616917422878622316954017183908093256327737334808907053491207854
 
-    uint64_t h_result[4];
-    uint64_t *d_priv = nullptr;
-    uint64_t *d_result = nullptr;
+    uint256_t result_host;
+    uint256_t* result_device;
+    cudaMalloc(&result_device, sizeof(uint256_t));
 
-    cudaMalloc((void**)&d_priv, 4 * sizeof(uint64_t));
-    cudaMalloc((void**)&d_result, 4 * sizeof(uint64_t));
-    cudaMemcpy(d_priv, h_priv, 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
+    test_mod_inverse<<<1,1>>>(f, g, result_device);
 
-    test_inverse_kernel<<<1,1>>>(d_priv, d_result);
-    cudaDeviceSynchronize();
-    cudaMemcpy(h_result, d_result, 4 * sizeof(uint64_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&result_host, result_device, sizeof(uint256_t), cudaMemcpyDeviceToHost);
 
-    //Print in MSB
-    printf("%016llx%016llx%016llx%016llx\n",
-           h_result[3], h_result[2], h_result[1], h_result[0]);
+    printf("Resultado high: %llx\n", (unsigned long long)result_host.high);
+    printf("Resultado low : %llx\n", (unsigned long long)result_host.low);
 
-    cudaFree(d_priv);
-    cudaFree(d_result);
-
-    cudaDeviceReset();
+    cudaFree(result_device);
     return 0;
 }
