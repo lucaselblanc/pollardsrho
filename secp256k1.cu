@@ -309,10 +309,10 @@ struct Fraction256 {
 };
 
 //0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
-__device__ __constant__ uint256_t MU = uint256_t(
-    (((__uint128_t)0x10000000000000000ULL) << 64) | (__uint128_t)0x0000000000000000ULL,
-    (((__uint128_t)0x0000000000000000ULL) << 64) | (__uint128_t)0x1000003d1ULL
-);
+__device__ __constant__ uint256_t MU = {
+    0x00000000000000001000003d1ULL,
+    0x10000000000000000000000000000000ULL
+};
 
 __device__ bool is_zero(const uint256_t& a) {
     return a.high == 0 && a.low == 0;
@@ -912,6 +912,7 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
 
