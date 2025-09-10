@@ -386,6 +386,7 @@ __device__ uint256_t sub256(const uint256_t& a, const uint256_t& b) {
     return res;
 }
 
+//Barrett Reduction
 __device__ uint256_t mod256(const uint256_t& x, const uint256_t& m) {
     //0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
     uint256_t MU;
