@@ -294,9 +294,9 @@ struct uint256_t {
     __uint128_t low;
     __uint128_t high;
 
-    __device__ __host__ uint256_t() : low(0), high(0) {}
-    __device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
-    __device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
+    //__device__ __host__ uint256_t() : low(0), high(0) {}
+    //__device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
+    //__device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
 };
 
 struct Fraction256 {
@@ -309,7 +309,7 @@ struct Fraction256 {
 };
 
 //0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
-__device__ __constant__ uint256_t MU = {
+__constant__ uint256_t MU = {
     0x00000000000000001000003d1ULL,
     0x10000000000000000000000000000000ULL
 };
@@ -912,6 +912,7 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
 
