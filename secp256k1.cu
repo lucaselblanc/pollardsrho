@@ -333,6 +333,10 @@ __device__ bool lt256(const uint256_t& a, const uint256_t& b) {
     return a.low < b.low;
 }
 
+__device__ bool eq256(const uint256_t& a, const uint256_t& b) {
+    return a.high == b.high && a.low == b.low;
+}
+
 __device__ uint256_t mul256(const uint256_t& a, const uint256_t& b) {
     __uint128_t a_lo = a.low;
     __uint128_t a_hi = a.high;
@@ -424,6 +428,20 @@ __device__ uint256_t div2_uint256(uint256_t x) {
     return shiftr256(x,1);
 }
 
+__device__ Fixed512 shr1_fixed(const Fixed512& a) {
+    Fixed512 res;
+    res.negative = a.negative;
+
+    uint256_t carry;
+    if (a.high.low & 1) carry = uint256_t((__uint128_t)1 << 127); 
+    else carry = uint256_t(0);
+
+    res.low = add256(shiftr256(a.low, 1), carry);
+    res.high = shiftr256(a.high, 1);
+
+    return res;
+}
+
 __device__ Fixed512 add_fixed(const Fixed512& a, const Fixed512& b) {
     Fixed512 res;
     if(a.negative == b.negative) {
@@ -431,7 +449,7 @@ __device__ Fixed512 add_fixed(const Fixed512& a, const Fixed512& b) {
         res.high = add256(a.high, b.high);
         res.negative = a.negative;
     } else {
-        if (lt256(a.high, b.high) || (a.high == b.high && lt256(a.low, b.low))) {
+        if (lt256(a.high, b.high) || (eq256(a.high, b.high) && lt256(a.low, b.low))) {
             res.low = sub256(b.low, a.low);
             res.high = sub256(b.high, a.high);
             res.negative = b.negative;
@@ -441,14 +459,6 @@ __device__ Fixed512 add_fixed(const Fixed512& a, const Fixed512& b) {
             res.negative = a.negative;
         }
     }
-    return res;
-}
-
-__device__ Fixed512 shr1_fixed(const Fixed512& a) {
-    Fixed512 res;
-    res.negative = a.negative;
-    res.low = shiftr256(a.low, 1) | ((a.high.low & 1) ? ((__uint128_t)1 << 127) : 0);
-    res.high = shiftr256(a.high, 1);
     return res;
 }
 
@@ -915,3 +925,4 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
