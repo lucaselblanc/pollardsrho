@@ -385,7 +385,7 @@ __device__ uint256_t sub256(const uint256_t& a, const uint256_t& b) {
 __device__ uint256_t mod256(const uint256_t& x, const uint256_t& m) {
     //0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
     uint256_t MU;
-    MU.high = 0x10000000000000000000000000000000ULL;
+    MU.high = (__uint128_t)0x1000000000000000ULL << 64;
     MU.low  = 0x00000000000000001000003d1ULL;
 
     uint256_t q = mul256_hi(x, MU);
@@ -911,6 +911,7 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
 
