@@ -299,13 +299,13 @@ struct uint256_t {
     __device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
 };
 
-struct Fraction256 {
-    uint256_t num;
-    uint256_t den;
+struct Fixed512 {
+    uint256_t high;
+    uint256_t low;
     bool negative;
 
-    __device__ Fraction256() : num(0), den(1), negative(false) {}
-    __device__ Fraction256(int64_t n) : num(n<0 ? uint256_t(-n) : uint256_t(n)), den(1), negative(n<0) {}
+    __device__ Fixed512() : high(0), low(0), negative(false) {}
+    __device__ Fixed512(int64_t n) : high(0), low(n<0 ? uint256_t(-n) : uint256_t(n)), negative(n<0) {}
 };
 
 __device__ bool is_zero(const uint256_t& a) {
@@ -424,30 +424,31 @@ __device__ uint256_t div2_uint256(uint256_t x) {
     return shiftr256(x,1);
 }
 
-__device__ Fraction256 add_frac(const Fraction256& a, const Fraction256& b) {
-    Fraction256 res;
-    uint256_t na = mul256(a.num, b.den);
-    uint256_t nb = mul256(b.num, a.den);
-
-    if (a.negative == b.negative) {
-        res.num = add256(na, nb);
+__device__ Fixed512 add_fixed(const Fixed512& a, const Fixed512& b) {
+    Fixed512 res;
+    if(a.negative == b.negative) {
+        res.low = add256(a.low, b.low);
+        res.high = add256(a.high, b.high);
         res.negative = a.negative;
     } else {
-        if (lt256(na, nb)) { res.num = sub256(nb, na); res.negative = b.negative; }
-        else { res.num = sub256(na, nb); res.negative = a.negative; }
+        if (lt256(a.high, b.high) || (a.high == b.high && lt256(a.low, b.low))) {
+            res.low = sub256(b.low, a.low);
+            res.high = sub256(b.high, a.high);
+            res.negative = b.negative;
+        } else {
+            res.low = sub256(a.low, b.low);
+            res.high = sub256(a.high, b.high);
+            res.negative = a.negative;
+        }
     }
-    res.den = mul256(a.den, b.den);
     return res;
 }
 
-__device__ Fraction256 div2_frac(const Fraction256& a) {
-    Fraction256 res = a;
-
-    if ((res.num.low & 1) == 0) {
-        res.num = shiftr256(res.num, 1);
-    } else {
-        res.den = mul256(res.den, uint256_t(2));
-    }
+__device__ Fixed512 shr1_fixed(const Fixed512& a) {
+    Fixed512 res;
+    res.negative = a.negative;
+    res.low = shiftr256(a.low, 1) | ((a.high.low & 1) ? ((__uint128_t)1 << 127) : 0);
+    res.high = shiftr256(a.high, 1);
     return res;
 }
 
@@ -476,11 +477,10 @@ __device__ uint256_t truncate_cuda(uint256_t f, int t) {
     return res;
 }
 
-__device__ void divsteps2_cuda(int n, int t, int* delta, uint256_t* f, uint256_t* g,
-                               Fraction256* u, Fraction256* v, Fraction256* q, Fraction256* r) {
+__device__ void divsteps2_cuda(int n, int t, int* delta, uint256_t* f, uint256_t* g, Fixed512* u, Fixed512* v, Fixed512* q, Fixed512* r) {
     *f = truncate_cuda(*f, t);
     *g = truncate_cuda(*g, t);
-    *u = Fraction256(1); *v = Fraction256(0); *q = Fraction256(0); *r = Fraction256(1);
+    *u = Fixed512(1); *v = Fixed512(0); *q = Fixed512(0); *r = Fixed512(1);
 
     while(n>0) {
         *f = truncate_cuda(*f, t);
@@ -488,24 +488,28 @@ __device__ void divsteps2_cuda(int n, int t, int* delta, uint256_t* f, uint256_t
             int temp_delta = -*delta;
             uint256_t temp_f = *g;
             uint256_t temp_g = negate256(*f);
-            Fraction256 temp_u = *q;
-            Fraction256 temp_v = *r;
-            Fraction256 temp_q = *u; temp_q.negative = !temp_q.negative;
-            Fraction256 temp_r = *v; temp_r.negative = !temp_r.negative;
+            Fixed512 temp_u = *q;
+            Fixed512 temp_v = *r;
+            Fixed512 temp_q = *u; temp_q.negative = !temp_q.negative;
+            Fixed512 temp_r = *v; temp_r.negative = !temp_r.negative;
+
             *delta = temp_delta; *f = temp_f; *g = temp_g;
             *u = temp_u; *v = temp_v; *q = temp_q; *r = temp_r;
         }
+
         bool g0 = is_odd(*g);
         *delta = 1 + *delta;
+
         if(g0) {
             *g = shiftr256(add256(*g, *f),1);
-            *q = div2_frac(add_frac(*q,*u));
-            *r = div2_frac(add_frac(*r,*v));
+            *q = shr1_fixed(add_fixed(*q,*u));
+            *r = shr1_fixed(add_fixed(*r,*v));
         } else {
             *g = shiftr256(*g,1);
-            *q = div2_frac(*q);
-            *r = div2_frac(*r);
+            *q = shr1_fixed(*q);
+            *r = shr1_fixed(*r);
         }
+
         n--; t--;
         *g = truncate_cuda(*g, t);
     }
@@ -534,10 +538,10 @@ __device__ void almost_inverse_p(uint256_t f, uint256_t g, uint256_t* result) {
 
     int delta = 1;
     uint256_t f_work = f, g_work = g;
-    Fraction256 u,v,q,r;
+    Fixed512 u,v,q,r;
     divsteps2_cuda(m, m+1, &delta, &f_work, &g_work, &u,&v,&q,&r);
 
-    uint256_t V_int = shiftl256(v.num, m-1);
+    uint256_t V_int = shiftl256(v.low, m-1);
     if(v.negative ^ is_negative(f_work)) V_int = negate256(V_int);
 
     *result = mod256(mul256(V_int,precomp), f);
@@ -911,4 +915,3 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
-
