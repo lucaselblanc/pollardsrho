@@ -312,10 +312,8 @@ __device__ uint256_t MU;
 
 __global__ void init_constants() {
     //0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
-    MU = uint256_t(
-        0x10000000000000000000000000000000ULL,
-        0x00000000000000001000003d1ULL
-    );
+    MU.high = 0x10000000000000000000000000000000ULL;
+    MU.low  = 0x00000000000000001000003d1ULL;
 }
 
 __device__ bool is_zero(const uint256_t& a) {
@@ -919,6 +917,7 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
 
