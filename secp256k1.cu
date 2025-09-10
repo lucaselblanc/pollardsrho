@@ -285,6 +285,12 @@ __device__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64
 
 //mod_inverse
 
+//0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
+__device__ __constant__ uint256_t MU = uint256_t(
+    (((__uint128_t)0x10000000000000000ULL) << 64) | (__uint128_t)0x0000000000000000ULL,
+    (((__uint128_t)0x0000000000000000ULL) << 64) | (__uint128_t)0x1000003d1ULL
+);
+
 struct uint256_t {
     __uint128_t low;
     __uint128_t high;
@@ -329,19 +335,21 @@ __device__ bool lt256(const uint256_t& a, const uint256_t& b) {
 }
 
 __device__ uint256_t mul256(const uint256_t& a, const uint256_t& b) {
-    __uint128_t a_lo = a.low, a_hi = a.high;
-    __uint128_t b_lo = b.low, b_hi = b.high;
-
+    __uint128_t a_lo = a.low;
+    __uint128_t a_hi = a.high;
+    __uint128_t b_lo = b.low;
+    __uint128_t b_hi = b.high;
     __uint128_t lo_lo = a_lo * b_lo;
     __uint128_t lo_hi = a_lo * b_hi;
     __uint128_t hi_lo = a_hi * b_lo;
     __uint128_t hi_hi = a_hi * b_hi;
+    __uint128_t mid = lo_hi + hi_lo;
+    bool carry_mid = (mid < lo_hi);
 
-    __uint128_t mid1 = lo_hi + hi_lo;
-    __uint128_t carry_mid1 = (mid1 < lo_hi) ? 1 : 0;
-    __uint128_t res_low = lo_lo + (mid1 << 128);
-    __uint128_t carry_low = (res_low < lo_lo) ? 1 : 0;
-    __uint128_t res_high = hi_hi + (mid1 >> 0) + carry_mid1 + carry_low;
+    __uint128_t res_low = lo_lo + (mid << 64);
+    bool carry_low = (res_low < lo_lo);
+
+    __uint128_t res_high = hi_hi + (mid >> 64) + (carry_mid ? 1 : 0) + (carry_low ? 1 : 0);
 
     return uint256_t(res_high, res_low);
 }
@@ -376,10 +384,10 @@ __device__ uint256_t sub256(const uint256_t& a, const uint256_t& b) {
 }
 
 __device__ uint256_t mod256(const uint256_t& x, const uint256_t& m) {
-    uint256_t q = mul256_hi(x, mu);
+    uint256_t q = mul256_hi(x, MU);
     uint256_t r = sub256(x, mul256(q, m));
-    if(lt256(m, r)) r = sub256(r, m);
-    return r;
+    if(lt256(r, m)) return r;
+    return sub256(r, m);
 }
 
 __device__ uint256_t add256(const uint256_t& a, const uint256_t& b) {
@@ -894,6 +902,7 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
 
