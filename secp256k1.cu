@@ -894,5 +894,3 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
-
-
