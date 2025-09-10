@@ -517,6 +517,11 @@ __device__ uint256_t powmod256(uint256_t base, uint256_t exp, uint256_t mod) {
     return result;
 }
 
+__device__ int iterations_cuda(int d) {
+    if(d < 46) return (49 * d + 80) / 17;
+    else       return (49 * d + 57) / 17;
+}
+
 __device__ void almost_inverse_p(uint256_t f, uint256_t g, uint256_t* result) {
     int d = 256; 
     int m = iterations_cuda(d);
@@ -902,6 +907,7 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
 
