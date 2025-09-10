@@ -864,10 +864,11 @@ __global__ void test_mod_inverse(uint256_t f, uint256_t g, uint256_t* result) {
 }
 
 int main() {
+
     // f = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
     uint256_t f(
-        (__uint128_t)0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,
-        (__uint128_t)0xFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+        (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFFFFFFFFFFULL,
+        (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFEFFFFFC2FULL
     );
 
     // g = 0x33e7665705359f04f28b88cf897c603c9
@@ -894,5 +895,6 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
 
