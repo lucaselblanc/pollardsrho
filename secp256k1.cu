@@ -290,54 +290,54 @@ __device__ void mod_sqr_mont_p(uint64_t out[4], const uint64_t in[4]) {
 
 //mod_inverse
 
-struct uint256_t {
-    __uint128_t low;
-    __uint128_t high;
-
-    __device__ __host__ uint256_t() : low(0), high(0) {}
-    __device__ __host__ uint256_t(__uint128_t l) : low(l), high(0) {}
-    __device__ __host__ uint256_t(__uint128_t h, __uint128_t l) : high(h), low(l) {}
+struct __uint1024_t {
+    __uint128_t limb[8];
 };
 
-struct Fraction256 {
-    uint256_t num;
-    uint256_t den;
+struct __uint256_t {
+    __uint128_t limb[2];
+};
+
+struct Fraction {
+    __uint1024_t num;
+    __uint1024_t den;
     bool negative;
 
-    __device__ Fraction256() : num(0), den(1), negative(false) {}
-    __device__ Fraction256(int64_t n) : num(n < 0 ? uint256_t(-n) : uint256_t(n)), den(1), negative(n < 0) {}
+__device__ Fraction() : num(0), den(1), negative(false) {}
+
+__device__ Fraction(__uint1024_t n) : num(n < 0 ? __uint1024_t(-n) : __uint1024_t(n)), den(1), negative(n < 0) {}
 };
 
-__device__ bool is_zero(const uint256_t& a) {
+__device__ bool is_zero(const __uint256_t& a) {
     return a.high == 0 && a.low == 0;
 }
 
-__device__ bool is_odd(const uint256_t& a) {
+__device__ bool is_odd(const __uint256_t& a) {
     return (a.low & 1) != 0;
 }
 
-__device__ bool is_negative(const uint256_t& a) {
+__device__ bool is_negative(const __uint256_t& a) {
     return (a.high & ((__uint128_t)1 << 127)) != 0;
 }
 
-__device__ uint256_t negate256(const uint256_t& a) {
-    uint256_t res;
+__device__ __uint256_t negate256(const __uint256_t& a) {
+    __uint256_t res;
     res.low = ~a.low + 1;
     res.high = ~a.high + (res.low == 0 ? 1 : 0);
     return res;
 }
 
-__device__ bool lt256(const uint256_t& a, const uint256_t& b) {
+__device__ bool lt256(const __uint256_t& a, const __uint256_t& b) {
     if(a.high < b.high) return true;
     if(a.high > b.high) return false;
     return a.low < b.low;
 }
 
-__device__ bool eq256(const uint256_t& a, const uint256_t& b) {
+__device__ bool eq256(const __uint256_t& a, const __uint256_t& b) {
     return a.high == b.high && a.low == b.low;
 }
 
-__device__ uint256_t mul256(const uint256_t& a, const uint256_t& b) {
+__device__ __uint256_t mul256(const __uint256_t& a, const __uint256_t& b) {
     __uint128_t a_lo = a.low;
     __uint128_t a_hi = a.high;
     __uint128_t b_lo = b.low;
@@ -354,10 +354,10 @@ __device__ uint256_t mul256(const uint256_t& a, const uint256_t& b) {
 
     __uint128_t res_high = hi_hi + (mid >> 64) + (carry_mid ? 1 : 0) + (carry_low ? 1 : 0);
 
-    return uint256_t(res_high, res_low);
+    return __uint256_t(res_high, res_low);
 }
 
-__device__ uint256_t mul256_hi(const uint256_t& a, const uint256_t& b) {
+__device__ __uint256_t mul256_hi(const __uint256_t& a, const __uint256_t& b) {
     __uint128_t a_lo = a.low;
     __uint128_t a_hi = a.high;
     __uint128_t b_lo = b.low;
@@ -376,102 +376,102 @@ __device__ uint256_t mul256_hi(const uint256_t& a, const uint256_t& b) {
     __uint128_t high = hi_hi + (mid >> 64) + (carry_mid ? 1 : 0) + (carry_low ? 1 : 0);
     __uint128_t low = lo_lo + (mid << 64);
 
-    return uint256_t(high, low);
+    return __uint256_t(high, low);
 }
 
-__device__ uint256_t sub256(const uint256_t& a, const uint256_t& b) {
-    uint256_t res;
+__device__ __uint256_t sub256(const __uint256_t& a, const __uint256_t& b) {
+    __uint256_t res;
     res.low = a.low - b.low;
     res.high = a.high - b.high - (a.low < b.low ? 1 : 0);
     return res;
 }
 
 //Barrett Reduction
-__device__ uint256_t mod256(const uint256_t& x, const uint256_t& m) {
+__device__ __uint256_t mod256(const __uint256_t& x, const __uint256_t& m) {
     //0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
-    uint256_t MU;
+    __uint256_t MU;
     MU.high = (__uint128_t)0x1000000000000000ULL << 64;
     MU.low  = 0x00000000000000001000003d1ULL;
 
-    uint256_t q = mul256_hi(x, MU);
-    uint256_t r = sub256(x, mul256(q, m));
+    __uint256_t q = mul256_hi(x, MU);
+    __uint256_t r = sub256(x, mul256(q, m));
     if(lt256(r, m)) return r;
     return sub256(r, m);
 }
 
-__device__ uint256_t add256(const uint256_t& a, const uint256_t& b) {
-    uint256_t res;
+__device__ __uint256_t add256(const __uint256_t& a, const __uint256_t& b) {
+    __uint256_t res;
     res.low = a.low + b.low;
     res.high = a.high + b.high + (res.low < a.low ? 1 : 0);
     return res;
 }
 
-__device__ uint256_t shiftr256(const uint256_t& a, int s) {
+__device__ __uint256_t shiftr256(const __uint256_t& a, int s) {
     if (s == 0) return a;
-    if (s >= 256) return uint256_t(0);
+    if (s >= 256) return __uint256_t(0);
     if (s < 128)
-        return uint256_t(a.high >> s, (a.low >> s) | (a.high << (128 - s)));
+        return __uint256_t(a.high >> s, (a.low >> s) | (a.high << (128 - s)));
     else
-        return uint256_t(0, a.high >> (s - 128));
+        return __uint256_t(0, a.high >> (s - 128));
 }
 
-__device__ uint256_t shiftl256(const uint256_t& a, int s) {
+__device__ __uint256_t shiftl256(const __uint256_t& a, int s) {
     if (s == 0) return a;
-    if (s >= 256) return uint256_t(0);
+    if (s >= 256) return __uint256_t(0);
     if (s < 128)
-        return uint256_t((a.high << s) | (a.low >> (128 - s)), a.low << s);
+        return __uint256_t((a.high << s) | (a.low >> (128 - s)), a.low << s);
     else
-        return uint256_t(a.low << (s - 128), 0);
+        return __uint256_t(a.low << (s - 128), 0);
 }
 
-__device__ uint256_t div2_uint256(uint256_t x) {
-    if(x.low & 1) x = add256(x, uint256_t(1));
+__device__ __uint256_t div2_uint256(__uint256_t x) {
+    if(x.low & 1) x = add256(x, __uint256_t(1));
     return shiftr256(x,1);
 }
 
-__device__ Fraction256 div2_frac(const Fraction256& a) {
-    Fraction256 res = a;
+__device__ Fraction div2_frac(const Fraction& a) {
+    Fraction res = a;
     if((res.num.low & 1) == 0) {
         res.num = shiftr256(res.num, 1);
     } else {
-        res.den = mul256(res.den, uint256_t(2));
+        res.den = mul256(res.den, __uint256_t(2));
     }
     return res;
 }
 
-__device__ Fraction256 add_frac(const Fraction256& a, const Fraction256& b) {
-    Fraction256 res;
-    uint256_t na = mul256(a.num, b.den);
-    uint256_t nb = mul256(b.num, a.den);
+__device__ Fraction add_frac(const Fraction& a, const Fraction& b) {
+    Fraction res;
+    __uint1024_t na = mul(a.num, b.den);
+    __uint1024_t nb = mul(b.num, a.den);
     if(a.negative == b.negative) {
-        res.num = add256(na, nb);
+        res.num = add(na, nb);
         res.negative = a.negative;
     } else {
-        if(lt256(na, nb)) {
-            res.num = sub256(nb, na);
+        if(lt(na, nb)) {
+            res.num = sub(nb, na);
             res.negative = b.negative;
         } else {
-            res.num = sub256(na, nb);
+            res.num = sub(na, nb);
             res.negative = a.negative;
         }
     }
-    res.den = mul256(a.den, b.den);
+    res.den = mul(a.den, b.den);
     return res;
 }
 
-__device__ uint256_t truncate_cuda(uint256_t f, int t) {
-    if(t == 0) return uint256_t(0);
+__device__ __uint256_t truncate(__uint256_t f, int t) {
+    if(t == 0) return __uint256_t(0);
     if(t >= 256) return f;
 
-    uint256_t mask;
-    if(t <= 128) mask = uint256_t(0, ((__uint128_t)1 << t) - 1);
+    __uint256_t mask;
+    if(t <= 128) mask = __uint256_t(0, ((__uint128_t)1 << t) - 1);
     else {
         __uint128_t high_mask = ((__uint128_t)1 << (t - 128)) - 1;
         __uint128_t low_mask = ~((__uint128_t)0) >> (256 - t);
-        mask = uint256_t(high_mask, low_mask);
+        mask = __uint256_t(high_mask, low_mask);
     }
 
-    uint256_t res = uint256_t(f.high & mask.high, f.low & mask.low);
+    __uint256_t res = __uint256_t(f.high & mask.high, f.low & mask.low);
 
     bool neg;
     if(t <= 128) neg = res.low >= ((__uint128_t)1 << (t-1));
@@ -485,13 +485,13 @@ __device__ uint256_t truncate_cuda(uint256_t f, int t) {
 }
 
 __device__ void divsteps2_cuda(int n, int t, int* delta,
-    uint256_t* f, uint256_t* g,
-    Fraction256* u, Fraction256* v, Fraction256* q, Fraction256* r)
+    __uint256_t* f, __uint256_t* g,
+    Fraction* u, Fraction* v, Fraction* q, Fraction* r)
 {
-    *u = Fraction256(1);
-    *v = Fraction256(0);
-    *q = Fraction256(0);
-    *r = Fraction256(1);
+    *u = Fraction(1);
+    *v = Fraction(0);
+    *q = Fraction(0);
+    *r = Fraction(1);
 
     while(n > 0) {
         bool g0 = is_odd(*g);
@@ -510,8 +510,8 @@ __device__ void divsteps2_cuda(int n, int t, int* delta,
     }
 }
 
-__device__ uint256_t powmod256(uint256_t base, uint256_t exp, uint256_t mod) {
-    uint256_t result(1);
+__device__ __uint256_t powmod256(__uint256_t base, __uint256_t exp, __uint256_t mod) {
+    __uint256_t result(1);
     while(!is_zero(exp)) {
         if(is_odd(exp)) result = mod256(mul256(result, base), mod);
         base = mod256(mul256(base, base), mod);
@@ -525,19 +525,19 @@ __device__ int iterations_cuda(int d) {
     else       return (49 * d + 57) / 17;
 }
 
-__device__ void almost_inverse_p(uint256_t f, uint256_t g, uint256_t* result) {
+__device__ void almost_inverse_p(__uint256_t f, __uint256_t g, __uint256_t* result) {
     int d = 256; 
     int m = iterations_cuda(d);
 
-    uint256_t precomp = powmod256(div2_uint256(add256(f, uint256_t(1))), uint256_t(m-1), f);
+    __uint256_t precomp = powmod256(div2_uint256(add256(f, __uint256_t(1))), __uint256_t(m-1), f);
 
     int delta = 1;
-    uint256_t f_work = f, g_work = g;
-    Fraction256 u, v, q, r;
+    __uint256_t f_work = f, g_work = g;
+    Fraction u, v, q, r;
 
     divsteps2_cuda(m, m+1, &delta, &f_work, &g_work, &u, &v, &q, &r);
 
-    uint256_t V_scaled = shiftl256(v.num, m-1);
+    __uint256_t V_scaled = shiftl256(v.num, m-1);
 
     if(v.negative ^ is_negative(f_work)) 
         V_scaled = negate256(V_scaled);
