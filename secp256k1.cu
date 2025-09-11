@@ -320,24 +320,24 @@ __device__ bool is_negative(const __uint256_t& a) {
     return (a.high & ((__uint128_t)1 << 127)) != 0;
 }
 
-__device__ __uint256_t negate256(const __uint256_t& a) {
-    __uint256_t res;
+__device__ __uint1024_t negate(const __uint1024_t& a) {
+    __uint1024_t res;
     res.low = ~a.low + 1;
     res.high = ~a.high + (res.low == 0 ? 1 : 0);
     return res;
 }
 
-__device__ bool lt256(const __uint256_t& a, const __uint256_t& b) {
+__device__ bool lt(const __uint1024_t& a, const __uint1024_t& b) {
     if(a.high < b.high) return true;
     if(a.high > b.high) return false;
     return a.low < b.low;
 }
 
-__device__ bool eq256(const __uint256_t& a, const __uint256_t& b) {
+__device__ bool eq(const __uint1024_t& a, const __uint1024_t& b) {
     return a.high == b.high && a.low == b.low;
 }
 
-__device__ __uint256_t mul256(const __uint256_t& a, const __uint256_t& b) {
+__device__ __uint1024_t mul(const __uint1024_t& a, const __uint1024_t& b) {
     __uint128_t a_lo = a.low;
     __uint128_t a_hi = a.high;
     __uint128_t b_lo = b.low;
@@ -354,10 +354,10 @@ __device__ __uint256_t mul256(const __uint256_t& a, const __uint256_t& b) {
 
     __uint128_t res_high = hi_hi + (mid >> 64) + (carry_mid ? 1 : 0) + (carry_low ? 1 : 0);
 
-    return __uint256_t(res_high, res_low);
+    return __uint1024_t(res_high, res_low);
 }
 
-__device__ __uint256_t mul256_hi(const __uint256_t& a, const __uint256_t& b) {
+__device__ __uint1024_t mul_hi(const __uint1024_t& a, const __uint1024_t& b) {
     __uint128_t a_lo = a.low;
     __uint128_t a_hi = a.high;
     __uint128_t b_lo = b.low;
@@ -376,11 +376,11 @@ __device__ __uint256_t mul256_hi(const __uint256_t& a, const __uint256_t& b) {
     __uint128_t high = hi_hi + (mid >> 64) + (carry_mid ? 1 : 0) + (carry_low ? 1 : 0);
     __uint128_t low = lo_lo + (mid << 64);
 
-    return __uint256_t(high, low);
+    return __uint1024_t(high, low);
 }
 
-__device__ __uint256_t sub256(const __uint256_t& a, const __uint256_t& b) {
-    __uint256_t res;
+__device__ __uint1024_t sub(const __uint1024_t& a, const __uint1024_t& b) {
+    __uint1024_t res;
     res.low = a.low - b.low;
     res.high = a.high - b.high - (a.low < b.low ? 1 : 0);
     return res;
@@ -394,9 +394,9 @@ __device__ __uint256_t mod256(const __uint256_t& x, const __uint256_t& m) {
     MU.low  = 0x00000000000000001000003d1ULL;
 
     __uint256_t q = mul256_hi(x, MU);
-    __uint256_t r = sub256(x, mul256(q, m));
-    if(lt256(r, m)) return r;
-    return sub256(r, m);
+    __uint256_t r = sub256(x, mul(q, m));
+    if(lt(r, m)) return r;
+    return sub(r, m);
 }
 
 __device__ __uint256_t add256(const __uint256_t& a, const __uint256_t& b) {
@@ -424,7 +424,7 @@ __device__ __uint256_t shiftl256(const __uint256_t& a, int s) {
         return __uint256_t(a.low << (s - 128), 0);
 }
 
-__device__ __uint256_t div2_uint256(__uint256_t x) {
+__device__ __uint256_t div2_uint(__uint256_t x) {
     if(x.low & 1) x = add256(x, __uint256_t(1));
     return shiftr256(x,1);
 }
