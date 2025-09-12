@@ -509,6 +509,62 @@ __device__ void divsteps2(
     }
 }
 
+__device__ unsigned int iterations(unsigned int d) {
+    if (d < 46) {
+        return (49 * d + 80) / 17;
+    } else {
+        return (49 * d + 57) / 17;
+    }
+}
+
+__device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) {
+    if ((f_in.limb[0] & 1) == 0) {
+        __uint256_t zero = {}; return zero;
+    }
+
+    unsigned int d_f = bit_length_256(f_in);
+    unsigned int d_g = bit_length_256(g_in);
+    unsigned int d = (d_f > d_g) ? d_f : d_g;
+
+    unsigned int m = iterations(d);
+
+    __uint256_t f_plus_1 = add_256(f_in, (__uint256_t){{(__uint128_t)1, (__uint128_t)0}});
+    __uint256_t half_f_plus_1 = shftR1_256(f_plus_1, 256);
+    __uint256_t precomp = modexp_256(half_f_plus_1, (m > 0 ? m - 1 : 0), f_in);
+
+    uint256_t_sign f_s = {};
+    uint256_t_sign g_s = {};
+    uint1024_t_sign u_s = {};
+    uint1024_t_sign v_s = {};
+    uint1024_t_sign q_s = {};
+    uint1024_t_sign r_s = {};
+
+    f_s.magnitude = f_in; f_s.sign = 1;
+    g_s.magnitude = g_in; g_s.sign = 1;
+
+    int delta = 1;
+
+    divsteps2(m, m + 1, delta, f_s, g_s, u_s, v_s, q_s, r_s);
+
+    __uint1024_t v_frac = v_s.magnitude;
+    __uint1024_t V_shifted = lshift_1024(v_frac, (m > 0 ? m - 1 : 0));
+    __uint256_t fm = f_s.magnitude;
+    int s_fm = sign(fm, m + 1);
+
+    __uint256_t V_mod = reduce_mod_1024_to_256(V_shifted, f_in);
+
+    if (s_fm < 0) {
+        if (V_mod.limb[0] == 0 && V_mod.limb[1] == 0) {
+        } else {
+            V_mod = sub_256(f_in, V_mod);
+        }
+    }
+
+    __uint256_t inv = mulmod_256(V_mod, precomp, f_in);
+
+    return inv;
+}
+
 //Final
 
 __device__ void jacobian_init(ECPointJacobian *point) {
@@ -877,4 +933,5 @@ int main() {
     cudaFree(result_device);
     return 0;
 }
+
 
