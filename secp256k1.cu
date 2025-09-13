@@ -1333,7 +1333,7 @@ int main() {
 
     test_mod_inverse<<<1,1>>>(f, g, result_device);
 
-    cudaMemcpy(&result_host, result_device, sizeof(uint256_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&result_host, result_device, sizeof(__uint256_t), cudaMemcpyDeviceToHost);
 
     printf("Resultado high: %llx\n", (unsigned long long)result_host.high);
     printf("Resultado low : %llx\n", (unsigned long long)result_host.low);
