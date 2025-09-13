@@ -318,6 +318,13 @@ struct frac1024_t {
     int sign;
 };
 
+__constant__ __uint512_t mu[4] = {
+       (__uint128_t) 0x1000003d1,
+       (__uint128_t) 0x1ULL,
+       (__uint128_t) 0x0ULL,
+       (__uint128_t) 0x0ULL
+};
+
 __device__ __forceinline__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
     __uint256_t res;
     __uint128_t carry = 0, tmp;
@@ -791,15 +798,6 @@ __device__ __forceinline__ void frac_div2(frac1024_t &x) {
 __device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
     for(int i=0; i<4; i++) x_high.limb[i] = x.limb[i+4];
-
-    const __uint512_t mu = {
-    {
-       (__uint128_t) 0x1000003d1,
-       (__uint128_t) 0x1ULL,
-       (__uint128_t) 0x0ULL,
-       (__uint128_t) 0x0ULL
-    }
-    };
 
     __uint1024_t prod = mul_512_1024(x_high, mu);
     __uint512_t q;
