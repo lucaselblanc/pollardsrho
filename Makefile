@@ -32,7 +32,7 @@ NVCCFLAGS = -O3 \
 	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
 	-ccbin $(CXX) \
 	-Xcompiler "-O3 -std=c++14 -pthread" \
-	$(INCLUDES) --expt-relaxed-constexpr --expt-extended-lambda
+	$(INCLUDES) --expt-relaxed-constexpr
 
 %.o: %.cpp
 	$(NVCC) --x cu $(NVCCFLAGS) -c $< -o $@
