@@ -23,6 +23,10 @@ typedef struct {
     int infinity;
 } ECPoint;
 
+struct __uint256_t {
+    __uint128_t limb[2];
+};
+
 __global__ void point_init(ECPoint *point);
 __global__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q);
 __global__ void point_double(ECPoint *R, const ECPoint *P);
