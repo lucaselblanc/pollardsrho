@@ -319,10 +319,12 @@ struct frac1024_t {
 };
 
 __constant__ __uint512_t mu = {
+     {
        (__uint128_t) 0x1000003d1,
        (__uint128_t) 0x1ULL,
        (__uint128_t) 0x0ULL,
        (__uint128_t) 0x0ULL
+     }
 };
 
 __device__ __forceinline__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
