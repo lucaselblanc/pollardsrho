@@ -1305,8 +1305,8 @@ __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
     kernel_get_compressed_public_key(out, pub);
 }
 
-__global__ void test_mod_inverse(uint256_t f, uint256_t g) {
-    recip2(f, g); {
+__global__ void test_mod_inverse(uint256_t f, uint256_t g, uint256_t* result) {
+    *result = recip2(f, g);
 }
 
 int main() {
@@ -1331,7 +1331,7 @@ int main() {
     uint256_t* result_device;
     cudaMalloc(&result_device, sizeof(uint256_t));
 
-    test_mod_inverse<<<1,1>>>(f, g);
+    test_mod_inverse<<<1,1>>>(f, g, result_device);
 
     cudaMemcpy(&result_host, result_device, sizeof(uint256_t), cudaMemcpyDeviceToHost);
 
