@@ -537,8 +537,7 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
 
     __uint1024_t v_frac = v_s.magnitude;
     __uint1024_t V_shifted = lshift_1024(v_frac, (m > 0 ? m - 1 : 0));
-    __uint256_t fm = f_s.magnitude;
-    int s_fm = sign(fm, m + 1);
+    int s_fm = f_s.sign;
 
     __uint256_t V_mod = reduce_mod_1024_to_256(V_shifted, f_in);
 
