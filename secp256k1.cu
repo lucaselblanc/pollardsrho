@@ -1309,7 +1309,9 @@ __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
 __global__ void test_mod_inverse(__uint256_t f, __uint256_t g, __uint256_t* result) {
     *result = recip2(f, g);
 }
+*/
 
+/*
 int main() {
 
     // f = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
