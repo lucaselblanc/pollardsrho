@@ -288,10 +288,7 @@ __device__ void mod_sqr_mont_p(uint64_t out[4], const uint64_t in[4]) {
     mod_mul_mont_p(out, in, in);
 }
 
-//mod_inverse
-
-//Barrett Reduction
-//0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
+//mod_inverse
 
 struct __uint256_t {
     __uint128_t limb[2];
@@ -477,6 +474,8 @@ __device__ __uint512_t mul_256_512(const __uint256_t &a, const __uint256_t &b) {
     return res;
 }
 
+//Barrett Reduction
+//0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
 __device__ __uint256_t reduce_mod_1024_to_256(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
     for(int i=0; i<4; i++) x_high.limb[i] = x.limb[i+4];
