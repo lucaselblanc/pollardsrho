@@ -382,6 +382,18 @@ __device__ __uint1024_t add_1024(const __uint1024_t &a, const __uint1024_t &b) {
     return res;
 }
 
+
+__device__ __uint512_t sub_512(const __uint512_t &a, const __uint512_t &b) {
+    __uint512_t res;
+    __uint128_t borrow = 0, tmp;
+    for (int i = 0; i < 4; i++) {
+        tmp = a.limb[i] - b.limb[i] - borrow;
+        borrow = (tmp > a.limb[i]) ? 1 : 0;
+        res.limb[i] = tmp;
+    }
+    return res;
+}
+
 __device__ __uint1024_t sub_1024(const __uint1024_t &a, const __uint1024_t &b) {
     __uint1024_t res;
     __uint128_t borrow = 0, tmp;
@@ -441,6 +453,62 @@ __device__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __ui
     }
 
     return result;
+}
+
+__device__ __uint512_t mul_256_512(const __uint256_t &a, const __uint256_t &b) {
+    __uint512_t res = {};
+
+    __uint128_t a0 = a.limb[0], a1 = a.limb[1];
+    __uint128_t b0 = b.limb[0], b1 = b.limb[1];
+
+    __uint128_t lo = a0 * b0;
+    __uint128_t mid1 = a0 * b1;
+    __uint128_t mid2 = a1 * b0;
+    __uint128_t hi = a1 * b1;
+
+    res.limb[0] = lo;
+    __uint128_t carry = 0;
+    __uint128_t mid_sum = mid1 + mid2;
+    if (mid_sum < mid1) carry = 1; 
+    res.limb[1] = mid_sum + carry;
+    res.limb[2] = hi + (mid_sum >> 128);
+    res.limb[3] = 0;
+
+    return res;
+}
+
+__device__ __uint256_t reduce_mod_1024_to_256(const __uint1024_t &x, const __uint256_t &p) {
+    __uint512_t x_high;
+    for(int i=0; i<4; i++) x_high.limb[i] = x.limb[i+4];
+
+    __device__ const __uint512_t mu = {
+    {
+       (__uint128_t) 0x1000003d1,
+       (__uint128_t) 0x1ULL,
+       (__uint128_t) 0x0ULL,
+       (__uint128_t) 0x0ULL
+    }
+};
+    __uint1024_t prod = lshift_1024(mul_512_1024(x_high, mu), 0);
+    __uint512_t q;
+    for(int i=0; i<4; i++) q.limb[i] = prod.limb[i+4];
+
+    __uint512_t qp = mul_256_512_512(q, p);
+    __uint512_t r = sub_512(x_high, qp);
+
+    while (true) {
+        bool ge = false;
+        for (int i = 3; i >= 0; i--) {
+            if (i >= 2 && r.limb[i] > 0) { ge = true; break; } 
+            if (r.limb[i] > p.limb[i]) { ge = true; break; }
+            else if (r.limb[i] < p.limb[i]) break;
+        }
+        if (!ge) break;
+        r = sub_512(r, (__uint512_t){p.limb[0], p.limb[1], 0, 0});
+    }
+
+    __uint256_t res = { r.limb[0], r.limb[1] };
+    return res;
 }
 
 __device__ __uint256_t truncate(const __uint256_t &f, unsigned int t) {
