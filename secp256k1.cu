@@ -379,7 +379,6 @@ __device__ __uint1024_t add_1024(const __uint1024_t &a, const __uint1024_t &b) {
     return res;
 }
 
-
 __device__ __uint512_t sub_512(const __uint512_t &a, const __uint512_t &b) {
     __uint512_t res;
     __uint128_t borrow = 0, tmp;
@@ -476,7 +475,7 @@ __device__ __uint512_t mul_256_512(const __uint256_t &a, const __uint256_t &b) {
 
 //Barrett Reduction
 //0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
-__device__ __uint256_t reduce_mod_1024_to_256(const __uint1024_t &x, const __uint256_t &p) {
+__device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
     for(int i=0; i<4; i++) x_high.limb[i] = x.limb[i+4];
 
@@ -656,7 +655,7 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
     divsteps2(m, m + 1, delta, f_s, g_s, u, v, q, r);
 
     __uint1024_t v_shifted = lshift_1024(v.num, (m > 0 ? m - 1 : 0) - v.exp);
-    __uint256_t V_mod = reduce_mod_1024_to_256(v_shifted, f_in);
+    __uint256_t V_mod = barrett_reduction(v_shifted, f_in);
 
     if (f_s.sign < 0) {
         if (!(V_mod.limb[0] == 0 && V_mod.limb[1] == 0)) {
