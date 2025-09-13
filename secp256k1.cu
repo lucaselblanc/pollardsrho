@@ -318,7 +318,7 @@ struct frac1024_t {
     int sign;
 };
 
-__device__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
+__device__ __forceinline__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
     __uint256_t res;
     __uint128_t carry = 0, tmp;
 
@@ -332,7 +332,7 @@ __device__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
     return res;
 }
 
-__device__ __uint256_t sub_256(const __uint256_t &a, const __uint256_t &b) {
+__device__ __forceinline__ __uint256_t sub_256(const __uint256_t &a, const __uint256_t &b) {
     __uint256_t res;
     __uint128_t borrow = 0, tmp;
 
@@ -346,19 +346,19 @@ __device__ __uint256_t sub_256(const __uint256_t &a, const __uint256_t &b) {
     return res;
 }
 
-__device__ __uint256_t negate_256(const __uint256_t &x) {
+__device__ __forceinline__ __uint256_t negate_256(const __uint256_t &x) {
     __uint256_t zero = {};
     return sub_256(zero, x);
 }
 
-__device__ uint1024_t_sign negate_1024(const uint1024_t_sign &x) {
+__device__ __forceinline__ uint1024_t_sign negate_1024(const uint1024_t_sign &x) {
     uint1024_t_sign res = x;
     res.magnitude = sub_1024((__uint1024_t){{0}}, x.magnitude);
     res.sign = -x.sign;
     return res;
 }
 
-__device__ __uint256_t shftR1_256(const __uint256_t &a, unsigned int t) {
+__device__ __forceinline__ __uint256_t shftR1_256(const __uint256_t &a, unsigned int t) {
     __uint256_t res;
     res.limb[0] = a.limb[0] >> 1 | (a.limb[1] << 127);
     res.limb[1] = a.limb[1] >> 1;
@@ -366,7 +366,7 @@ __device__ __uint256_t shftR1_256(const __uint256_t &a, unsigned int t) {
     return res;
 }
 
-__device__ __uint1024_t add_1024(const __uint1024_t &a, const __uint1024_t &b) {
+__device__ __forceinline__ __uint1024_t add_1024(const __uint1024_t &a, const __uint1024_t &b) {
     __uint1024_t res;
     __uint128_t carry = 0, tmp;
 
@@ -379,7 +379,7 @@ __device__ __uint1024_t add_1024(const __uint1024_t &a, const __uint1024_t &b) {
     return res;
 }
 
-__device__ __uint512_t sub_512(const __uint512_t &a, const __uint512_t &b) {
+__device__ __forceinline__ __uint512_t sub_512(const __uint512_t &a, const __uint512_t &b) {
     __uint512_t res;
     __uint128_t borrow = 0, tmp;
     for (int i = 0; i < 4; i++) {
@@ -390,7 +390,20 @@ __device__ __uint512_t sub_512(const __uint512_t &a, const __uint512_t &b) {
     return res;
 }
 
-__device__ __uint1024_t sub_1024(const __uint1024_t &a, const __uint1024_t &b) {
+__device__ __forceinline__ bool borrow_512(const __uint512_t &a, const __uint512_t &b) {
+    unsigned __int128 diff;
+    unsigned __int128 borrow = 0;
+
+    #pragma unroll
+    for (int i = 0; i < 4; i++) {
+        diff = (unsigned __int128)a.limb[i] - b.limb[i] - borrow;
+        borrow = (diff >> 127) & 1; 
+    }
+
+    return borrow;
+}
+
+__device__ __forceinline__ __uint1024_t sub_1024(const __uint1024_t &a, const __uint1024_t &b) {
     __uint1024_t res;
     __uint128_t borrow = 0, tmp;
 
@@ -403,7 +416,7 @@ __device__ __uint1024_t sub_1024(const __uint1024_t &a, const __uint1024_t &b) {
     return res;
 }
 
-__device__ __uint1024_t shftR1_1024(const __uint1024_t &a) {
+__device__ __forceinline__ __uint1024_t shftR1_1024(const __uint1024_t &a) {
     __uint1024_t res = {};
     for (int i = 7; i >= 0; i--) {
         __uint128_t hi = (i > 0) ? a.limb[i-1] : 0;
@@ -412,7 +425,7 @@ __device__ __uint1024_t shftR1_1024(const __uint1024_t &a) {
     return res;
 }
 
-__device__ __uint1024_t lshift_1024(const __uint1024_t &x, unsigned int shift) {
+__device__ __forceinline__ __uint1024_t lshift_1024(const __uint1024_t &x, unsigned int shift) {
     __uint1024_t res = {};
     unsigned int limb_shift = shift / 128;
     unsigned int bit_shift = shift % 128;
@@ -426,7 +439,7 @@ __device__ __uint1024_t lshift_1024(const __uint1024_t &x, unsigned int shift) {
     return res;
 }
 
-__device__ unsigned int bit_length_256(const __uint256_t &x) {
+__device__ __forceinline__ unsigned int bit_length_256(const __uint256_t &x) {
     if (x.limb[1] != 0) {
         unsigned int high = 128 + 128 - __clzll((unsigned long long)(x.limb[1] >> 64));
         high = max(high, 128 - __clzll((unsigned long long)x.limb[1]));
@@ -439,7 +452,7 @@ __device__ unsigned int bit_length_256(const __uint256_t &x) {
     return 0;
 }
 
-__device__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
+__device__ __forceinline__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
     __uint256_t result = {1, 0};
 
     while (exp > 0) {
@@ -451,7 +464,7 @@ __device__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __ui
     return result;
 }
 
-__device__ __uint512_t mul_256_512(const __uint256_t &a, const __uint256_t &b) {
+__device__ __forceinline__ __uint512_t mul_256_512(const __uint256_t &a, const __uint256_t &b) {
     __uint512_t res = {};
 
     __uint128_t a0 = a.limb[0], a1 = a.limb[1];
@@ -475,8 +488,9 @@ __device__ __uint512_t mul_256_512(const __uint256_t &a, const __uint256_t &b) {
 
 //Barrett Reduction
 //0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
-__device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
+__device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
+    #pragma unroll
     for(int i=0; i<4; i++) x_high.limb[i] = x.limb[i+4];
 
     __device__ const __uint512_t mu = {
@@ -486,23 +500,31 @@ __device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_
        (__uint128_t) 0x0ULL,
        (__uint128_t) 0x0ULL
     }
-};
+    };
+
     __uint1024_t prod = lshift_1024(mul_512_1024(x_high, mu), 0);
     __uint512_t q;
+    #pragma unroll
     for(int i=0; i<4; i++) q.limb[i] = prod.limb[i+4];
 
     __uint512_t qp = mul_256_512_512(q, p);
     __uint512_t r = sub_512(x_high, qp);
+    __uint512_t r_minus_p = sub_512(r, (__uint512_t){p.limb[0], p.limb[1], 0, 0});
+    bool ge1 = !borrow_512(r, (__uint512_t){p.limb[0], p.limb[1], 0, 0}); // r >= p?
+    uint64_t mask1 = (uint64_t)-(int64_t)ge1;
 
-    while (true) {
-        bool ge = false;
-        for (int i = 3; i >= 0; i--) {
-            if (i >= 2 && r.limb[i] > 0) { ge = true; break; } 
-            if (r.limb[i] > p.limb[i]) { ge = true; break; }
-            else if (r.limb[i] < p.limb[i]) break;
-        }
-        if (!ge) break;
-        r = sub_512(r, (__uint512_t){p.limb[0], p.limb[1], 0, 0});
+    #pragma unroll
+    for (int i=0; i<4; i++) {
+        r.limb[i] = (r_minus_p.limb[i] & mask1) | (r.limb[i] & ~mask1);
+    }
+
+    r_minus_p = sub_512(r, (__uint512_t){p.limb[0], p.limb[1], 0, 0});
+    bool ge2 = !borrow_512(r, (__uint512_t){p.limb[0], p.limb[1], 0, 0});
+    uint64_t mask2 = (uint64_t)-(int64_t)ge2;
+
+    #pragma unroll
+    for (int i=0; i<4; i++) {
+        r.limb[i] = (r_minus_p.limb[i] & mask2) | (r.limb[i] & ~mask2);
     }
 
     __uint256_t res = { r.limb[0], r.limb[1] };
