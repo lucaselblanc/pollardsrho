@@ -460,25 +460,31 @@ __device__ void divsteps2(
     while (n > 0) {
         f.magnitude = truncate(f.magnitude, t);
 
-        bool g_odd = g.magnitude.limb[0] & 1;
+        bool g_odd = (g.magnitude.limb[0] & 1);
 
         if (delta > 0 && g_odd) {
             delta = -delta;
 
-            f = uint256_t_sign{g.magnitude, g.sign};
-            g = uint256_t_sign{negate_256(f.magnitude), -f.sign};
+            uint256_t_sign orig_f = f;
+            uint256_t_sign orig_g = g;
+            uint1024_t_sign orig_u = u;
+            uint1024_t_sign orig_v = v;
+            uint1024_t_sign orig_q = q;
+            uint1024_t_sign orig_r = r;
 
-            uint1024_t_sign tmp_u = u;
-            u = q;
-            q = negate_1024(tmp_u);
+            f = orig_g;
+            g.magnitude = negate_256_mag(orig_f.magnitude);
+            g.sign = -orig_f.sign;
 
-            tmp_u = v;
-            v = r;
-            r = negate_1024(tmp_u);
+            u = orig_q;
+            v = orig_r;
+
+            q = negate_1024(orig_u);
+            r = negate_1024(orig_v);
         }
 
-        bool g0 = g.magnitude.limb[0] & 1;
-        delta += 1;
+        bool g0 = (g.magnitude.limb[0] & 1);
+        delta = 1 + delta;
 
         if (g0) {
             if (f.sign > 0) g.magnitude = add_256(g.magnitude, f.magnitude);
@@ -497,14 +503,6 @@ __device__ void divsteps2(
 
         n--; t--;
         g.magnitude = truncate(g.magnitude, t);
-    }
-}
-
-__device__ unsigned int iterations(unsigned int d) {
-    if (d < 46) {
-        return (49 * d + 80) / 17;
-    } else {
-        return (49 * d + 57) / 17;
     }
 }
 
