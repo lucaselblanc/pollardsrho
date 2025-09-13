@@ -1305,20 +1305,20 @@ __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
     kernel_get_compressed_public_key(out, pub);
 }
 
-__global__ void test_mod_inverse(uint256_t f, uint256_t g, uint256_t* result) {
+__global__ void test_mod_inverse(__uint256_t f, __uint256_t g, __uint256_t* result) {
     *result = recip2(f, g);
 }
 
 int main() {
 
     // f = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
-    uint256_t f(
+    __uint256_t f(
         (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFFFFFFFFFFULL,
         (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFEFFFFFC2FULL
     );
 
     // g = 0x33e7665705359f04f28b88cf897c603c9
-    uint256_t g(
+    __uint256_t g(
         (__uint128_t)0x33e7665705359f04ULL,  // high 128 bits
         ((__uint128_t)0xf << 64) | (__uint128_t)0x28b88cf897c603c9ULL
     );
@@ -1327,9 +1327,9 @@ int main() {
     //Hex: 7FDB62ED2D6FA0874ABD664C95B7CEF2ED79CC82D13FF3AC8E9766AA21BEBEAE (bebeae kkk)
     //Dec: 57831354042695616917422878622316954017183908093256327737334808907053491207854
 
-    uint256_t result_host;
-    uint256_t* result_device;
-    cudaMalloc(&result_device, sizeof(uint256_t));
+    __uint256_t result_host;
+    __uint256_t* result_device;
+    cudaMalloc(&result_device, sizeof(__uint256_t));
 
     test_mod_inverse<<<1,1>>>(f, g, result_device);
 
