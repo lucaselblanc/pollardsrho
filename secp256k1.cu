@@ -1312,16 +1312,14 @@ __global__ void test_mod_inverse(__uint256_t f, __uint256_t g, __uint256_t* resu
 int main() {
 
     // f = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
-    __uint256_t f(
-        (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFFFFFFFFFFULL,
-        (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFEFFFFFC2FULL
-    );
+    __uint256_t f = {};
+    f.limb[0] = (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFFFFFFFFFFULL;
+    f.limb[1] = (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFEFFFFFC2FULL;
 
     // g = 0x33e7665705359f04f28b88cf897c603c9
-    __uint256_t g(
-        (__uint128_t)0x33e7665705359f04ULL,  // high 128 bits
-        ((__uint128_t)0xf << 64) | (__uint128_t)0x28b88cf897c603c9ULL
-    );
+    __uint256_t g = {};
+    g.limb[0] = (__uint128_t)0x33e7665705359f04ULL;
+    g.limb[1] = ((__uint128_t)0xf << 64) | (__uint128_t)0x28b88cf897c603c9ULL;
 
     /* g ≡ 1 (mod f): */
     //Hex: 7FDB62ED2D6FA0874ABD664C95B7CEF2ED79CC82D13FF3AC8E9766AA21BEBEAE (bebeae kkk)
@@ -1335,8 +1333,8 @@ int main() {
 
     cudaMemcpy(&result_host, result_device, sizeof(__uint256_t), cudaMemcpyDeviceToHost);
 
-    printf("Resultado high: %llx\n", (unsigned long long)result_host.high);
-    printf("Resultado low : %llx\n", (unsigned long long)result_host.low);
+    printf("Resultado limb[1] (alto): %llx\n", (unsigned long long)result_host.limb[1]);
+    printf("Resultado limb[0] (baixo): %llx\n", (unsigned long long)result_host.limb[0]);
 
     cudaFree(result_device);
     return 0;
