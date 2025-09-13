@@ -787,7 +787,7 @@ __device__ __forceinline__ void frac_div2(frac1024_t &x) {
     x.exp += 1;
 }
 
-// Constant-time Barrett Reduction
+// Barrett Reduction
 __device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
     for(int i=0; i<4; i++) x_high.limb[i] = x.limb[i+4];
