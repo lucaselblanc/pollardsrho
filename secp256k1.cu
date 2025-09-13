@@ -311,6 +311,12 @@ struct uint1024_t_sign {
     int sign;
 };
 
+struct frac1024_t {
+    __uint1024_t num;
+    unsigned int exp;
+    int sign;
+};
+
 __device__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
     __uint256_t res;
     __uint128_t carry = 0, tmp;
@@ -394,17 +400,21 @@ __device__ __uint1024_t shftR1_1024(const __uint1024_t &a) {
     return res;
 }
 
-__device__ __uint256_t truncate(__uint256_t f, unsigned int t) {
+__device__ __uint256_t truncate(const __uint256_t &f, unsigned int t) {
     __uint256_t res = {};
     if (t == 0) return res;
 
-    if (t <= 128) {
-        __uint128_t mask = ((__uint128_t)1 << t) - 1;
-        res.limb[0] = f.limb[0] & mask;
-    } else if (t < 256) {
-        res.limb[0] = f.limb[0];
-        __uint128_t mask = ((__uint128_t)1 << (t - 128)) - 1;
-        res.limb[1] = f.limb[1] & mask;
+    if (t < 256) {
+        __uint256_t mask = {};
+        if (t <= 128) {
+            mask.limb[0] = (((__uint128_t)1 << t) - 1);
+            res.limb[0] = f.limb[0] & mask.limb[0];
+        } else {
+            mask.limb[0] = ~(__uint128_t)0;
+            mask.limb[1] = (((__uint128_t)1 << (t - 128)) - 1);
+            res.limb[0] = f.limb[0];
+            res.limb[1] = f.limb[1] & mask.limb[1];
+        }
     } else {
         res = f;
     }
@@ -413,25 +423,35 @@ __device__ __uint256_t truncate(__uint256_t f, unsigned int t) {
     if (t <= 128) {
         negative = (res.limb[0] & ((__uint128_t)1 << (t - 1)));
     } else {
-        negative = (res.limb[1] & ((__uint128_t)1 << (t - 128 - 1)));
+        negative = (res.limb[1] & ((__uint128_t)1 << ((t - 1) - 128)));
     }
 
     if (negative) {
         __uint256_t sub = {};
-        if (t <= 128) sub.limb[0] = ((__uint128_t)1 << t);
-        else sub.limb[1] = ((__uint128_t)1 << (t - 128));
+        if (t < 128) {
+            sub.limb[0] = ((__uint128_t)1 << t);
+        } else if (t == 128) {
+            sub.limb[1] = 1;
+        } else {
+            sub.limb[1] = ((__uint128_t)1 << (t - 128));
+        }
         res = sub_256(res, sub);
     }
 
     return res;
 }
 
-__device__ int sign(__uint256_t x, unsigned int t) {
-    if (t == 0) return 1; 
-    if (t <= 128)
-        return (x.limb[0] & (__uint128_t(1) << (t-1))) ? -1 : 1;
-    else
-        return (x.limb[1] & (__uint128_t(1) << (t - 128 - 1))) ? -1 : 1;
+__device__ int sign(const __uint256_t &x, unsigned int t) {
+
+    if (t == 0) return 1;
+
+    if (t <= 128) {
+        bool neg = (x.limb[0] & ((__uint128_t)1 << (t - 1)));
+        return neg ? -1 : 1;
+    } else {
+        bool neg = (x.limb[1] & ((__uint128_t)1 << ((t - 1) - 128)));
+        return neg ? -1 : 1;
+    }
 }
 
 __device__ void divsteps2(
@@ -440,19 +460,16 @@ __device__ void divsteps2(
     int &delta,
     uint256_t_sign &f,
     uint256_t_sign &g,
-    uint1024_t_sign &u,
-    uint1024_t_sign &v,
-    uint1024_t_sign &q,
-    uint1024_t_sign &r
+    frac1024_t &u,
+    frac1024_t &v,
+    frac1024_t &q,
+    frac1024_t &r
 ) {
 
-    for (int i = 0; i < 8; i++) {
-        u.magnitude.limb[i] = 0; v.magnitude.limb[i] = 0;
-        q.magnitude.limb[i] = 0; r.magnitude.limb[i] = 0;
-    }
-    u.magnitude.limb[0] = 1; u.sign = 1;
-    r.magnitude.limb[0] = 1; r.sign = 1;
-    v.sign = 1; q.sign = 1;
+    u.num = (__uint1024_t){{1}}; u.exp = 0; u.sign = 1;
+    v.num = (__uint1024_t){{0}}; v.exp = 0; v.sign = 1;
+    q.num = (__uint1024_t){{0}}; q.exp = 0; q.sign = 1;
+    r.num = (__uint1024_t){{1}}; r.exp = 0; r.sign = 1;
 
     f.magnitude = truncate(f.magnitude, t);
     g.magnitude = truncate(g.magnitude, t);
@@ -465,22 +482,18 @@ __device__ void divsteps2(
         if (delta > 0 && g_odd) {
             delta = -delta;
 
-            uint256_t_sign orig_f = f;
-            uint256_t_sign orig_g = g;
-            uint1024_t_sign orig_u = u;
-            uint1024_t_sign orig_v = v;
-            uint1024_t_sign orig_q = q;
-            uint1024_t_sign orig_r = r;
+            uint256_t_sign f_old = f, g_old = g;
+            frac1024_t u_old = u, v_old = v, q_old = q, r_old = r;
 
-            f = orig_g;
-            g.magnitude = negate_256_mag(orig_f.magnitude);
-            g.sign = -orig_f.sign;
+            f = g_old;
+            g.magnitude = f_old.magnitude;
+            g.sign = -f_old.sign;
 
-            u = orig_q;
-            v = orig_r;
+            u = q_old;
+            v = r_old;
 
-            q = negate_1024(orig_u);
-            r = negate_1024(orig_v);
+            q = u_old; q.sign = -q.sign;
+            r = v_old; r.sign = -r.sign;
         }
 
         bool g0 = (g.magnitude.limb[0] & 1);
@@ -490,21 +503,21 @@ __device__ void divsteps2(
             if (f.sign > 0) g.magnitude = add_256(g.magnitude, f.magnitude);
             else g.magnitude = sub_256(g.magnitude, f.magnitude);
 
-            if (u.sign > 0) q.magnitude = add_1024(q.magnitude, u.magnitude);
-            else q.magnitude = sub_1024(q.magnitude, u.magnitude);
-
-            if (v.sign > 0) r.magnitude = add_1024(r.magnitude, v.magnitude);
-            else r.magnitude = sub_1024(r.magnitude, v.magnitude);
+            q.num = add_1024(q.num, u.num);
+            q.exp += 1;
+            r.num = add_1024(r.num, v.num);
+            r.exp += 1;
+        } else {
+            q.exp += 1;
+            r.exp += 1;
         }
 
         g.magnitude = shftR1_256(g.magnitude);
-        q.magnitude = shftR1_1024(q.magnitude);
-        r.magnitude = shftR1_1024(r.magnitude);
 
         n--; t--;
         g.magnitude = truncate(g.magnitude, t);
     }
-}
+} LP
 
 __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) {
     if ((f_in.limb[0] & 1) == 0) {
@@ -517,39 +530,27 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
 
     unsigned int m = iterations(d);
 
-    __uint256_t f_plus_1 = add_256(f_in, (__uint256_t){{(__uint128_t)1, (__uint128_t)0}});
+    __uint256_t f_plus_1 = add_256(f_in, (__uint256_t){{1,0}});
     __uint256_t half_f_plus_1 = shftR1_256(f_plus_1, 256);
     __uint256_t precomp = modexp_256(half_f_plus_1, (m > 0 ? m - 1 : 0), f_in);
 
-    uint256_t_sign f_s = {};
-    uint256_t_sign g_s = {};
-    uint1024_t_sign u_s = {};
-    uint1024_t_sign v_s = {};
-    uint1024_t_sign q_s = {};
-    uint1024_t_sign r_s = {};
-
-    f_s.magnitude = f_in; f_s.sign = 1;
-    g_s.magnitude = g_in; g_s.sign = 1;
-
+    uint256_t_sign f_s = {f_in, 1};
+    uint256_t_sign g_s = {g_in, 1};
     int delta = 1;
 
-    divsteps2(m, m + 1, delta, f_s, g_s, u_s, v_s, q_s, r_s);
+    frac1024_t u, v, q, r;
+    divsteps2(m, m + 1, delta, f_s, g_s, u, v, q, r);
 
-    __uint1024_t v_frac = v_s.magnitude;
-    __uint1024_t V_shifted = lshift_1024(v_frac, (m > 0 ? m - 1 : 0));
-    int s_fm = f_s.sign;
+    __uint1024_t v_shifted = lshift_1024(v.num, (m > 0 ? m - 1 : 0) - v.exp);
+    __uint256_t V_mod = reduce_mod_1024_to_256(v_shifted, f_in);
 
-    __uint256_t V_mod = reduce_mod_1024_to_256(V_shifted, f_in);
-
-    if (s_fm < 0) {
-        if (V_mod.limb[0] == 0 && V_mod.limb[1] == 0) {
-        } else {
+    if (f_s.sign < 0) {
+        if (!(V_mod.limb[0] == 0 && V_mod.limb[1] == 0)) {
             V_mod = sub_256(f_in, V_mod);
         }
     }
 
     __uint256_t inv = mulmod_256(V_mod, precomp, f_in);
-
     return inv;
 }
 
