@@ -383,49 +383,41 @@ __device__ __uint1024_t shftR1_1024(const __uint1024_t &a) {
 }
 
 __device__ __uint256_t truncate(__uint256_t f, unsigned int t) {
-    if (t == 0) {
-        __uint256_t zero = {};
-        return zero;
-    }
-    __uint1024_t mask = {};
-    if (t <= 128) {
-        mask.limb[0] = (__uint128_t(1) << t) - 1;
-    } else if (t <= 256) {
-        mask.limb[0] = ~(__uint128_t)0;
-        mask.limb[1] = (__uint128_t(1) << (t - 128)) - 1;
-    }
+    __uint256_t res = {};
+    if (t == 0) return res;
 
-    f.limb[0] &= mask.limb[0];
-    f.limb[1] &= mask.limb[1];
-
-    bool subtract = false;
-    if (t <= 128) {
-        subtract = f.limb[0] >= (__uint128_t(1) << (t - 1));
+    if (t < 128) {
+        __uint128_t mask = ((__uint128_t)1 << t) - 1;
+        res.limb[0] = f.limb[0] & mask;
+    } else if (t == 128) {
+        res.limb[0] = f.limb[0];
+    } else if (t < 256) {
+        res.limb[0] = f.limb[0];
+        __uint128_t mask = ((__uint128_t)1 << (t - 128)) - 1;
+        res.limb[1] = f.limb[1] & mask;
     } else {
-        subtract = f.limb[1] >= (__uint128_t(1) << (t - 129)) ||
-                   (f.limb[1] == (__uint128_t(1) << (t - 129)) && f.limb[0] != 0);
+        res = f;
     }
 
-    if (subtract) {
+    bool negative = false;
+    if (t <= 128) {
+        negative = (res.limb[0] & ((__uint128_t)1 << (t - 1)));
+    } else {
+        unsigned shift = t - 128 - 1;
+        negative = (res.limb[1] & ((__uint128_t)1 << shift));
+    }
+
+    if (negative) {
         __uint256_t sub = {};
         if (t <= 128) {
-            sub.limb[0] = (__uint128_t(1) << t);
+            sub.limb[0] = ((__uint128_t)1 << t);
         } else {
-            sub.limb[1] = (__uint128_t(1) << (t - 128));
+            sub.limb[1] = ((__uint128_t)1 << (t - 128));
         }
-
-        __uint128_t borrow = 0;
-        __uint128_t tmp;
-
-        tmp = f.limb[0] - sub.limb[0];
-        borrow = tmp > f.limb[0] ? 1 : 0;
-        f.limb[0] = tmp;
-
-        tmp = f.limb[1] - sub.limb[1] - borrow;
-        f.limb[1] = tmp;
+        res = sub_256(res, sub);
     }
 
-    return f;
+    return res;
 }
 
 __device__ int sign(__uint256_t x, unsigned int t) {
