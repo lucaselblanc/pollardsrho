@@ -1324,7 +1324,7 @@ int main() {
     g.limb[0] = (__uint128_t)0x33e7665705359f04ULL;
     g.limb[1] = ((__uint128_t)0xf << 64) | (__uint128_t)0x28b88cf897c603c9ULL;
 
-    /* g ≡ 1 (mod f): */
+    // g ≡ 1 (mod f):
     //Hex: 7FDB62ED2D6FA0874ABD664C95B7CEF2ED79CC82D13FF3AC8E9766AA21BEBEAE (bebeae kkk)
     //Dec: 57831354042695616917422878622316954017183908093256327737334808907053491207854
 
