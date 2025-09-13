@@ -318,7 +318,7 @@ struct frac1024_t {
     int sign;
 };
 
-__constant__ __uint512_t mu[4] = {
+__constant__ __uint512_t mu = {
        (__uint128_t) 0x1000003d1,
        (__uint128_t) 0x1ULL,
        (__uint128_t) 0x0ULL,
