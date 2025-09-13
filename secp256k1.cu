@@ -1305,6 +1305,7 @@ __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub
     kernel_get_compressed_public_key(out, pub);
 }
 
+/*
 __global__ void test_mod_inverse(__uint256_t f, __uint256_t g, __uint256_t* result) {
     *result = recip2(f, g);
 }
@@ -1337,5 +1338,49 @@ int main() {
     printf("Resultado limb[0] (baixo): %llx\n", (unsigned long long)result_host.limb[0]);
 
     cudaFree(result_device);
+    return 0;
+}
+*/
+
+__global__ void test_mod_inverse(const __uint256_t* f, const __uint256_t* g, __uint256_t* result) {
+    *result = recip2(*f, *g);
+}
+
+int main() {
+
+    // f = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+    __uint256_t f = {};
+    f.limb[0] = (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFFFFFFFFFFULL;
+    f.limb[1] = (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFEFFFFFC2FULL;
+
+    // g = 0x33e7665705359f04f28b88cf897c603c9
+    __uint256_t g = {};
+    g.limb[0] = (__uint128_t)0x33e7665705359f04ULL;
+    g.limb[1] = ((__uint128_t)0xf << 64) | (__uint128_t)0x28b88cf897c603c9ULL;
+
+    /* g ≡ 1 (mod f): */
+    //Hex: 7FDB62ED2D6FA0874ABD664C95B7CEF2ED79CC82D13FF3AC8E9766AA21BEBEAE (bebeae kkk)
+    //Dec: 57831354042695616917422878622316954017183908093256327737334808907053491207854
+
+    __uint256_t result_host;
+    __uint256_t *f_device, *g_device, *result_device;
+    cudaMalloc(&f_device, sizeof(__uint256_t));
+    cudaMalloc(&g_device, sizeof(__uint256_t));
+    cudaMalloc(&result_device, sizeof(__uint256_t));
+
+    cudaMemcpy(f_device, &f, sizeof(__uint256_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(g_device, &g, sizeof(__uint256_t), cudaMemcpyHostToDevice);
+
+    test_mod_inverse<<<1,1>>>(f_device, g_device, result_device);
+
+    cudaMemcpy(&result_host, result_device, sizeof(__uint256_t), cudaMemcpyDeviceToHost);
+
+    printf("Resultado limb[1] (alto): %llx\n", (unsigned long long)result_host.limb[1]);
+    printf("Resultado limb[0] (baixo): %llx\n", (unsigned long long)result_host.limb[0]);
+
+    cudaFree(f_device);
+    cudaFree(g_device);
+    cudaFree(result_device);
+
     return 0;
 }
