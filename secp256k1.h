@@ -31,6 +31,6 @@ __global__ void point_is_valid(int *result, const ECPoint *point);
 __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub);
 
 //test
-__global__ void test_mod_inverse(uint256_t f, uint256_t g, uint256_t* result);
+__global__ void test_mod_inverse(__uint256_t f, __uint256_t g, __uint256_t* result);
 
 #endif /* EC_SECP256K1_H */
