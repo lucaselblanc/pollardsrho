@@ -318,6 +318,14 @@ struct frac1024_t {
     int sign;
 };
 
+__uint256_t
+__device__ void print_uint256(const char* label, const __uint256_t &x) {
+    printf("%s: limb[1]=%016llx limb[0]=%016llx\n",
+           label,
+           (unsigned long long)x.limb[1],
+           (unsigned long long)x.limb[0]);
+}
+
 __constant__ __uint512_t mu = {
      {
        (__uint128_t) 0x1000003d1,
@@ -468,6 +476,7 @@ __device__ __uint256_t make_power_of_two_256(unsigned int t) {
     return res;
 }
 
+/*
 __device__ __uint256_t truncate(const __uint256_t &f, unsigned int t) {
     __uint256_t res = {0,0};
     if (t == 0) return res;
@@ -496,7 +505,43 @@ __device__ __uint256_t truncate(const __uint256_t &f, unsigned int t) {
     }
     return res;
 }
+*/
 
+//Remove
+__device__ __uint256_t truncate(const __uint256_t &f, unsigned int t) {
+    __uint256_t res = {0,0};
+    if (t == 0) return res;
+    if (t >= 256) return f;
+
+    if (t <= 128) {
+        __uint128_t mask = (t == 128) ? (~(__uint128_t)0) : (((__uint128_t)1 << t) - 1);
+        res.limb[0] = f.limb[0] & mask;
+        res.limb[1] = 0;
+    } else {
+        unsigned int high_bits = t - 128;
+        __uint128_t mask = (high_bits == 128) ? (~(__uint128_t)0) : (((__uint128_t)1 << high_bits) - 1);
+        res.limb[0] = f.limb[0];
+        res.limb[1] = f.limb[1] & mask;
+    }
+
+    bool negative;
+    if (t <= 128)
+        negative = (res.limb[0] & ((__uint128_t)1 << (t - 1))) != 0;
+    else
+        negative = (res.limb[1] & ((__uint128_t)1 << (t - 1 - 128))) != 0;
+
+    if (negative) {
+        __uint256_t pow2 = make_power_of_two_256(t);
+        res = sub_256(res, pow2);
+    }
+
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        print_uint256("truncate result", res);
+    }
+    return res;
+}
+
+/*
 __device__ int sign(const __uint256_t &x, unsigned int t) {
     if (t == 0) return 1;
 
@@ -507,6 +552,23 @@ __device__ int sign(const __uint256_t &x, unsigned int t) {
         bool neg = (x.limb[1] & ((__uint128_t)1 << ((t - 1) - 128)));
         return neg ? -1 : 1;
     }
+}
+*/
+
+//Remove
+__device__ int sign(const __uint256_t &x, unsigned int t) {
+    if (t == 0) return 1;
+
+    bool neg;
+    if (t <= 128)
+        neg = (x.limb[0] & ((__uint128_t)1 << (t - 1)));
+    else
+        neg = (x.limb[1] & ((__uint128_t)1 << ((t - 1) - 128)));
+
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        printf("sign(%u bits) = %d\n", t, neg ? -1 : 1);
+    }
+    return neg ? -1 : 1;
 }
 
 __device__ __forceinline__ void normalize_sign_uint256(uint256_t_sign &x) {
@@ -796,6 +858,7 @@ __device__ __forceinline__ void frac_div2(frac1024_t &x) {
     x.exp += 1;
 }
 
+/*
 // Barrett Reduction
 __device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
@@ -831,6 +894,47 @@ __device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, 
     __uint256_t res = { r.limb[0], r.limb[1] };
     return res;
 }
+*/
+
+//Remove
+__device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
+    __uint512_t x_high;
+    for(int i=0; i<4; i++) x_high.limb[i] = x.limb[i+4];
+
+    __uint1024_t prod = mul_512_1024(x_high, mu);
+    __uint512_t q;
+    for(int i=0; i<4; i++) q.limb[i] = prod.limb[i+4];
+    __uint512_t qp = mul_256_512_512(q, p);
+    __uint512_t x_low;
+    for(int i=0; i<4; i++) x_low.limb[i] = x.limb[i]; 
+    __uint512_t r = sub_512(x_low, qp);
+    __uint512_t p_512 = {{p.limb[0], p.limb[1], 0, 0}};
+
+    __uint512_t r_minus_p = sub_512(r, p_512);
+    bool ge1 = !borrow_512(r, p_512);
+    __uint128_t mask1 = (__uint128_t)-(int)ge1;
+
+    #pragma unroll
+    for (int i = 0; i < 4; i++) {
+        r.limb[i] = (r_minus_p.limb[i] & mask1) | (r.limb[i] & ~mask1);
+    }
+
+    r_minus_p = sub_512(r, p_512);
+    bool ge2 = !borrow_512(r, p_512);
+    __uint128_t mask2 = (__uint128_t)-(int)ge2;
+
+    #pragma unroll
+    for (int i = 0; i < 4; i++) {
+        r.limb[i] = (r_minus_p.limb[i] & mask2) | (r.limb[i] & ~mask2);
+    }
+
+    __uint256_t res = { r.limb[0], r.limb[1] };
+
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        print_uint256("barrett result", res);
+    }
+    return res;
+}
 
 __device__ __forceinline__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
     __uint256_t result = {{1, 0}};
@@ -844,6 +948,7 @@ __device__ __forceinline__ __uint256_t modexp_256(__uint256_t base, unsigned int
     return result;
 }
 
+/*
 __device__ void divsteps2(
     unsigned int n,
     unsigned int t,
@@ -908,11 +1013,81 @@ __device__ void divsteps2(
         g.magnitude = truncate(g.magnitude, t);
     }
 }
+*/
+
+//Remove
+__device__ void divsteps2(
+    unsigned int n,
+    unsigned int t,
+    int &delta,
+    uint256_t_sign &f,
+    uint256_t_sign &g,
+    frac1024_t &u,
+    frac1024_t &v,
+    frac1024_t &q,
+    frac1024_t &r
+) {
+    u.num = (__uint1024_t){{1,0,0,0,0,0,0,0}}; u.exp = 0; u.sign = 1;
+    v.num = (__uint1024_t){{0,0,0,0,0,0,0,0}}; v.exp = 0; v.sign = 1;
+    q.num = (__uint1024_t){{0,0,0,0,0,0,0,0}}; q.exp = 0; q.sign = 1;
+    r.num = (__uint1024_t){{1,0,0,0,0,0,0,0}}; r.exp = 0; r.sign = 1;
+
+    f.magnitude = truncate(f.magnitude, t);
+    g.magnitude = truncate(g.magnitude, t);
+
+    unsigned int step = 0;
+    while (n > 0) {
+        if (threadIdx.x == 0 && blockIdx.x == 0 && (step % 100 == 0)) {
+            printf("divsteps2 step=%u delta=%d\n", step, delta);
+        }
+
+        f.magnitude = truncate(f.magnitude, t);
+        bool g_odd = (g.magnitude.limb[0] & 1);
+
+        if (delta > 0 && g_odd) {
+            delta = -delta;
+            uint256_t_sign f_old = f, g_old = g;
+            frac1024_t u_old = u, v_old = v, q_old = q, r_old = r;
+
+            f = g_old;
+            g = f_old;
+            g.sign = -g.sign;
+
+            u = q_old;
+            v = r_old;
+            q = u_old; q.sign = -q.sign;
+            r = v_old; r.sign = -r.sign;
+        }
+
+        bool g0 = (g.magnitude.limb[0] & 1);
+        delta = delta + 1;
+
+        if (g0) {
+            uint256_t_sign f_contrib = {f.magnitude, f.sign};
+            g = signed_add_256(g, f_contrib);
+
+            frac1024_t q_old = q;
+            frac_add(q, q_old, u);
+            frac1024_t r_old = r;
+            frac_add(r, r_old, v);
+        }
+
+        g = signed_div2_floor_256(g);
+        frac_div2(q);
+        frac_div2(r);
+
+        n--; 
+        t--;
+        g.magnitude = truncate(g.magnitude, t);
+        step++;
+    }
+}
 
 __device__ unsigned int iterations(unsigned int d) {
     return (d < 46) ? ((49*d + 80) / 17) : ((49*d + 57) / 17);
 }
 
+/*
 __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) {
     if ((f_in.limb[0] & 1) == 0) {
         __uint256_t zero = {}; 
@@ -971,6 +1146,74 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
         __uint256_t inv = mulmod_256(V_mod, precomp, f_in);
         return inv;
     }
+}
+*/
+
+//Remove
+__device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) {
+    if ((f_in.limb[0] & 1) == 0) {
+        __uint256_t zero = {}; 
+        return zero;
+    }
+
+    unsigned int d_f = bit_length_256(f_in);
+    unsigned int d_g = bit_length_256(g_in);
+    unsigned int d = (d_f > d_g) ? d_f : d_g;
+    unsigned int m = iterations(d);
+
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        printf("recip2: d_f=%u d_g=%u d=%u m=%u\n", d_f, d_g, d, m);
+    }
+
+    __uint256_t f_plus_1 = add_256(f_in, (__uint256_t){{1,0}});
+    uint256_t_sign f_plus_1_signed = {f_plus_1, 1};
+    uint256_t_sign half_f_plus_1_signed = signed_div2_floor_256(f_plus_1_signed);
+
+    __uint256_t precomp = modexp_256(half_f_plus_1_signed.magnitude, (m > 0 ? m - 1 : 0), f_in);
+
+    uint256_t_sign f_s = {f_in, 1};
+    uint256_t_sign g_s = {g_in, 1};
+    int delta = 1;
+
+    frac1024_t u, v, q, r;
+    divsteps2(m, m + 1, delta, f_s, g_s, u, v, q, r);
+
+    unsigned int shift_amount = (m > 0 ? m - 1 : 0);
+    __uint256_t inv;
+    if (shift_amount >= v.exp) {
+        __uint1024_t v_shifted = lshift_1024(v.num, shift_amount - v.exp);
+        __uint256_t V_mod = barrett_reduction(v_shifted, f_in);
+        __uint256_t V_negated = sub_256(f_in, V_mod);
+
+        bool is_negative = (v.sign < 0);
+        bool is_nonzero = (V_mod.limb[0] != 0) || (V_mod.limb[1] != 0);
+        bool should_negate = is_negative && is_nonzero;
+
+        __uint128_t mask = (__uint128_t)-(int)should_negate;
+        V_mod.limb[0] = (V_negated.limb[0] & mask) | (V_mod.limb[0] & ~mask);
+        V_mod.limb[1] = (V_negated.limb[1] & mask) | (V_mod.limb[1] & ~mask);
+
+        inv = mulmod_256(V_mod, precomp, f_in);
+    } else {
+        __uint1024_t v_shifted = rshift_1024(v.num, v.exp - shift_amount);
+        __uint256_t V_mod = barrett_reduction(v_shifted, f_in);
+        __uint256_t V_negated = sub_256(f_in, V_mod);
+
+        bool is_negative = (v.sign < 0);
+        bool is_nonzero = (V_mod.limb[0] != 0) || (V_mod.limb[1] != 0);
+        bool should_negate = is_negative && is_nonzero;
+
+        __uint128_t mask = (__uint128_t)-(int)should_negate;
+        V_mod.limb[0] = (V_negated.limb[0] & mask) | (V_mod.limb[0] & ~mask);
+        V_mod.limb[1] = (V_negated.limb[1] & mask) | (V_mod.limb[1] & ~mask);
+
+        inv = mulmod_256(V_mod, precomp, f_in);
+    }
+
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        print_uint256("recip2 result", inv);
+    }
+    return inv;
 }
 
 // ------------- FINAL -------------
