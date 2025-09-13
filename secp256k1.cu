@@ -339,6 +339,18 @@ __device__ __uint256_t sub_256(const __uint256_t &a, const __uint256_t &b) {
     return res;
 }
 
+__device__ __uint256_t negate_256(const __uint256_t &x) {
+    __uint256_t zero = {};
+    return sub_256(zero, x);
+}
+
+__device__ uint1024_t_sign negate_1024(const uint1024_t_sign &x) {
+    uint1024_t_sign res = x;
+    res.magnitude = sub_1024((__uint1024_t){{0}}, x.magnitude);
+    res.sign = -x.sign;
+    return res;
+}
+
 __device__ __uint256_t shftR1_256(const __uint256_t &a, unsigned int t) {
     __uint256_t res;
     res.limb[0] = a.limb[0] >> 1 | (a.limb[1] << 127);
@@ -386,11 +398,9 @@ __device__ __uint256_t truncate(__uint256_t f, unsigned int t) {
     __uint256_t res = {};
     if (t == 0) return res;
 
-    if (t < 128) {
+    if (t <= 128) {
         __uint128_t mask = ((__uint128_t)1 << t) - 1;
         res.limb[0] = f.limb[0] & mask;
-    } else if (t == 128) {
-        res.limb[0] = f.limb[0];
     } else if (t < 256) {
         res.limb[0] = f.limb[0];
         __uint128_t mask = ((__uint128_t)1 << (t - 128)) - 1;
@@ -403,17 +413,13 @@ __device__ __uint256_t truncate(__uint256_t f, unsigned int t) {
     if (t <= 128) {
         negative = (res.limb[0] & ((__uint128_t)1 << (t - 1)));
     } else {
-        unsigned shift = t - 128 - 1;
-        negative = (res.limb[1] & ((__uint128_t)1 << shift));
+        negative = (res.limb[1] & ((__uint128_t)1 << (t - 128 - 1)));
     }
 
     if (negative) {
         __uint256_t sub = {};
-        if (t <= 128) {
-            sub.limb[0] = ((__uint128_t)1 << t);
-        } else {
-            sub.limb[1] = ((__uint128_t)1 << (t - 128));
-        }
+        if (t <= 128) sub.limb[0] = ((__uint128_t)1 << t);
+        else sub.limb[1] = ((__uint128_t)1 << (t - 128));
         res = sub_256(res, sub);
     }
 
@@ -422,20 +428,18 @@ __device__ __uint256_t truncate(__uint256_t f, unsigned int t) {
 
 __device__ int sign(__uint256_t x, unsigned int t) {
     if (t == 0) return 1; 
-    if (t <= 128) {
+    if (t <= 128)
         return (x.limb[0] & (__uint128_t(1) << (t-1))) ? -1 : 1;
-    } else {
-        unsigned int shift = t - 128 - 1;
-        return (x.limb[1] & (__uint128_t(1) << shift)) ? -1 : 1;
-    }
+    else
+        return (x.limb[1] & (__uint128_t(1) << (t - 128 - 1))) ? -1 : 1;
 }
 
 __device__ void divsteps2(
     unsigned int n,
     unsigned int t,
     int &delta,
-    uint1024_t_sign &f,
-    uint1024_t_sign &g,
+    uint256_t_sign &f,
+    uint256_t_sign &g,
     uint1024_t_sign &u,
     uint1024_t_sign &v,
     uint1024_t_sign &q,
@@ -446,9 +450,9 @@ __device__ void divsteps2(
         u.magnitude.limb[i] = 0; v.magnitude.limb[i] = 0;
         q.magnitude.limb[i] = 0; r.magnitude.limb[i] = 0;
     }
-
     u.magnitude.limb[0] = 1; u.sign = 1;
-    v.sign = 1; q.sign = 1; r.magnitude.limb[0] = 1; r.sign = 1;
+    r.magnitude.limb[0] = 1; r.sign = 1;
+    v.sign = 1; q.sign = 1;
 
     f.magnitude = truncate(f.magnitude, t);
     g.magnitude = truncate(g.magnitude, t);
@@ -461,39 +465,34 @@ __device__ void divsteps2(
         if (delta > 0 && g_odd) {
             delta = -delta;
 
-            uint256_t_sign tmp256_t = f;
-            f = g;
-            g = tmp256_t;
-            f.sign = -f.sign;
+            f = uint256_t_sign{g.magnitude, g.sign};
+            g = uint256_t_sign{negate_256(f.magnitude), -f.sign};
 
-            uint1024_t_sign tmp1024_t = u;
+            uint1024_t_sign tmp_u = u;
             u = q;
-            q = tmp1024_t; q.sign = -q.sign;
+            q = negate_1024(tmp_u);
 
-            tmp1024_t = v;
+            tmp_u = v;
             v = r;
-            r = tmp1024_t; r.sign = -r.sign;
+            r = negate_1024(tmp_u);
         }
 
         bool g0 = g.magnitude.limb[0] & 1;
-        delta = 1 + delta;
+        delta += 1;
 
         if (g0) {
             if (f.sign > 0) g.magnitude = add_256(g.magnitude, f.magnitude);
             else g.magnitude = sub_256(g.magnitude, f.magnitude);
-        }
-        g.magnitude = shftR1_256(g.magnitude);
 
-        if (g0) {
             if (u.sign > 0) q.magnitude = add_1024(q.magnitude, u.magnitude);
             else q.magnitude = sub_1024(q.magnitude, u.magnitude);
-        }
-        q.magnitude = shftR1_1024(q.magnitude);
 
-        if (g0) {
             if (v.sign > 0) r.magnitude = add_1024(r.magnitude, v.magnitude);
             else r.magnitude = sub_1024(r.magnitude, v.magnitude);
         }
+
+        g.magnitude = shftR1_256(g.magnitude);
+        q.magnitude = shftR1_1024(q.magnitude);
         r.magnitude = shftR1_1024(r.magnitude);
 
         n--; t--;
