@@ -792,7 +792,7 @@ __device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, 
     __uint512_t x_high;
     for(int i=0; i<4; i++) x_high.limb[i] = x.limb[i+4];
 
-    __device__ const __uint512_t mu = {
+    const __uint512_t mu = {
     {
        (__uint128_t) 0x1000003d1,
        (__uint128_t) 0x1ULL,
