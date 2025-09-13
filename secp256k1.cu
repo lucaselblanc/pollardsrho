@@ -293,12 +293,16 @@ __device__ void mod_sqr_mont_p(uint64_t out[4], const uint64_t in[4]) {
 //Barrett Reduction
 //0x100000000000000000000000000000000000000000000000000000001000003d1 => {2^512 / secp256k1 p}
 
-struct __uint1024_t {
-    __uint128_t limb[8];
-};
-
 struct __uint256_t {
     __uint128_t limb[2];
+};
+
+struct __uint512_t {
+    __uint128_t limb[4];
+};
+
+struct __uint1024_t {
+    __uint128_t limb[8];
 };
 
 struct uint256_t_sign {
@@ -398,6 +402,45 @@ __device__ __uint1024_t shftR1_1024(const __uint1024_t &a) {
         res.limb[i] = (a.limb[i] >> 1) | (hi << 127);
     }
     return res;
+}
+
+__device__ __uint1024_t lshift_1024(const __uint1024_t &x, unsigned int shift) {
+    __uint1024_t res = {};
+    unsigned int limb_shift = shift / 128;
+    unsigned int bit_shift = shift % 128;
+
+    for (int i = 7; i >= 0; i--) {
+        if (i - limb_shift < 0) continue;
+        res.limb[i] = x.limb[i - limb_shift] << bit_shift;
+        if (i - limb_shift - 1 >= 0 && bit_shift != 0)
+            res.limb[i] |= x.limb[i - limb_shift - 1] >> (128 - bit_shift);
+    }
+    return res;
+}
+
+__device__ unsigned int bit_length_256(const __uint256_t &x) {
+    if (x.limb[1] != 0) {
+        unsigned int high = 128 + 128 - __clzll((unsigned long long)(x.limb[1] >> 64));
+        high = max(high, 128 - __clzll((unsigned long long)x.limb[1]));
+        return high;
+    } else if (x.limb[0] != 0) {
+        unsigned int low = 128 - __clzll((unsigned long long)(x.limb[0] >> 64));
+        low = max(low, 128 - __clzll((unsigned long long)x.limb[0]));
+        return low;
+    }
+    return 0;
+}
+
+__device__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
+    __uint256_t result = {1, 0};
+
+    while (exp > 0) {
+        if (exp & 1) result = mulmod_256(result, base, mod);
+        base = mulmod_256(base, base, mod);
+        exp >>= 1;
+    }
+
+    return result;
 }
 
 __device__ __uint256_t truncate(const __uint256_t &f, unsigned int t) {
@@ -517,7 +560,11 @@ __device__ void divsteps2(
         n--; t--;
         g.magnitude = truncate(g.magnitude, t);
     }
-} LP
+}
+
+__device__ unsigned int iterations(unsigned int d) {
+    return (d < 46) ? ((49*d + 80) / 17) : ((49*d + 57) / 17);
+}
 
 __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) {
     if ((f_in.limb[0] & 1) == 0) {
