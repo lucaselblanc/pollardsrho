@@ -327,7 +327,7 @@ __constant__ __uint512_t mu = {
      }
 };
 
-__device__ __forceinline__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
+__device__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
     __uint256_t res;
     __uint128_t carry = 0, tmp;
 
@@ -341,7 +341,7 @@ __device__ __forceinline__ __uint256_t add_256(const __uint256_t &a, const __uin
     return res;
 }
 
-__device__ __forceinline__ __uint256_t sub_256(const __uint256_t &a, const __uint256_t &b) {
+__device__ __uint256_t sub_256(const __uint256_t &a, const __uint256_t &b) {
     __uint256_t res;
     __uint128_t borrow = 0, tmp;
 
@@ -355,7 +355,7 @@ __device__ __forceinline__ __uint256_t sub_256(const __uint256_t &a, const __uin
     return res;
 }
 
-__device__ __forceinline__ bool borrow_256(const __uint256_t &a, const __uint256_t &b) {
+__device__ bool borrow_256(const __uint256_t &a, const __uint256_t &b) {
     __uint128_t borrow = 0, tmp;
     
     tmp = a.limb[0] - b.limb[0];
@@ -367,7 +367,7 @@ __device__ __forceinline__ bool borrow_256(const __uint256_t &a, const __uint256
     return borrow;
 }
 
-__device__ __forceinline__ __uint512_t add_512(const __uint512_t &a, const __uint512_t &b) {
+__device__ __uint512_t add_512(const __uint512_t &a, const __uint512_t &b) {
     __uint512_t res;
     __uint128_t carry = 0, tmp;
 
@@ -380,7 +380,7 @@ __device__ __forceinline__ __uint512_t add_512(const __uint512_t &a, const __uin
     return res;
 }
 
-__device__ __forceinline__ __uint512_t sub_512(const __uint512_t &a, const __uint512_t &b) {
+__device__ __uint512_t sub_512(const __uint512_t &a, const __uint512_t &b) {
     __uint512_t res;
     __uint128_t borrow = 0, tmp;
     
@@ -392,7 +392,7 @@ __device__ __forceinline__ __uint512_t sub_512(const __uint512_t &a, const __uin
     return res;
 }
 
-__device__ __forceinline__ bool borrow_512(const __uint512_t &a, const __uint512_t &b) {
+__device__ bool borrow_512(const __uint512_t &a, const __uint512_t &b) {
     __uint128_t borrow = 0, tmp;
 
     for (int i = 0; i < 4; i++) {
@@ -403,7 +403,7 @@ __device__ __forceinline__ bool borrow_512(const __uint512_t &a, const __uint512
     return borrow;
 }
 
-__device__ __forceinline__ __uint1024_t add_1024(const __uint1024_t &a, const __uint1024_t &b) {
+__device__ __uint1024_t add_1024(const __uint1024_t &a, const __uint1024_t &b) {
     __uint1024_t res;
     __uint128_t carry = 0, tmp;
 
@@ -416,7 +416,7 @@ __device__ __forceinline__ __uint1024_t add_1024(const __uint1024_t &a, const __
     return res;
 }
 
-__device__ __forceinline__ __uint1024_t sub_1024(const __uint1024_t &a, const __uint1024_t &b) {
+__device__ __uint1024_t sub_1024(const __uint1024_t &a, const __uint1024_t &b) {
     __uint1024_t res;
     __uint128_t borrow = 0, tmp;
 
@@ -429,7 +429,7 @@ __device__ __forceinline__ __uint1024_t sub_1024(const __uint1024_t &a, const __
     return res;
 }
 
-__device__ __forceinline__ bool borrow_1024(const __uint1024_t &a, const __uint1024_t &b) {
+__device__ bool borrow_1024(const __uint1024_t &a, const __uint1024_t &b) {
     __uint128_t borrow = 0, tmp;
 
     for (int i = 0; i < 8; i++) {
@@ -440,7 +440,7 @@ __device__ __forceinline__ bool borrow_1024(const __uint1024_t &a, const __uint1
     return borrow;
 }
 
-__device__ __forceinline__ unsigned int bit_length_256(const __uint256_t &x) {
+__device__ unsigned int bit_length_256(const __uint256_t &x) {
     if (x.limb[1] != 0) {
         unsigned long long high_hi = (unsigned long long)(x.limb[1] >> 64);
         unsigned long long high_lo = (unsigned long long)(x.limb[1]);
@@ -511,11 +511,11 @@ __device__ int sign(const __uint256_t &x, unsigned int t) {
     }
 }
 
-__device__ __forceinline__ void normalize_sign_uint256(uint256_t_sign &x) {
+__device__ void normalize_sign_uint256(uint256_t_sign &x) {
     if (x.magnitude.limb[0] == 0 && x.magnitude.limb[1] == 0) x.sign = 1;
 }
 
-__device__ __forceinline__ uint256_t_sign signed_add_256(const uint256_t_sign &a, const uint256_t_sign &b) {
+__device__ uint256_t_sign signed_add_256(const uint256_t_sign &a, const uint256_t_sign &b) {
     uint256_t_sign res;
     if (a.sign == b.sign) {
         res.magnitude = add_256(a.magnitude, b.magnitude);
@@ -534,7 +534,7 @@ __device__ __forceinline__ uint256_t_sign signed_add_256(const uint256_t_sign &a
     return res;
 }
 
-__device__ __forceinline__ uint256_t_sign signed_div2_floor_256(const uint256_t_sign &a_in) {
+__device__ uint256_t_sign signed_div2_floor_256(const uint256_t_sign &a_in) {
     uint256_t_sign r = a_in;
 
     bool is_neg = (r.sign < 0);
@@ -557,7 +557,7 @@ __device__ __forceinline__ uint256_t_sign signed_div2_floor_256(const uint256_t_
     return r;
 }
 
-__device__ __forceinline__ __uint1024_t lshift_1024(const __uint1024_t &x, unsigned int shift) {
+__device__ __uint1024_t lshift_1024(const __uint1024_t &x, unsigned int shift) {
     __uint1024_t res = {};
     if (shift >= 1024) return res;
     
@@ -573,7 +573,7 @@ __device__ __forceinline__ __uint1024_t lshift_1024(const __uint1024_t &x, unsig
     return res;
 }
 
-__device__ __forceinline__ __uint1024_t rshift_1024(const __uint1024_t &x, unsigned int shift) {
+__device__ __uint1024_t rshift_1024(const __uint1024_t &x, unsigned int shift) {
     __uint1024_t res = {};
     if (shift >= 1024) return res;
     
@@ -589,7 +589,7 @@ __device__ __forceinline__ __uint1024_t rshift_1024(const __uint1024_t &x, unsig
     return res;
 }
 
-__device__ __forceinline__ __uint256_t mul_128_256(const __uint128_t &a, const __uint128_t &b) {
+__device__ __uint256_t mul_128_256(const __uint128_t &a, const __uint128_t &b) {
     unsigned long long a_lo = (unsigned long long)a;
     unsigned long long a_hi = (unsigned long long)(a >> 64);
     unsigned long long b_lo = (unsigned long long)b;
@@ -610,7 +610,7 @@ __device__ __forceinline__ __uint256_t mul_128_256(const __uint128_t &a, const _
     return result;
 }
 
-__device__ __forceinline__ __uint512_t mul_256_512(const __uint256_t &a, const __uint256_t &b) {
+__device__ __uint512_t mul_256_512(const __uint256_t &a, const __uint256_t &b) {
     __uint512_t res = {};
     __uint256_t p0 = mul_128_256(a.limb[0], b.limb[0]);
     __uint256_t p1 = mul_128_256(a.limb[0], b.limb[1]);
@@ -642,7 +642,7 @@ __device__ __forceinline__ __uint512_t mul_256_512(const __uint256_t &a, const _
     return res;
 }
 
-__device__ __forceinline__ __uint1024_t mul_512_1024(const __uint512_t &a, const __uint512_t &b) {
+__device__ __uint1024_t mul_512_1024(const __uint512_t &a, const __uint512_t &b) {
     __uint1024_t res = {};
     
     for (int i = 0; i < 4; i++) {
@@ -678,7 +678,7 @@ __device__ __forceinline__ __uint1024_t mul_512_1024(const __uint512_t &a, const
     return res;
 }
 
-__device__ __forceinline__ __uint512_t mul_256_512_512(const __uint512_t &a, const __uint256_t &b) {
+__device__ __uint512_t mul_256_512_512(const __uint512_t &a, const __uint256_t &b) {
     __uint512_t res = {};
     
     for (int i = 0; i < 4; i++) {
@@ -714,7 +714,7 @@ __device__ __forceinline__ __uint512_t mul_256_512_512(const __uint512_t &a, con
     return res;
 }
 
-__device__ __forceinline__ __uint256_t mulmod_256(const __uint256_t &a, const __uint256_t &b, const __uint256_t &mod) {
+__device__ __uint256_t mulmod_256(const __uint256_t &a, const __uint256_t &b, const __uint256_t &mod) {
     __uint512_t prod = mul_256_512(a, b);
     __uint512_t mod_512 = {{mod.limb[0], mod.limb[1], 0, 0}};
     
@@ -734,7 +734,7 @@ __device__ __forceinline__ __uint256_t mulmod_256(const __uint256_t &a, const __
     return (__uint256_t){prod.limb[0], prod.limb[1]};
 }
 
-__device__ __forceinline__ void normalize_frac(frac1024_t &x) {
+__device__ void normalize_frac(frac1024_t &x) {
     bool is_zero = true;
     for (int i = 0; i < 8; i++) {
         if (x.num.limb[i] != 0) {
@@ -745,7 +745,7 @@ __device__ __forceinline__ void normalize_frac(frac1024_t &x) {
     if (is_zero) x.sign = 1;
 }
 
-__device__ __forceinline__ __uint1024_t frac_align_num(const frac1024_t &b, unsigned int target_exp) {
+__device__ __uint1024_t frac_align_num(const frac1024_t &b, unsigned int target_exp) {
     if (target_exp >= b.exp) {
         unsigned int shift = target_exp - b.exp;
         return rshift_1024(b.num, shift);
@@ -792,7 +792,7 @@ __device__ void frac_add(frac1024_t &res, const frac1024_t &a, const frac1024_t 
     normalize_frac(res);
 }
 
-__device__ __forceinline__ void frac_div2(frac1024_t &x) {
+__device__ void frac_div2(frac1024_t &x) {
     x.exp += 1;
 }
 
@@ -818,7 +818,7 @@ __device__ __uint256_t simple_mod_256(const __uint256_t &x, const __uint256_t &m
 
 /*
 // Barrett Reduction
-__device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
+__device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
     for(int i=0; i<4; i++) x_high.limb[i] = x.limb[i+4];
 
@@ -854,7 +854,7 @@ __device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, 
 }
 */
 
-__device__ __forceinline__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
+__device__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
     __uint256_t result = {{1, 0}};
 
     while (exp > 0) {
