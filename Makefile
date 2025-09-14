@@ -28,13 +28,13 @@ recurse: $(TARGET)
 
 include gpu_arch
 
-#NVCCFLAGS = -O0 -g -lineinfo \
+#NVCCFLAGS = -O0 -G -g \
 	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
 	-ccbin $(CXX) \
 	-Xcompiler "-O0 -std=c++14 -pthread" \
 	$(INCLUDES) --expt-relaxed-constexpr
 
-NVCCFLAGS = -O0 -g -lineinfo \
+NVCCFLAGS = -O0 -G -g \
 	-gencode arch=compute_62,code=sm_62 \
 	-ccbin $(CXX) \
 	-Xcompiler "-O0 -std=c++14 -pthread" \
