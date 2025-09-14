@@ -2,7 +2,7 @@ TARGET    := pollardsrho
 CXX       := g++
 NVCC      := nvcc
 
-CUDA_HOME ?= $(or $(shell echo $$HOME/cuda-13.0),/usr/local/cuda)
+CUDA_HOME ?= $(or $(shell echo $$HOME/cuda-12.1),/usr/local/cuda)
 
 INCLUDES  := -I$(CUDA_HOME)/include
 CXXFLAGS  := -O0 -march=native -Wall -std=c++14 -pthread $(INCLUDES)
