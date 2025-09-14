@@ -816,6 +816,7 @@ __device__ __uint256_t simple_mod_256(const __uint256_t &x, const __uint256_t &m
     return res;
 }
 
+/*
 // Barrett Reduction
 __device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
@@ -851,6 +852,7 @@ __device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, 
     __uint256_t res = { r.limb[0], r.limb[1] };
     return res;
 }
+*/
 
 __device__ __forceinline__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
     __uint256_t result = {{1, 0}};
