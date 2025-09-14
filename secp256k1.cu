@@ -749,6 +749,82 @@ __device__ __uint512_t mul_256_512_512(const __uint512_t &a, const __uint256_t &
     return res;
 }
 
+__device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
+    // q1 = x >> (k-1) onde k = 256, então shift = 255
+    __uint1024_t q1 = rshift_1024(x, 255);
+    
+    // q2 = q1 * mu (multiplicação 1024 x 512 = 1536 bits, truncamento)
+    __uint1024_t q2 = {};
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8 && i + j < 16; j++) {
+            __uint128_t prod = mul_64_128(q1.limb[i], mu.limb[j]);
+            
+            __uint64_t carry = 0;
+            int pos = i + j;
+            
+            if (pos < 16) {
+                __uint64_t tmp_lo = q2.limb[pos] + (__uint64_t)prod;
+                carry = (tmp_lo < q2.limb[pos]) ? 1 : 0;
+                q2.limb[pos] = tmp_lo;
+            }
+            
+            pos++;
+            if (pos < 16) {
+                __uint64_t tmp_hi = q2.limb[pos] + (__uint64_t)(prod >> 64) + carry;
+                carry = (tmp_hi < q2.limb[pos]) ? 1 : 0;
+                q2.limb[pos] = tmp_hi;
+            }
+            
+            pos++;
+            while (carry && pos < 16) {
+                __uint64_t tmp = q2.limb[pos] + carry;
+                carry = (tmp < q2.limb[pos]) ? 1 : 0;
+                q2.limb[pos] = tmp;
+                pos++;
+            }
+        }
+    }
+    
+    // q3 = q2 >> (k+1) onde k = 256, então shift = 257
+    __uint512_t q3 = {};
+    for (int i = 0; i < 8; i++) {
+        int src_pos = i + 4; // shift de 257 = 4*64 + 1
+        if (src_pos < 16) {
+            q3.limb[i] = (q2.limb[src_pos] >> 1);
+            if (src_pos + 1 < 16) {
+                q3.limb[i] |= (q2.limb[src_pos + 1] << 63);
+            }
+        }
+    }
+    
+    // r = x - q3 * p
+    __uint512_t qp = mul_256_512_512(q3, p);
+    __uint512_t x_low = {};
+    for (int i = 0; i < 8; i++) {
+        x_low.limb[i] = x.limb[i];
+    }
+    
+    __uint512_t r = sub_512(x_low, qp);
+    
+    __uint512_t p_512 = {};
+    for (int i = 0; i < 4; i++) {
+        p_512.limb[i] = p.limb[i];
+    }
+    
+    for (int iter = 0; iter < 2; iter++) {
+        bool ge = !borrow_512(r, p_512);
+        if (ge) {
+            r = sub_512(r, p_512);
+        }
+    }
+    
+    __uint256_t result = {};
+    for (int i = 0; i < 4; i++) {
+        result.limb[i] = r.limb[i];
+    }
+    return result;
+}
+
 __device__ __uint256_t mulmod_256(const __uint256_t &a, const __uint256_t &b, const __uint256_t &mod) {
     __uint512_t prod = mul_256_512(a, b);
     __uint1024_t prod_1024 = {};
@@ -902,82 +978,6 @@ __device__ __uint256_t adjust_sign(__uint256_t value, int sign, const __uint256_
         return sub_256(mod, value);
     }
     return value;
-}
-
-__device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
-    // q1 = x >> (k-1) onde k = 256, então shift = 255
-    __uint1024_t q1 = rshift_1024(x, 255);
-    
-    // q2 = q1 * mu (multiplicação 1024 x 512 = 1536 bits, truncamento)
-    __uint1024_t q2 = {};
-    for (int i = 0; i < 8; i++) {
-        for (int j = 0; j < 8 && i + j < 16; j++) {
-            __uint128_t prod = mul_64_128(q1.limb[i], mu.limb[j]);
-            
-            __uint64_t carry = 0;
-            int pos = i + j;
-            
-            if (pos < 16) {
-                __uint64_t tmp_lo = q2.limb[pos] + (__uint64_t)prod;
-                carry = (tmp_lo < q2.limb[pos]) ? 1 : 0;
-                q2.limb[pos] = tmp_lo;
-            }
-            
-            pos++;
-            if (pos < 16) {
-                __uint64_t tmp_hi = q2.limb[pos] + (__uint64_t)(prod >> 64) + carry;
-                carry = (tmp_hi < q2.limb[pos]) ? 1 : 0;
-                q2.limb[pos] = tmp_hi;
-            }
-            
-            pos++;
-            while (carry && pos < 16) {
-                __uint64_t tmp = q2.limb[pos] + carry;
-                carry = (tmp < q2.limb[pos]) ? 1 : 0;
-                q2.limb[pos] = tmp;
-                pos++;
-            }
-        }
-    }
-    
-    // q3 = q2 >> (k+1) onde k = 256, então shift = 257
-    __uint512_t q3 = {};
-    for (int i = 0; i < 8; i++) {
-        int src_pos = i + 4; // shift de 257 = 4*64 + 1
-        if (src_pos < 16) {
-            q3.limb[i] = (q2.limb[src_pos] >> 1);
-            if (src_pos + 1 < 16) {
-                q3.limb[i] |= (q2.limb[src_pos + 1] << 63);
-            }
-        }
-    }
-    
-    // r = x - q3 * p
-    __uint512_t qp = mul_256_512_512(q3, p);
-    __uint512_t x_low = {};
-    for (int i = 0; i < 8; i++) {
-        x_low.limb[i] = x.limb[i];
-    }
-    
-    __uint512_t r = sub_512(x_low, qp);
-    
-    __uint512_t p_512 = {};
-    for (int i = 0; i < 4; i++) {
-        p_512.limb[i] = p.limb[i];
-    }
-    
-    for (int iter = 0; iter < 2; iter++) {
-        bool ge = !borrow_512(r, p_512);
-        if (ge) {
-            r = sub_512(r, p_512);
-        }
-    }
-    
-    __uint256_t result = {};
-    for (int i = 0; i < 4; i++) {
-        result.limb[i] = r.limb[i];
-    }
-    return result;
 }
 
 __device__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
