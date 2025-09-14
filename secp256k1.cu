@@ -328,7 +328,7 @@ __constant__ __uint512_t mu = {
 };
 
 __device__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
-    __uint256_t res;
+    __uint256_t res[2];
     __uint128_t carry = 0, tmp;
 
     tmp = a.limb[0] + b.limb[0];
@@ -338,7 +338,7 @@ __device__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
     tmp = a.limb[1] + b.limb[1] + carry;
     res.limb[1] = tmp;
 
-    return res;
+    return res[1] + res[2];
 }
 
 __device__ __uint256_t sub_256(const __uint256_t &a, const __uint256_t &b) {
