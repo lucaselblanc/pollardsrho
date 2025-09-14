@@ -718,14 +718,12 @@ __device__ __uint256_t mulmod_256(const __uint256_t &a, const __uint256_t &b, co
     __uint512_t prod = mul_256_512(a, b);
     __uint512_t mod_512 = {{mod.limb[0], mod.limb[1], 0, 0}};
     
-    #pragma unroll
     for (int iter = 0; iter < 512; iter++) {
         __uint512_t prod_minus_mod = sub_512(prod, mod_512);
         bool ge = !borrow_512(prod, mod_512);
 
         __uint128_t mask = (__uint128_t)-(int)ge;
         
-        #pragma unroll
         for (int i = 0; i < 4; i++) {
             prod.limb[i] = (prod_minus_mod.limb[i] & mask) | (prod.limb[i] & ~mask);
         }
