@@ -796,14 +796,11 @@ __device__ __forceinline__ void frac_div2(frac1024_t &x) {
     x.exp += 1;
 }
 
-__device__ __forceinline__ void adjust_sign(__uint256_t &V_mod, int sign, const __uint256_t &f_in) {
-    if (sign < 0) {
-        bool is_nonzero = (V_mod.limb[0] != 0) || (V_mod.limb[1] != 0);
-        if (is_nonzero) {
-            __uint256_t V_negated = sub_256(f_in, V_mod);
-            V_mod = V_negated;
-        }
+__device__ __uint256_t adjust_sign(__uint256_t value, int sign, const __uint256_t &mod) {
+    if (sign < 0 && !is_zero_256(value)) {
+        return sub_256(mod, value);
     }
+    return value;
 }
 
 //TEST
