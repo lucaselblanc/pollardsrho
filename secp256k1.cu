@@ -474,26 +474,28 @@ __device__ __uint256_t truncate(const __uint256_t &f, unsigned int t) {
     if (t >= 256) return f;
 
     if (t <= 128) {
-        __uint128_t mask = (t == 128) ? (~(__uint128_t)0) : (((__uint128_t)1 << t) - 1);
+        __uint128_t mask = (t == 128) ? ~(__uint128_t)0 : (((__uint128_t)1 << t) - 1);
         res.limb[0] = f.limb[0] & mask;
         res.limb[1] = 0;
     } else {
         unsigned int high_bits = t - 128;
-        __uint128_t mask = (high_bits == 128) ? (~(__uint128_t)0) : (((__uint128_t)1 << high_bits) - 1);
+        __uint128_t mask = (high_bits == 128) ? ~(__uint128_t)0 : (((__uint128_t)1 << high_bits) - 1);
         res.limb[0] = f.limb[0];
         res.limb[1] = f.limb[1] & mask;
     }
 
-    bool negative;
-    if (t <= 128)
+    bool negative = false;
+    if (t <= 128) {
         negative = (res.limb[0] & ((__uint128_t)1 << (t - 1))) != 0;
-    else
+    } else {
         negative = (res.limb[1] & ((__uint128_t)1 << (t - 1 - 128))) != 0;
+    }
 
     if (negative) {
         __uint256_t pow2 = make_power_of_two_256(t);
         res = sub_256(res, pow2);
     }
+
     return res;
 }
 
@@ -534,26 +536,24 @@ __device__ __forceinline__ uint256_t_sign signed_add_256(const uint256_t_sign &a
 
 __device__ __forceinline__ uint256_t_sign signed_div2_floor_256(const uint256_t_sign &a_in) {
     uint256_t_sign r = a_in;
-    if (r.sign >= 0) {
-        __uint256_t tmp;
-        tmp.limb[0] = (r.magnitude.limb[0] >> 1) | (r.magnitude.limb[1] << 127);
-        tmp.limb[1] = (r.magnitude.limb[1] >> 1);
-        r.magnitude = tmp;
-    } else {
-        bool is_odd = (r.magnitude.limb[0] & 1);
-        __uint256_t mag = r.magnitude;
-        if (is_odd) {
-            __uint256_t one = {{1,0}};
-            mag = add_256(mag, one);
-        }
-        __uint256_t tmp;
-        tmp.limb[0] = (mag.limb[0] >> 1) | (mag.limb[1] << 127);
-        tmp.limb[1] = (mag.limb[1] >> 1);
-        r.magnitude = tmp;
 
-        if (r.magnitude.limb[0] == 0 && r.magnitude.limb[1] == 0) r.sign = 1;
+    bool is_neg = (r.sign < 0);
+    bool is_odd = (r.magnitude.limb[0] & 1);
+
+    if (is_neg && is_odd) {
+        __uint256_t one = {{1,0}};
+        r.magnitude = add_256(r.magnitude, one);
     }
-    normalize_sign_uint256(r);
+
+    __uint128_t carry = 0;
+    for (int i = 1; i >= 0; i--) {
+        __uint128_t new_carry = r.magnitude.limb[i] & 1;
+        r.magnitude.limb[i] = (r.magnitude.limb[i] >> 1) | (carry << 127);
+        carry = new_carry;
+    }
+
+    if (r.magnitude.limb[0] == 0 && r.magnitude.limb[1] == 0) r.sign = 1;
+
     return r;
 }
 
@@ -796,6 +796,16 @@ __device__ __forceinline__ void frac_div2(frac1024_t &x) {
     x.exp += 1;
 }
 
+__device__ __forceinline__ void adjust_sign(__uint256_t &V_mod, int sign, const __uint256_t &f_in) {
+    if (sign < 0) {
+        bool is_nonzero = (V_mod.limb[0] != 0) || (V_mod.limb[1] != 0);
+        if (is_nonzero) {
+            __uint256_t V_negated = sub_256(f_in, V_mod);
+            V_mod = V_negated;
+        }
+    }
+}
+
 //TEST
 __device__ __uint256_t simple_mod_256(const __uint256_t &x, const __uint256_t &mod) {
     __uint256_t res = x;
@@ -968,7 +978,7 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
     }
 
     // Ajuste de sinal
-    __uint256_t V_negated = sub_256(f_in, V_mod);
+    __uint256_t V_negated = adjust_sign(V_mod, v.sign, f_in);
     bool is_negative = (v.sign < 0);
     bool is_nonzero = (V_mod.limb[0] != 0) || (V_mod.limb[1] != 0);
     bool should_negate = is_negative && is_nonzero;
