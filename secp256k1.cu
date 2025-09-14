@@ -318,7 +318,7 @@ struct frac1024_t {
     int sign;
 };
 
-__device__ void print_uint256(const char* label, const __uint256_t &x) {
+__device__ __noinline__ void print_uint256(const char* label, const __uint256_t &x) {
     printf("%s: limb[1]=%016llx limb[0]=%016llx\n",
            label,
            (unsigned long long)x.limb[1],
