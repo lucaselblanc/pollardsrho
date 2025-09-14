@@ -291,15 +291,15 @@ __device__ void mod_sqr_mont_p(uint64_t out[4], const uint64_t in[4]) {
 // ----------- ALMOST INV -----------
 
 struct __uint256_t {
-    __uint128_t limb[2];
+    __uint64_t limb[4];
 };
 
 struct __uint512_t {
-    __uint128_t limb[4];
+    __uint64_t limb[8];
 };
 
 struct __uint1024_t {
-    __uint128_t limb[8];
+    __uint64_t limb[16];
 };
 
 struct uint256_t_sign {
