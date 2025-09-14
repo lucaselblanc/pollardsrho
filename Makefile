@@ -5,7 +5,7 @@ NVCC      := nvcc
 CUDA_HOME ?= $(or $(shell echo $$HOME/cuda-13.0),/usr/local/cuda)
 
 INCLUDES  := -I$(CUDA_HOME)/include
-CXXFLAGS  := -O3 -march=native -Wall -std=c++14 -pthread $(INCLUDES)
+CXXFLAGS  := -O0 -march=native -Wall -std=c++14 -pthread $(INCLUDES)
 LDFLAGS   := -L$(CUDA_HOME)/lib64
 LDLIBS    := -lcudart -lpthread
 
@@ -28,10 +28,10 @@ recurse: $(TARGET)
 
 include gpu_arch
 
-NVCCFLAGS = -O3 \
+NVCCFLAGS = -O0 \
 	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
 	-ccbin $(CXX) \
-	-Xcompiler "-O3 -std=c++14 -pthread" \
+	-Xcompiler "-O0 -std=c++14 -pthread" \
 	$(INCLUDES) --expt-relaxed-constexpr
 
 %.o: %.cpp
