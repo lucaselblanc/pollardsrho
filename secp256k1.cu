@@ -851,28 +851,6 @@ __device__ __uint256_t adjust_sign(__uint256_t value, int sign, const __uint256_
     return value;
 }
 
-__device__ __uint256_t simple_mod_256(const __uint256_t &x, const __uint256_t &mod) {
-    __uint256_t res = x;
-    __uint256_t res_minus_mod = sub_256(res, mod);
-    bool ge1 = !borrow_256(res, mod);
-    __uint64_t mask1 = ge1 ? ~0ULL : 0ULL;
-    
-    for (int i = 0; i < 4; i++) {
-        res.limb[i] = (res_minus_mod.limb[i] & mask1) | (res.limb[i] & ~mask1);
-    }
-
-    res_minus_mod = sub_256(res, mod);
-    bool ge2 = !borrow_256(res, mod);
-    __uint64_t mask2 = ge2 ? ~0ULL : 0ULL;
-    
-    for (int i = 0; i < 4; i++) {
-        res.limb[i] = (res_minus_mod.limb[i] & mask2) | (res.limb[i] & ~mask2);
-    }
-
-    return res;
-}
-
-/*
 __device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
     for(int i = 0; i < 8; i++) {
@@ -919,7 +897,6 @@ __device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_
     }
     return res;
 }
-*/
 
 __device__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
     __uint256_t result = {{1, 0, 0, 0}};
@@ -1047,13 +1024,13 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
         for (int i = 0; i < 4; i++) {
             V_mod_tmp.limb[i] = v_shifted.limb[i];
         }
-        V_mod = simple_mod_256(V_mod_tmp, f_in);
+        V_mod = barrett_reduction(v_shifted, f_in);
     } else {
         __uint1024_t v_shifted = rshift_1024(v.num, v.exp - shift_amount);
         for (int i = 0; i < 4; i++) {
             V_mod_tmp.limb[i] = v_shifted.limb[i];
         }
-        V_mod = simple_mod_256(V_mod_tmp, f_in);
+        V_mod = barrett_reduction(v_shifted, f_in);
     }
 
     V_mod = adjust_sign(V_mod, v.sign, f_in);
