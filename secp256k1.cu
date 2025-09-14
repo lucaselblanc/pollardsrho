@@ -864,6 +864,8 @@ __device__ void divsteps2(
     f.magnitude = truncate(f.magnitude, t);
     g.magnitude = truncate(g.magnitude, t);
 
+    unsigned int step = 0;
+
     while (n > 0) {
         f.magnitude = truncate(f.magnitude, t);
 
@@ -899,13 +901,15 @@ __device__ void divsteps2(
         }
 
         g = signed_div2_floor_256(g);
-        
         frac_div2(q);
         frac_div2(r);
 
-        n--; 
-        t--;
+        n--;
+
         g.magnitude = truncate(g.magnitude, t);
+
+        step++;
+        }
     }
 }
 
