@@ -1402,13 +1402,17 @@ int main() {
 
     // f = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
     __uint256_t f = {};
-    f.limb[0] = (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFFFFFFFFFFULL;
-    f.limb[1] = (((__uint128_t)0xFFFFFFFFFFFFFFFFULL) << 64) | (__uint128_t)0xFFFFFFFEFFFFFC2FULL;
+    f.limb[0] = 0xFFFFFFFFFFFFFFFFULL;
+    f.limb[1] = 0xFFFFFFFFFFFFFFFFULL;
+    f.limb[2] = 0xFFFFFFFFFFFFFFFFULL;
+    f.limb[3] = 0xFFFFFFFEFFFFFC2FULL;
 
     // g = 0x33e7665705359f04f28b88cf897c603c9
     __uint256_t g = {};
-    g.limb[0] = (__uint128_t)0x33e7665705359f04ULL;
-    g.limb[1] = ((__uint128_t)0xf << 64) | (__uint128_t)0x28b88cf897c603c9ULL;
+    g.limb[0] = 0x05359f04f28b88cfULL;
+    g.limb[1] = 0x33e76657897c603cULL;
+    g.limb[2] = 0x0000000000000009ULL;
+    g.limb[3] = 0x0000000000000000ULL;
 
     /* g ≡ 1 (mod f): */
     //Hex: 7FDB62ED2D6FA0874ABD664C95B7CEF2ED79CC82D13FF3AC8E9766AA21BEBEAE (bebeae kkk)
@@ -1427,8 +1431,10 @@ int main() {
 
     cudaMemcpy(&result_host, result_device, sizeof(__uint256_t), cudaMemcpyDeviceToHost);
 
-    printf("Resultado limb[1] (alto): %llx\n", (unsigned long long)result_host.limb[1]);
-    printf("Resultado limb[0] (baixo): %llx\n", (unsigned long long)result_host.limb[0]);
+    printf("Resultado limb[3] (mais alto): %016llx\n", (unsigned long long)result_host.limb[3]);
+    printf("Resultado limb[2]: %016llx\n", (unsigned long long)result_host.limb[2]);
+    printf("Resultado limb[1]: %016llx\n", (unsigned long long)result_host.limb[1]);
+    printf("Resultado limb[0] (mais baixo): %016llx\n", (unsigned long long)result_host.limb[0]);
 
     cudaFree(f_device);
     cudaFree(g_device);
