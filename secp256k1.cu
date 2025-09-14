@@ -909,7 +909,6 @@ __device__ void divsteps2(
         g.magnitude = truncate(g.magnitude, t);
 
         step++;
-        }
     }
 }
 
