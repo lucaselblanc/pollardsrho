@@ -545,22 +545,22 @@ __device__ uint256_t_sign signed_add_256(const uint256_t_sign &a, const uint256_
 
 __device__ uint256_t_sign signed_div2_floor_256(const uint256_t_sign &a_in) {
     uint256_t_sign r = a_in;
-
+    
     bool is_neg = (r.sign < 0);
     bool is_odd = (r.magnitude.limb[0] & 1);
-
+    
     if (is_neg && is_odd) {
         __uint256_t one = {{1,0,0,0}};
         r.magnitude = add_256(r.magnitude, one);
     }
-
+    
     __uint64_t carry = 0;
     for (int i = 3; i >= 0; i--) {
         __uint64_t new_carry = r.magnitude.limb[i] & 1;
         r.magnitude.limb[i] = (r.magnitude.limb[i] >> 1) | (carry << 63);
         carry = new_carry;
     }
-
+    
     bool is_zero = true;
     for (int i = 0; i < 4; i++) {
         if (r.magnitude.limb[i] != 0) {
@@ -569,7 +569,7 @@ __device__ uint256_t_sign signed_div2_floor_256(const uint256_t_sign &a_in) {
         }
     }
     if (is_zero) r.sign = 1;
-
+    
     return r;
 }
 
@@ -782,7 +782,24 @@ __device__ void normalize_frac(frac1024_t &x) {
             break;
         }
     }
-    if (is_zero) x.sign = 1;
+    if (is_zero) {
+        x.sign = 1;
+        x.exp = 0;
+    }
+}
+
+__device__ bool frac_has_overflow(const frac1024_t &x) {
+    for (int i = 12; i < 16; i++) {
+        if (x.num.limb[i] != 0) return true;
+    }
+    return false;
+}
+
+__device__ void frac_normalize_overflow(frac1024_t &x) {
+    if (frac_has_overflow(x)) {
+        x.num = rshift_1024(x.num, 64);
+        x.exp += 64;
+    }
 }
 
 __device__ __uint1024_t frac_align_num(const frac1024_t &b, unsigned int target_exp) {
@@ -798,7 +815,7 @@ __device__ __uint1024_t frac_align_num(const frac1024_t &b, unsigned int target_
 __device__ void frac_add(frac1024_t &res, const frac1024_t &a, const frac1024_t &b) {
     if (a.exp >= b.exp) {
         __uint1024_t bnum_al = frac_align_num(b, a.exp);
-
+        
         if (a.sign == b.sign) {
             res.num = add_1024(a.num, bnum_al);
             res.sign = a.sign;
@@ -814,7 +831,7 @@ __device__ void frac_add(frac1024_t &res, const frac1024_t &a, const frac1024_t 
         res.exp = a.exp;
     } else {
         __uint1024_t anum_al = frac_align_num(a, b.exp);
-
+        
         if (a.sign == b.sign) {
             res.num = add_1024(anum_al, b.num);
             res.sign = a.sign;
@@ -829,11 +846,23 @@ __device__ void frac_add(frac1024_t &res, const frac1024_t &a, const frac1024_t 
         }
         res.exp = b.exp;
     }
+    
     normalize_frac(res);
+    frac_normalize_overflow(res);
 }
 
 __device__ void frac_div2(frac1024_t &x) {
     x.exp += 1;
+}
+
+__device__ __uint1024_t frac_to_scaled_int(const frac1024_t &frac, unsigned int scale_exp) {
+    if (scale_exp >= frac.exp) {
+        unsigned int shift = scale_exp - frac.exp;
+        return lshift_1024(frac.num, shift);
+    } else {
+        unsigned int shift = frac.exp - scale_exp;
+        return rshift_1024(frac.num, shift);
+    }
 }
 
 __device__ __uint256_t adjust_sign(__uint256_t value, int sign, const __uint256_t &mod) {
@@ -852,50 +881,79 @@ __device__ __uint256_t adjust_sign(__uint256_t value, int sign, const __uint256_
 }
 
 __device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
-    __uint512_t x_high;
-    for(int i = 0; i < 8; i++) {
-        x_high.limb[i] = x.limb[i + 8];
-    }
-
-    __uint1024_t prod = mul_512_1024(x_high, mu);
-    __uint512_t q;
-    for(int i = 0; i < 8; i++) {
-        q.limb[i] = prod.limb[i + 8];
+    // q1 = x >> (k-1) onde k = 256, então shift = 255
+    __uint1024_t q1 = rshift_1024(x, 255);
+    
+    // q2 = q1 * mu (multiplicação 1024 x 512 = 1536 bits, truncamento)
+    __uint1024_t q2 = {};
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8 && i + j < 16; j++) {
+            __uint128_t prod = mul_64_128(q1.limb[i], mu.limb[j]);
+            
+            __uint64_t carry = 0;
+            int pos = i + j;
+            
+            if (pos < 16) {
+                __uint64_t tmp_lo = q2.limb[pos] + (__uint64_t)prod;
+                carry = (tmp_lo < q2.limb[pos]) ? 1 : 0;
+                q2.limb[pos] = tmp_lo;
+            }
+            
+            pos++;
+            if (pos < 16) {
+                __uint64_t tmp_hi = q2.limb[pos] + (__uint64_t)(prod >> 64) + carry;
+                carry = (tmp_hi < q2.limb[pos]) ? 1 : 0;
+                q2.limb[pos] = tmp_hi;
+            }
+            
+            pos++;
+            while (carry && pos < 16) {
+                __uint64_t tmp = q2.limb[pos] + carry;
+                carry = (tmp < q2.limb[pos]) ? 1 : 0;
+                q2.limb[pos] = tmp;
+                pos++;
+            }
+        }
     }
     
-    __uint512_t qp = mul_256_512_512(q, p);
-    __uint512_t x_low;
-    for(int i = 0; i < 8; i++) {
+    // q3 = q2 >> (k+1) onde k = 256, então shift = 257
+    __uint512_t q3 = {};
+    for (int i = 0; i < 8; i++) {
+        int src_pos = i + 4; // shift de 257 = 4*64 + 1
+        if (src_pos < 16) {
+            q3.limb[i] = (q2.limb[src_pos] >> 1);
+            if (src_pos + 1 < 16) {
+                q3.limb[i] |= (q2.limb[src_pos + 1] << 63);
+            }
+        }
+    }
+    
+    // r = x - q3 * p
+    __uint512_t qp = mul_256_512_512(q3, p);
+    __uint512_t x_low = {};
+    for (int i = 0; i < 8; i++) {
         x_low.limb[i] = x.limb[i];
     }
     
     __uint512_t r = sub_512(x_low, qp);
+    
     __uint512_t p_512 = {};
     for (int i = 0; i < 4; i++) {
         p_512.limb[i] = p.limb[i];
     }
     
-    __uint512_t r_minus_p = sub_512(r, p_512);
-    bool ge1 = !borrow_512(r, p_512);
-    __uint64_t mask1 = ge1 ? ~0ULL : 0ULL;
-    
-    for (int i = 0; i < 8; i++) {
-        r.limb[i] = (r_minus_p.limb[i] & mask1) | (r.limb[i] & ~mask1);
+    for (int iter = 0; iter < 2; iter++) {
+        bool ge = !borrow_512(r, p_512);
+        if (ge) {
+            r = sub_512(r, p_512);
+        }
     }
     
-    r_minus_p = sub_512(r, p_512);
-    bool ge2 = !borrow_512(r, p_512);
-    __uint64_t mask2 = ge2 ? ~0ULL : 0ULL;
-    
-    for (int i = 0; i < 8; i++) {
-        r.limb[i] = (r_minus_p.limb[i] & mask2) | (r.limb[i] & ~mask2);
-    }
-
-    __uint256_t res = {};
+    __uint256_t result = {};
     for (int i = 0; i < 4; i++) {
-        res.limb[i] = r.limb[i];
+        result.limb[i] = r.limb[i];
     }
-    return res;
+    return result;
 }
 
 __device__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
@@ -933,51 +991,50 @@ __device__ void divsteps2(
     f.magnitude = truncate(f.magnitude, t);
     g.magnitude = truncate(g.magnitude, t);
 
-    unsigned int step = 0;
-
     while (n > 0) {
         f.magnitude = truncate(f.magnitude, t);
-
+        
         bool g_odd = (g.magnitude.limb[0] & 1);
-
+        
         if (delta > 0 && g_odd) {
             delta = -delta;
-
+            
             uint256_t_sign f_old = f, g_old = g;
             frac1024_t u_old = u, v_old = v, q_old = q, r_old = r;
-
+            
             f = g_old;
             g = f_old;
             g.sign = -g.sign;
-
+            
             u = q_old;
             v = r_old;
             q = u_old; q.sign = -q.sign;
             r = v_old; r.sign = -r.sign;
         }
-
+        
         bool g0 = (g.magnitude.limb[0] & 1);
         delta = delta + 1;
-
+        
         if (g0) {
             uint256_t_sign f_contrib = {f.magnitude, f.sign};
             g = signed_add_256(g, f_contrib);
-
+            
             frac1024_t q_old = q;
             frac_add(q, q_old, u);
             frac1024_t r_old = r;
             frac_add(r, r_old, v);
         }
-
+        
         g = signed_div2_floor_256(g);
         frac_div2(q);
         frac_div2(r);
-
+        
         n--;
-
-        g.magnitude = truncate(g.magnitude, t);
-
-        step++;
+        t--;
+        
+        if (t > 0) {
+            g.magnitude = truncate(g.magnitude, t);
+        }
     }
 }
 
@@ -998,10 +1055,9 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
     unsigned int m = iterations(d);
 
     __uint256_t f_plus_1 = add_256(f_in, (__uint256_t){{1, 0, 0, 0}});
-
     uint256_t_sign f_plus_1_signed = {f_plus_1, 1};
     uint256_t_sign half_f_plus_1_signed = signed_div2_floor_256(f_plus_1_signed);
-
+    
     __uint256_t precomp = modexp_256(
         half_f_plus_1_signed.magnitude,
         (m > 0 ? m - 1 : 0),
@@ -1014,27 +1070,21 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
 
     frac1024_t u, v, q, r;
     divsteps2(m, m + 1, delta, f_s, g_s, u, v, q, r);
-
+    
     unsigned int shift_amount = (m > 0 ? m - 1 : 0);
-    __uint256_t V_mod;
-    __uint256_t V_mod_tmp = {};
-
-    if (shift_amount >= v.exp) {
-        __uint1024_t v_shifted = lshift_1024(v.num, shift_amount - v.exp);
-        for (int i = 0; i < 4; i++) {
-            V_mod_tmp.limb[i] = v_shifted.limb[i];
-        }
-        V_mod = barrett_reduction(v_shifted, f_in);
-    } else {
-        __uint1024_t v_shifted = rshift_1024(v.num, v.exp - shift_amount);
-        for (int i = 0; i < 4; i++) {
-            V_mod_tmp.limb[i] = v_shifted.limb[i];
-        }
-        V_mod = barrett_reduction(v_shifted, f_in);
+    
+    __uint1024_t v_scaled = frac_to_scaled_int(v, shift_amount);
+    
+    __uint256_t V_magnitude = {};
+    for (int i = 0; i < 4; i++) {
+        V_magnitude.limb[i] = v_scaled.limb[i];
     }
-
-    V_mod = adjust_sign(V_mod, v.sign, f_in);
-
+    
+    int fm_sign = sign(f_s.magnitude, m + 1);
+    int combined_sign = v.sign * fm_sign;
+    
+    __uint256_t V_mod = adjust_sign(V_magnitude, combined_sign, f_in);
+    
     __uint256_t inv = mulmod_256(V_mod, precomp, f_in);
     return inv;
 }
