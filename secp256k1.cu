@@ -862,10 +862,13 @@ __device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_
 __device__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
     __uint256_t result = {{1, 0}};
 
-    while (exp > 0) {
-        if (exp & 1) result = mulmod_256(result, base, mod);
-        base = mulmod_256(base, base, mod);
+    for (int i = 0; i < 32; i++) {
+        if (exp & 1) {
+            result = mulmod_256(result, base, mod);
+        }
         exp >>= 1;
+        if (exp == 0) break;
+        base = mulmod_256(base, base, mod);
     }
 
     return result;
