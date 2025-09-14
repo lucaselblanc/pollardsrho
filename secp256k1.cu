@@ -618,26 +618,26 @@ __device__ __uint256_t mul_64_256(const __uint64_t &a, const __uint64_t &b) {
 }
 
 __device__ __uint256_t mul_128_256(const __uint128_t &a, const __uint128_t &b) {
-    __uint64_t a_lo = (__uint64_t)a;
-    __uint64_t a_hi = (__uint64_t)(a >> 64);
-    __uint64_t b_lo = (__uint64_t)b;
-    __uint64_t b_hi = (__uint64_t)(b >> 64);
-
-    __uint128_t p0 = mul_64_128(a_lo, b_lo);
-    __uint128_t p1 = mul_64_128(a_lo, b_hi);
-    __uint128_t p2 = mul_64_128(a_hi, b_lo);
-    __uint128_t p3 = mul_64_128(a_hi, b_hi);
-
-    __uint128_t lo = p0;
-    __uint128_t mid = p1 + p2 + (p0 >> 64);
-    __uint128_t hi = p3 + (mid >> 64);
-
+    __uint64_t a0 = (__uint64_t)a;
+    __uint64_t a1 = (__uint64_t)(a >> 64);
+    __uint64_t b0 = (__uint64_t)b;
+    __uint64_t b1 = (__uint64_t)(b >> 64);
+    __uint128_t p00 = mul_64_128(a0, b0);
+    __uint128_t p01 = mul_64_128(a0, b1);
+    __uint128_t p10 = mul_64_128(a1, b0);
+    __uint128_t p11 = mul_64_128(a1, b1);
+    
     __uint256_t result = {};
-    result.limb[0] = (__uint64_t)lo;
-    result.limb[1] = (__uint64_t)((lo >> 64) + (mid << 64));
-    result.limb[2] = (__uint64_t)hi;
-    result.limb[3] = (__uint64_t)(hi >> 64);
-
+    
+    result.limb[0] = (__uint64_t)p00;
+    
+    __uint128_t middle_sum = p01 + p10 + (p00 >> 64);
+    result.limb[1] = (__uint64_t)middle_sum;
+    
+    __uint128_t high_sum = p11 + (middle_sum >> 64);
+    result.limb[2] = (__uint64_t)high_sum;
+    result.limb[3] = (__uint64_t)(high_sum >> 64);
+    
     return result;
 }
 
@@ -751,25 +751,21 @@ __device__ __uint512_t mul_256_512_512(const __uint512_t &a, const __uint256_t &
 
 __device__ __uint256_t mulmod_256(const __uint256_t &a, const __uint256_t &b, const __uint256_t &mod) {
     __uint512_t prod = mul_256_512(a, b);
-    __uint512_t mod_512 = {};
+    __uint1024_t prod_1024 = {};
+    for (int i = 0; i < 8; i++) {
+        prod_1024.limb[i] = prod.limb[i];
+    }
+    
+    __uint1024_t mod_1024 = {};
     for (int i = 0; i < 4; i++) {
-        mod_512.limb[i] = mod.limb[i];
+        mod_1024.limb[i] = mod.limb[i];
     }
-
-    for (int iter = 0; iter < 512; iter++) {
-        __uint512_t prod_minus_mod = sub_512(prod, mod_512);
-        bool ge = !borrow_512(prod, mod_512);
-
-        __uint64_t mask = ge ? ~0ULL : 0ULL;
-
-        for (int i = 0; i < 8; i++) {
-            prod.limb[i] = (prod_minus_mod.limb[i] & mask) | (prod.limb[i] & ~mask);
-        }
-    }
-
+    
+    __uint1024_t reduced = barrett_reduction(prod_1024, mod_1024);
+    
     __uint256_t result = {};
     for (int i = 0; i < 4; i++) {
-        result.limb[i] = prod.limb[i];
+        result.limb[i] = reduced.limb[i];
     }
     return result;
 }
@@ -796,10 +792,38 @@ __device__ bool frac_has_overflow(const frac1024_t &x) {
 }
 
 __device__ void frac_normalize_overflow(frac1024_t &x) {
-    if (frac_has_overflow(x)) {
-        x.num = rshift_1024(x.num, 64);
-        x.exp += 64;
+    if (!frac_has_overflow(x)) {
+        return;
     }
+    
+    int overflow_limbs = 0;
+    for (int i = 15; i >= 4; i--) {
+        if (x.num.limb[i] != 0) {
+            overflow_limbs = i - 3;
+            break;
+        }
+    }
+    
+    int shift_amount;
+    if (overflow_limbs <= 1) {
+        shift_amount = 64;
+    } else if (overflow_limbs <= 2) {
+        shift_amount = 128;
+    } else {
+        shift_amount = overflow_limbs * 64;
+    }
+    
+    x.num = rshift_1024(x.num, shift_amount);
+    x.exp += shift_amount;
+    
+    #ifdef DEBUG_OVERFLOW
+    printf("DEBUG: Overflow normalizado - limbs extras: %d, shift: %d\n", 
+           overflow_limbs, shift_amount);
+    
+    if (frac_has_overflow(x)) {
+        printf("ERRO: Overflow persistente após normalização!\n");
+    }
+    #endif
 }
 
 __device__ __uint1024_t frac_align_num(const frac1024_t &b, unsigned int target_exp) {
