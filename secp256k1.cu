@@ -796,6 +796,17 @@ __device__ __forceinline__ void frac_div2(frac1024_t &x) {
     x.exp += 1;
 }
 
+//TEST
+__device__ __uint256_t simple_mod_256(const __uint256_t &x, const __uint256_t &mod) {
+    __uint256_t res = x;
+
+    while (!borrow_256(res, mod)) {
+        res = sub_256(res, mod);
+    }
+
+    return res;
+}
+
 // Barrett Reduction
 __device__ __forceinline__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
@@ -916,6 +927,61 @@ __device__ unsigned int iterations(unsigned int d) {
     return (d < 46) ? ((49*d + 80) / 17) : ((49*d + 57) / 17);
 }
 
+//TEST
+__device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) {
+    if ((f_in.limb[0] & 1) == 0) {
+        __uint256_t zero = {}; 
+        return zero;
+    }
+
+    unsigned int d_f = bit_length_256(f_in);
+    unsigned int d_g = bit_length_256(g_in);
+    unsigned int d = (d_f > d_g) ? d_f : d_g;
+
+    unsigned int m = iterations(d);
+
+    __uint256_t f_plus_1 = add_256(f_in, (__uint256_t){{1,0}});
+
+    uint256_t_sign f_plus_1_signed = {f_plus_1, 1};
+    uint256_t_sign half_f_plus_1_signed = signed_div2_floor_256(f_plus_1_signed);
+
+    __uint256_t precomp = modexp_256(half_f_plus_1_signed.magnitude, (m > 0 ? m - 1 : 0), f_in);
+
+    uint256_t_sign f_s = {f_in, 1};
+    uint256_t_sign g_s = {g_in, 1};
+    int delta = 1;
+
+    frac1024_t u, v, q, r;
+    divsteps2(m, m + 1, delta, f_s, g_s, u, v, q, r);
+
+    unsigned int shift_amount = (m > 0 ? m - 1 : 0);
+    __uint256_t V_mod;
+
+    if (shift_amount >= v.exp) {
+        __uint1024_t v_shifted = lshift_1024(v.num, shift_amount - v.exp);
+        // Redução simples em vez de Barrett
+        V_mod = simple_mod_256((__uint256_t){v_shifted.limb[0], v_shifted.limb[1]}, f_in);
+    } else {
+        __uint1024_t v_shifted = rshift_1024(v.num, v.exp - shift_amount);
+        // Redução simples em vez de Barrett
+        V_mod = simple_mod_256((__uint256_t){v_shifted.limb[0], v_shifted.limb[1]}, f_in);
+    }
+
+    // Ajuste de sinal
+    __uint256_t V_negated = sub_256(f_in, V_mod);
+    bool is_negative = (v.sign < 0);
+    bool is_nonzero = (V_mod.limb[0] != 0) || (V_mod.limb[1] != 0);
+    bool should_negate = is_negative && is_nonzero;
+
+    __uint128_t mask = (__uint128_t)-(int)should_negate;
+    V_mod.limb[0] = (V_negated.limb[0] & mask) | (V_mod.limb[0] & ~mask);
+    V_mod.limb[1] = (V_negated.limb[1] & mask) | (V_mod.limb[1] & ~mask);
+
+    __uint256_t inv = mulmod_256(V_mod, precomp, f_in);
+    return inv;
+}
+
+/*
 __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) {
     if ((f_in.limb[0] & 1) == 0) {
         __uint256_t zero = {}; 
@@ -975,6 +1041,7 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
         return inv;
     }
 }
+*/
 
 // ------------- FINAL -------------
 
