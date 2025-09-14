@@ -35,7 +35,7 @@ include gpu_arch
 	$(INCLUDES) --expt-relaxed-constexpr
 
 NVCCFLAGS = -O0 -g -lineinfo \
-	-gencode arch=compute_sm_61,code=sm_61 \
+	-gencode arch=compute_sm_60,code=sm_60 \
 	-ccbin $(CXX) \
 	-Xcompiler "-O0 -std=c++14 -pthread" \
 	$(INCLUDES) --expt-relaxed-constexpr
