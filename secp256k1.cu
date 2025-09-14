@@ -320,60 +320,61 @@ struct frac1024_t {
 
 __constant__ __uint512_t mu = {
      {
-       (__uint128_t) 0x1000003d1,
-       (__uint128_t) 0x1ULL,
-       (__uint128_t) 0x0ULL,
-       (__uint128_t) 0x0ULL
+       0x1000003d1ULL,
+       0x0ULL,
+       0x1ULL,
+       0x0ULL,
+       0x0ULL,
+       0x0ULL,
+       0x0ULL,
+       0x0ULL
      }
 };
 
 __device__ __uint256_t add_256(const __uint256_t &a, const __uint256_t &b) {
     __uint256_t res;
-    __uint128_t carry = 0, tmp;
+    __uint64_t carry = 0;
 
-    tmp = a.limb[0] + b.limb[0];
-    carry = (tmp < a.limb[0]) ? 1 : 0;
-    res.limb[0] = tmp;
-
-    tmp = a.limb[1] + b.limb[1] + carry;
-    res.limb[1] = tmp;
+    for (int i = 0; i < 4; i++) {
+        __uint64_t tmp = a.limb[i] + b.limb[i] + carry;
+        carry = (tmp < a.limb[i] || (carry && tmp == a.limb[i])) ? 1 : 0;
+        res.limb[i] = tmp;
+    }
 
     return res;
 }
 
 __device__ __uint256_t sub_256(const __uint256_t &a, const __uint256_t &b) {
     __uint256_t res;
-    __uint128_t borrow = 0, tmp;
+    __uint64_t borrow = 0;
 
-    tmp = a.limb[0] - b.limb[0];
-    borrow = (tmp > a.limb[0]) ? 1 : 0;
-    res.limb[0] = tmp;
-
-    tmp = a.limb[1] - b.limb[1] - borrow;
-    res.limb[1] = tmp;
+    for (int i = 0; i < 4; i++) {
+        __uint64_t tmp = a.limb[i] - b.limb[i] - borrow;
+        borrow = (a.limb[i] < b.limb[i] || (borrow && a.limb[i] == b.limb[i])) ? 1 : 0;
+        res.limb[i] = tmp;
+    }
 
     return res;
 }
 
 __device__ bool borrow_256(const __uint256_t &a, const __uint256_t &b) {
-    __uint128_t borrow = 0, tmp;
-    
-    tmp = a.limb[0] - b.limb[0];
-    borrow = (tmp > a.limb[0]) ? 1 : 0;
-    
-    tmp = a.limb[1] - b.limb[1] - borrow;
-    borrow = (tmp > a.limb[1] - borrow) ? 1 : 0;
-    
+    __uint64_t borrow = 0;
+
+    for (int i = 0; i < 4; i++) {
+        __uint64_t tmp = a.limb[i] - b.limb[i] - borrow;
+        borrow = (a.limb[i] < b.limb[i] || (borrow && a.limb[i] == b.limb[i])) ? 1 : 0;
+    }
+
     return borrow;
 }
 
 __device__ __uint512_t add_512(const __uint512_t &a, const __uint512_t &b) {
     __uint512_t res;
-    __uint128_t carry = 0, tmp;
+    __uint64_t carry = 0;
 
-    for (int i = 0; i < 4; i++) {
-        tmp = a.limb[i] + b.limb[i] + carry;
-        carry = (tmp < a.limb[i]) ? 1 : 0;
+    for (int i = 0; i < 8; i++) {
+        __uint64_t tmp = a.limb[i] + b.limb[i] + carry;
+        carry = (tmp < a.limb[i] || (carry && tmp == a.limb[i])) ? 1 : 0;
         res.limb[i] = tmp;
     }
 
@@ -382,22 +383,22 @@ __device__ __uint512_t add_512(const __uint512_t &a, const __uint512_t &b) {
 
 __device__ __uint512_t sub_512(const __uint512_t &a, const __uint512_t &b) {
     __uint512_t res;
-    __uint128_t borrow = 0, tmp;
-    
-    for (int i = 0; i < 4; i++) {
-        tmp = a.limb[i] - b.limb[i] - borrow;
-        borrow = (tmp > a.limb[i]) ? 1 : 0;
+    __uint64_t borrow = 0;
+
+    for (int i = 0; i < 8; i++) {
+        __uint64_t tmp = a.limb[i] - b.limb[i] - borrow;
+        borrow = (a.limb[i] < b.limb[i] || (borrow && a.limb[i] == b.limb[i])) ? 1 : 0;
         res.limb[i] = tmp;
     }
     return res;
 }
 
 __device__ bool borrow_512(const __uint512_t &a, const __uint512_t &b) {
-    __uint128_t borrow = 0, tmp;
+    __uint64_t borrow = 0;
 
-    for (int i = 0; i < 4; i++) {
-        tmp = a.limb[i] - b.limb[i] - borrow;
-        borrow = (tmp > a.limb[i]) ? 1 : 0;
+    for (int i = 0; i < 8; i++) {
+        __uint64_t tmp = a.limb[i] - b.limb[i] - borrow;
+        borrow = (a.limb[i] < b.limb[i] || (borrow && a.limb[i] == b.limb[i])) ? 1 : 0;
     }
 
     return borrow;
@@ -405,11 +406,11 @@ __device__ bool borrow_512(const __uint512_t &a, const __uint512_t &b) {
 
 __device__ __uint1024_t add_1024(const __uint1024_t &a, const __uint1024_t &b) {
     __uint1024_t res;
-    __uint128_t carry = 0, tmp;
+    __uint64_t carry = 0;
 
-    for (int i = 0; i < 8; i++) {
-        tmp = a.limb[i] + b.limb[i] + carry;
-        carry = (tmp < a.limb[i]) ? 1 : 0;
+    for (int i = 0; i < 16; i++) {
+        __uint64_t tmp = a.limb[i] + b.limb[i] + carry;
+        carry = (tmp < a.limb[i] || (carry && tmp == a.limb[i])) ? 1 : 0;
         res.limb[i] = tmp;
     }
 
@@ -418,11 +419,11 @@ __device__ __uint1024_t add_1024(const __uint1024_t &a, const __uint1024_t &b) {
 
 __device__ __uint1024_t sub_1024(const __uint1024_t &a, const __uint1024_t &b) {
     __uint1024_t res;
-    __uint128_t borrow = 0, tmp;
+    __uint64_t borrow = 0;
 
-    for (int i = 0; i < 8; i++) {
-        tmp = a.limb[i] - b.limb[i] - borrow;
-        borrow = (tmp > a.limb[i]) ? 1 : 0;
+    for (int i = 0; i < 16; i++) {
+        __uint64_t tmp = a.limb[i] - b.limb[i] - borrow;
+        borrow = (a.limb[i] < b.limb[i] || (borrow && a.limb[i] == b.limb[i])) ? 1 : 0;
         res.limb[i] = tmp;
     }
 
@@ -430,27 +431,21 @@ __device__ __uint1024_t sub_1024(const __uint1024_t &a, const __uint1024_t &b) {
 }
 
 __device__ bool borrow_1024(const __uint1024_t &a, const __uint1024_t &b) {
-    __uint128_t borrow = 0, tmp;
+    __uint64_t borrow = 0;
 
-    for (int i = 0; i < 8; i++) {
-        tmp = a.limb[i] - b.limb[i] - borrow;
-        borrow = (tmp > a.limb[i]) ? 1 : 0;
+    for (int i = 0; i < 16; i++) {
+        __uint64_t tmp = a.limb[i] - b.limb[i] - borrow;
+        borrow = (a.limb[i] < b.limb[i] || (borrow && a.limb[i] == b.limb[i])) ? 1 : 0;
     }
 
     return borrow;
 }
 
 __device__ unsigned int bit_length_256(const __uint256_t &x) {
-    if (x.limb[1] != 0) {
-        unsigned long long high_hi = (unsigned long long)(x.limb[1] >> 64);
-        unsigned long long high_lo = (unsigned long long)(x.limb[1]);
-        if (high_hi) return 128 + (64 - __clzll(high_hi));
-        return 128 + (64 - __clzll(high_lo));
-    } else if (x.limb[0] != 0) {
-        unsigned long long low_hi = (unsigned long long)(x.limb[0] >> 64);
-        unsigned long long low_lo = (unsigned long long)(x.limb[0]);
-        if (low_hi) return (64 - __clzll(low_hi));
-        return (64 - __clzll(low_lo));
+    for (int i = 3; i >= 0; i--) {
+        if (x.limb[i] != 0) {
+            return i * 64 + (64 - __clzll(x.limb[i]));
+        }
     }
     return 0;
 }
@@ -458,37 +453,43 @@ __device__ unsigned int bit_length_256(const __uint256_t &x) {
 __device__ __uint256_t make_power_of_two_256(unsigned int t) {
     __uint256_t res = {};
     if (t == 0) return res;
-    if (t < 128) {
-        res.limb[0] = ((__uint128_t)1 << t);
-    } else if (t == 128) {
-        res.limb[1] = 1;
-    } else if (t < 256) {
-        res.limb[1] = ((__uint128_t)1 << (t - 128));
+    
+    unsigned int limb_index = t / 64;
+    unsigned int bit_index = t % 64;
+    
+    if (limb_index < 4) {
+        res.limb[limb_index] = 1ULL << bit_index;
     }
+    
     return res;
 }
 
 __device__ __uint256_t truncate(const __uint256_t &f, unsigned int t) {
-    __uint256_t res = {0,0};
+    __uint256_t res = {};
     if (t == 0) return res;
     if (t >= 256) return f;
 
-    if (t <= 128) {
-        __uint128_t mask = (t == 128) ? ~(__uint128_t)0 : (((__uint128_t)1 << t) - 1);
-        res.limb[0] = f.limb[0] & mask;
-        res.limb[1] = 0;
-    } else {
-        unsigned int high_bits = t - 128;
-        __uint128_t mask = (high_bits == 128) ? ~(__uint128_t)0 : (((__uint128_t)1 << high_bits) - 1);
-        res.limb[0] = f.limb[0];
-        res.limb[1] = f.limb[1] & mask;
+    unsigned int full_limbs = t / 64;
+    unsigned int remaining_bits = t % 64;
+
+    for (int i = 0; i < 4; i++) {
+        if (i < (int)full_limbs) {
+            res.limb[i] = f.limb[i];
+        } else if (i == (int)full_limbs && remaining_bits > 0) {
+            __uint64_t mask = (1ULL << remaining_bits) - 1;
+            res.limb[i] = f.limb[i] & mask;
+        } else {
+            res.limb[i] = 0;
+        }
     }
 
+    unsigned int sign_bit_pos = t - 1;
+    unsigned int sign_limb = sign_bit_pos / 64;
+    unsigned int sign_bit = sign_bit_pos % 64;
+    
     bool negative = false;
-    if (t <= 128) {
-        negative = (res.limb[0] & ((__uint128_t)1 << (t - 1))) != 0;
-    } else {
-        negative = (res.limb[1] & ((__uint128_t)1 << (t - 1 - 128))) != 0;
+    if (sign_limb < 4) {
+        negative = (res.limb[sign_limb] & (1ULL << sign_bit)) != 0;
     }
 
     if (negative) {
@@ -502,17 +503,25 @@ __device__ __uint256_t truncate(const __uint256_t &f, unsigned int t) {
 __device__ int sign(const __uint256_t &x, unsigned int t) {
     if (t == 0) return 1;
 
-    if (t <= 128) {
-        bool neg = (x.limb[0] & ((__uint128_t)1 << (t - 1)));
-        return neg ? -1 : 1;
-    } else {
-        bool neg = (x.limb[1] & ((__uint128_t)1 << ((t - 1) - 128)));
-        return neg ? -1 : 1;
-    }
+    unsigned int sign_bit_pos = t - 1;
+    unsigned int sign_limb = sign_bit_pos / 64;
+    unsigned int sign_bit = sign_bit_pos % 64;
+    
+    if (sign_limb >= 4) return 1;
+    
+    bool neg = (x.limb[sign_limb] & (1ULL << sign_bit)) != 0;
+    return neg ? -1 : 1;
 }
 
 __device__ void normalize_sign_uint256(uint256_t_sign &x) {
-    if (x.magnitude.limb[0] == 0 && x.magnitude.limb[1] == 0) x.sign = 1;
+    bool is_zero = true;
+    for (int i = 0; i < 4; i++) {
+        if (x.magnitude.limb[i] != 0) {
+            is_zero = false;
+            break;
+        }
+    }
+    if (is_zero) x.sign = 1;
 }
 
 __device__ uint256_t_sign signed_add_256(const uint256_t_sign &a, const uint256_t_sign &b) {
@@ -541,18 +550,25 @@ __device__ uint256_t_sign signed_div2_floor_256(const uint256_t_sign &a_in) {
     bool is_odd = (r.magnitude.limb[0] & 1);
 
     if (is_neg && is_odd) {
-        __uint256_t one = {{1,0}};
+        __uint256_t one = {{1,0,0,0}};
         r.magnitude = add_256(r.magnitude, one);
     }
 
-    __uint128_t carry = 0;
-    for (int i = 1; i >= 0; i--) {
-        __uint128_t new_carry = r.magnitude.limb[i] & 1;
-        r.magnitude.limb[i] = (r.magnitude.limb[i] >> 1) | (carry << 127);
+    __uint64_t carry = 0;
+    for (int i = 3; i >= 0; i--) {
+        __uint64_t new_carry = r.magnitude.limb[i] & 1;
+        r.magnitude.limb[i] = (r.magnitude.limb[i] >> 1) | (carry << 63);
         carry = new_carry;
     }
 
-    if (r.magnitude.limb[0] == 0 && r.magnitude.limb[1] == 0) r.sign = 1;
+    bool is_zero = true;
+    for (int i = 0; i < 4; i++) {
+        if (r.magnitude.limb[i] != 0) {
+            is_zero = false;
+            break;
+        }
+    }
+    if (is_zero) r.sign = 1;
 
     return r;
 }
@@ -560,15 +576,15 @@ __device__ uint256_t_sign signed_div2_floor_256(const uint256_t_sign &a_in) {
 __device__ __uint1024_t lshift_1024(const __uint1024_t &x, unsigned int shift) {
     __uint1024_t res = {};
     if (shift >= 1024) return res;
-    
-    unsigned int limb_shift = shift / 128;
-    unsigned int bit_shift = shift % 128;
 
-    for (int i = 7; i >= 0; i--) {
+    unsigned int limb_shift = shift / 64;
+    unsigned int bit_shift = shift % 64;
+
+    for (int i = 15; i >= 0; i--) {
         if (i - (int)limb_shift < 0) continue;
         res.limb[i] = x.limb[i - limb_shift] << bit_shift;
         if (i - (int)limb_shift - 1 >= 0 && bit_shift != 0)
-            res.limb[i] |= x.limb[i - limb_shift - 1] >> (128 - bit_shift);
+            res.limb[i] |= x.limb[i - limb_shift - 1] >> (64 - bit_shift);
     }
     return res;
 }
@@ -576,165 +592,191 @@ __device__ __uint1024_t lshift_1024(const __uint1024_t &x, unsigned int shift) {
 __device__ __uint1024_t rshift_1024(const __uint1024_t &x, unsigned int shift) {
     __uint1024_t res = {};
     if (shift >= 1024) return res;
-    
-    unsigned int limb_shift = shift / 128;
-    unsigned int bit_shift = shift % 128;
 
-    for (int i = 0; i < 8; i++) {
-        if (i + (int)limb_shift >= 8) continue;
+    unsigned int limb_shift = shift / 64;
+    unsigned int bit_shift = shift % 64;
+
+    for (int i = 0; i < 16; i++) {
+        if (i + (int)limb_shift >= 16) continue;
         res.limb[i] = x.limb[i + limb_shift] >> bit_shift;
-        if (i + (int)limb_shift + 1 < 8 && bit_shift != 0)
-            res.limb[i] |= x.limb[i + limb_shift + 1] << (128 - bit_shift);
+        if (i + (int)limb_shift + 1 < 16 && bit_shift != 0)
+            res.limb[i] |= x.limb[i + limb_shift + 1] << (64 - bit_shift);
     }
     return res;
 }
 
+__device__ __uint128_t mul_64_128(const __uint64_t &a, const __uint64_t &b) {
+    return (__uint128_t)a * b;
+}
+
+__device__ __uint256_t mul_64_256(const __uint64_t &a, const __uint64_t &b) {
+    __uint128_t prod = mul_64_128(a, b);
+    __uint256_t result = {};
+    result.limb[0] = (__uint64_t)prod;
+    result.limb[1] = (__uint64_t)(prod >> 64);
+    return result;
+}
+
 __device__ __uint256_t mul_128_256(const __uint128_t &a, const __uint128_t &b) {
-    unsigned long long a_lo = (unsigned long long)a;
-    unsigned long long a_hi = (unsigned long long)(a >> 64);
-    unsigned long long b_lo = (unsigned long long)b;
-    unsigned long long b_hi = (unsigned long long)(b >> 64);
-    
-    __uint128_t p0 = (__uint128_t)a_lo * b_lo;
-    __uint128_t p1 = (__uint128_t)a_lo * b_hi;
-    __uint128_t p2 = (__uint128_t)a_hi * b_lo;
-    __uint128_t p3 = (__uint128_t)a_hi * b_hi;
+    __uint64_t a_lo = (__uint64_t)a;
+    __uint64_t a_hi = (__uint64_t)(a >> 64);
+    __uint64_t b_lo = (__uint64_t)b;
+    __uint64_t b_hi = (__uint64_t)(b >> 64);
+
+    __uint128_t p0 = mul_64_128(a_lo, b_lo);
+    __uint128_t p1 = mul_64_128(a_lo, b_hi);
+    __uint128_t p2 = mul_64_128(a_hi, b_lo);
+    __uint128_t p3 = mul_64_128(a_hi, b_hi);
+
     __uint128_t lo = p0;
     __uint128_t mid = p1 + p2 + (p0 >> 64);
     __uint128_t hi = p3 + (mid >> 64);
-    
-    __uint256_t result;
-    result.limb[0] = (lo & 0xFFFFFFFFFFFFFFFFULL) | ((mid & 0xFFFFFFFFFFFFFFFFULL) << 64);
-    result.limb[1] = hi;
-    
+
+    __uint256_t result = {};
+    result.limb[0] = (__uint64_t)lo;
+    result.limb[1] = (__uint64_t)((lo >> 64) + (mid << 64));
+    result.limb[2] = (__uint64_t)hi;
+    result.limb[3] = (__uint64_t)(hi >> 64);
+
     return result;
 }
 
 __device__ __uint512_t mul_256_512(const __uint256_t &a, const __uint256_t &b) {
     __uint512_t res = {};
-    __uint256_t p0 = mul_128_256(a.limb[0], b.limb[0]);
-    __uint256_t p1 = mul_128_256(a.limb[0], b.limb[1]);
-    __uint256_t p2 = mul_128_256(a.limb[1], b.limb[0]);
-    __uint256_t p3 = mul_128_256(a.limb[1], b.limb[1]);
 
-    res.limb[0] = p0.limb[0];
-    res.limb[1] = p0.limb[1];
-    
-    __uint128_t carry = 0;
-    __uint128_t tmp = res.limb[1] + p1.limb[0];
-    carry = (tmp < res.limb[1]) ? 1 : 0;
-    res.limb[1] = tmp;
-    tmp = res.limb[2] + p1.limb[1] + carry;
-    carry = (tmp < res.limb[2]) ? 1 : 0;
-    res.limb[2] = tmp;
-    res.limb[3] += carry;
-    carry = 0;
-    tmp = res.limb[1] + p2.limb[0];
-    carry = (tmp < res.limb[1]) ? 1 : 0;
-    res.limb[1] = tmp;
-    tmp = res.limb[2] + p2.limb[1] + carry;
-    carry = (tmp < res.limb[2]) ? 1 : 0;
-    res.limb[2] = tmp;
-    res.limb[3] += carry;
-    res.limb[2] = add_256((__uint256_t){res.limb[2], res.limb[3]}, p3).limb[0];
-    res.limb[3] = add_256((__uint256_t){res.limb[2], res.limb[3]}, p3).limb[1];
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            __uint128_t prod = mul_64_128(a.limb[i], b.limb[j]);
+
+            __uint64_t carry = 0;
+            int pos = i + j;
+
+            if (pos < 8) {
+                __uint64_t tmp_lo = res.limb[pos] + (__uint64_t)prod;
+                carry = (tmp_lo < res.limb[pos]) ? 1 : 0;
+                res.limb[pos] = tmp_lo;
+            }
+
+            pos++;
+            if (pos < 8) {
+                __uint64_t tmp_hi = res.limb[pos] + (__uint64_t)(prod >> 64) + carry;
+                carry = (tmp_hi < res.limb[pos]) ? 1 : 0;
+                res.limb[pos] = tmp_hi;
+            }
+
+            pos++;
+            while (carry && pos < 8) {
+                __uint64_t tmp = res.limb[pos] + carry;
+                carry = (tmp < res.limb[pos]) ? 1 : 0;
+                res.limb[pos] = tmp;
+                pos++;
+            }
+        }
+    }
 
     return res;
 }
 
 __device__ __uint1024_t mul_512_1024(const __uint512_t &a, const __uint512_t &b) {
     __uint1024_t res = {};
-    
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-            __uint256_t prod = mul_128_256(a.limb[i], b.limb[j]);
-            
-            __uint128_t carry = 0;
+
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            __uint128_t prod = mul_64_128(a.limb[i], b.limb[j]);
+
+            __uint64_t carry = 0;
             int pos = i + j;
-            
-            if (pos < 8) {
-                __uint128_t tmp = res.limb[pos] + prod.limb[0];
-                carry = (tmp < res.limb[pos]) ? 1 : 0;
-                res.limb[pos] = tmp;
+
+            if (pos < 16) {
+                __uint64_t tmp_lo = res.limb[pos] + (__uint64_t)prod;
+                carry = (tmp_lo < res.limb[pos]) ? 1 : 0;
+                res.limb[pos] = tmp_lo;
             }
-            
+
             pos++;
-            if (pos < 8) {
-                __uint128_t tmp = res.limb[pos] + prod.limb[1] + carry;
-                carry = (tmp < res.limb[pos]) ? 1 : 0;
-                res.limb[pos] = tmp;
+            if (pos < 16) {
+                __uint64_t tmp_hi = res.limb[pos] + (__uint64_t)(prod >> 64) + carry;
+                carry = (tmp_hi < res.limb[pos]) ? 1 : 0;
+                res.limb[pos] = tmp_hi;
             }
-            
+
             pos++;
-            while (carry && pos < 8) {
-                __uint128_t tmp = res.limb[pos] + carry;
+            while (carry && pos < 16) {
+                __uint64_t tmp = res.limb[pos] + carry;
                 carry = (tmp < res.limb[pos]) ? 1 : 0;
                 res.limb[pos] = tmp;
                 pos++;
             }
         }
     }
-    
+
     return res;
 }
 
 __device__ __uint512_t mul_256_512_512(const __uint512_t &a, const __uint256_t &b) {
     __uint512_t res = {};
-    
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 2; j++) {
-            __uint256_t prod = mul_128_256(a.limb[i], b.limb[j]);
-            
-            __uint128_t carry = 0;
+
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 4; j++) {
+            __uint128_t prod = mul_64_128(a.limb[i], b.limb[j]);
+
+            __uint64_t carry = 0;
             int pos = i + j;
-            
-            if (pos < 4) {
-                __uint128_t tmp = res.limb[pos] + prod.limb[0];
-                carry = (tmp < res.limb[pos]) ? 1 : 0;
-                res.limb[pos] = tmp;
+
+            if (pos < 8) {
+                __uint64_t tmp_lo = res.limb[pos] + (__uint64_t)prod;
+                carry = (tmp_lo < res.limb[pos]) ? 1 : 0;
+                res.limb[pos] = tmp_lo;
             }
-            
+
             pos++;
-            if (pos < 4) {
-                __uint128_t tmp = res.limb[pos] + prod.limb[1] + carry;
-                carry = (tmp < res.limb[pos]) ? 1 : 0;
-                res.limb[pos] = tmp;
+            if (pos < 8) {
+                __uint64_t tmp_hi = res.limb[pos] + (__uint64_t)(prod >> 64) + carry;
+                carry = (tmp_hi < res.limb[pos]) ? 1 : 0;
+                res.limb[pos] = tmp_hi;
             }
-            
+
             pos++;
-            while (carry && pos < 4) {
-                __uint128_t tmp = res.limb[pos] + carry;
+            while (carry && pos < 8) {
+                __uint64_t tmp = res.limb[pos] + carry;
                 carry = (tmp < res.limb[pos]) ? 1 : 0;
                 res.limb[pos] = tmp;
                 pos++;
             }
         }
     }
-    
+
     return res;
 }
 
 __device__ __uint256_t mulmod_256(const __uint256_t &a, const __uint256_t &b, const __uint256_t &mod) {
     __uint512_t prod = mul_256_512(a, b);
-    __uint512_t mod_512 = {{mod.limb[0], mod.limb[1], 0, 0}};
-    
+    __uint512_t mod_512 = {};
+    for (int i = 0; i < 4; i++) {
+        mod_512.limb[i] = mod.limb[i];
+    }
+
     for (int iter = 0; iter < 512; iter++) {
         __uint512_t prod_minus_mod = sub_512(prod, mod_512);
         bool ge = !borrow_512(prod, mod_512);
 
-        __uint128_t mask = (__uint128_t)-(int)ge;
-        
-        for (int i = 0; i < 4; i++) {
+        __uint64_t mask = ge ? ~0ULL : 0ULL;
+
+        for (int i = 0; i < 8; i++) {
             prod.limb[i] = (prod_minus_mod.limb[i] & mask) | (prod.limb[i] & ~mask);
         }
     }
-    
-    return (__uint256_t){prod.limb[0], prod.limb[1]};
+
+    __uint256_t result = {};
+    for (int i = 0; i < 4; i++) {
+        result.limb[i] = prod.limb[i];
+    }
+    return result;
 }
 
 __device__ void normalize_frac(frac1024_t &x) {
     bool is_zero = true;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 16; i++) {
         if (x.num.limb[i] != 0) {
             is_zero = false;
             break;
@@ -756,7 +798,7 @@ __device__ __uint1024_t frac_align_num(const frac1024_t &b, unsigned int target_
 __device__ void frac_add(frac1024_t &res, const frac1024_t &a, const frac1024_t &b) {
     if (a.exp >= b.exp) {
         __uint1024_t bnum_al = frac_align_num(b, a.exp);
-        
+
         if (a.sign == b.sign) {
             res.num = add_1024(a.num, bnum_al);
             res.sign = a.sign;
@@ -772,7 +814,7 @@ __device__ void frac_add(frac1024_t &res, const frac1024_t &a, const frac1024_t 
         res.exp = a.exp;
     } else {
         __uint1024_t anum_al = frac_align_num(a, b.exp);
-        
+
         if (a.sign == b.sign) {
             res.num = add_1024(anum_al, b.num);
             res.sign = a.sign;
@@ -795,7 +837,13 @@ __device__ void frac_div2(frac1024_t &x) {
 }
 
 __device__ __uint256_t adjust_sign(__uint256_t value, int sign, const __uint256_t &mod) {
-    bool nonzero = (value.limb[0] != 0) || (value.limb[1] != 0);
+    bool nonzero = false;
+    for (int i = 0; i < 4; i++) {
+        if (value.limb[i] != 0) {
+            nonzero = true;
+            break;
+        }
+    }
 
     if (sign < 0 && nonzero) {
         return sub_256(mod, value);
@@ -803,64 +851,78 @@ __device__ __uint256_t adjust_sign(__uint256_t value, int sign, const __uint256_
     return value;
 }
 
-//TEST
 __device__ __uint256_t simple_mod_256(const __uint256_t &x, const __uint256_t &mod) {
     __uint256_t res = x;
     __uint256_t res_minus_mod = sub_256(res, mod);
     bool ge1 = !borrow_256(res, mod);
-    __uint128_t mask1 = (__uint128_t)-(int)ge1;
-    res.limb[0] = (res_minus_mod.limb[0] & mask1) | (res.limb[0] & ~mask1);
-    res.limb[1] = (res_minus_mod.limb[1] & mask1) | (res.limb[1] & ~mask1);
+    __uint64_t mask1 = ge1 ? ~0ULL : 0ULL;
+    
+    for (int i = 0; i < 4; i++) {
+        res.limb[i] = (res_minus_mod.limb[i] & mask1) | (res.limb[i] & ~mask1);
+    }
 
     res_minus_mod = sub_256(res, mod);
     bool ge2 = !borrow_256(res, mod);
-    __uint128_t mask2 = (__uint128_t)-(int)ge2;
-    res.limb[0] = (res_minus_mod.limb[0] & mask2) | (res.limb[0] & ~mask2);
-    res.limb[1] = (res_minus_mod.limb[1] & mask2) | (res.limb[1] & ~mask2);
+    __uint64_t mask2 = ge2 ? ~0ULL : 0ULL;
+    
+    for (int i = 0; i < 4; i++) {
+        res.limb[i] = (res_minus_mod.limb[i] & mask2) | (res.limb[i] & ~mask2);
+    }
 
     return res;
 }
 
 /*
-// Barrett Reduction
 __device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_t &p) {
     __uint512_t x_high;
-    for(int i=0; i<4; i++) x_high.limb[i] = x.limb[i+4];
+    for(int i = 0; i < 8; i++) {
+        x_high.limb[i] = x.limb[i + 8];
+    }
 
     __uint1024_t prod = mul_512_1024(x_high, mu);
     __uint512_t q;
-    for(int i=0; i<4; i++) q.limb[i] = prod.limb[i+4];
+    for(int i = 0; i < 8; i++) {
+        q.limb[i] = prod.limb[i + 8];
+    }
+    
     __uint512_t qp = mul_256_512_512(q, p);
     __uint512_t x_low;
-    for(int i=0; i<4; i++) x_low.limb[i] = x.limb[i]; 
+    for(int i = 0; i < 8; i++) {
+        x_low.limb[i] = x.limb[i];
+    }
+    
     __uint512_t r = sub_512(x_low, qp);
-    __uint512_t p_512 = {{p.limb[0], p.limb[1], 0, 0}};
+    __uint512_t p_512 = {};
+    for (int i = 0; i < 4; i++) {
+        p_512.limb[i] = p.limb[i];
+    }
     
     __uint512_t r_minus_p = sub_512(r, p_512);
     bool ge1 = !borrow_512(r, p_512);
-    __uint128_t mask1 = (__uint128_t)-(int)ge1;
+    __uint64_t mask1 = ge1 ? ~0ULL : 0ULL;
     
-    #pragma unroll
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 8; i++) {
         r.limb[i] = (r_minus_p.limb[i] & mask1) | (r.limb[i] & ~mask1);
     }
     
     r_minus_p = sub_512(r, p_512);
     bool ge2 = !borrow_512(r, p_512);
-    __uint128_t mask2 = (__uint128_t)-(int)ge2;
+    __uint64_t mask2 = ge2 ? ~0ULL : 0ULL;
     
-    #pragma unroll
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 8; i++) {
         r.limb[i] = (r_minus_p.limb[i] & mask2) | (r.limb[i] & ~mask2);
     }
 
-    __uint256_t res = { r.limb[0], r.limb[1] };
+    __uint256_t res = {};
+    for (int i = 0; i < 4; i++) {
+        res.limb[i] = r.limb[i];
+    }
     return res;
 }
 */
 
 __device__ __uint256_t modexp_256(__uint256_t base, unsigned int exp, const __uint256_t &mod) {
-    __uint256_t result = {{1, 0}};
+    __uint256_t result = {{1, 0, 0, 0}};
 
     for (int i = 0; i < 32; i++) {
         if (exp & 1) {
@@ -886,10 +948,10 @@ __device__ void divsteps2(
     frac1024_t &r
 ) {
 
-    u.num = (__uint1024_t){{1, 0, 0, 0, 0, 0, 0, 0}}; u.exp = 0; u.sign = 1;
-    v.num = (__uint1024_t){{0, 0, 0, 0, 0, 0, 0, 0}}; v.exp = 0; v.sign = 1;
-    q.num = (__uint1024_t){{0, 0, 0, 0, 0, 0, 0, 0}}; q.exp = 0; q.sign = 1;
-    r.num = (__uint1024_t){{1, 0, 0, 0, 0, 0, 0, 0}}; r.exp = 0; r.sign = 1;
+    u.num = {}; u.num.limb[0] = 1; u.exp = 0; u.sign = 1;
+    v.num = {}; v.exp = 0; v.sign = 1;
+    q.num = {}; q.exp = 0; q.sign = 1;
+    r.num = {}; r.num.limb[0] = 1; r.exp = 0; r.sign = 1;
 
     f.magnitude = truncate(f.magnitude, t);
     g.magnitude = truncate(g.magnitude, t);
@@ -946,7 +1008,6 @@ __device__ unsigned int iterations(unsigned int d) {
     return (d < 46) ? ((49*d + 80) / 17) : ((49*d + 57) / 17);
 }
 
-//TEST
 __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) {
     if ((f_in.limb[0] & 1) == 0) {
         __uint256_t zero = {};
@@ -959,7 +1020,7 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
 
     unsigned int m = iterations(d);
 
-    __uint256_t f_plus_1 = add_256(f_in, (__uint256_t){{1, 0}});
+    __uint256_t f_plus_1 = add_256(f_in, (__uint256_t){{1, 0, 0, 0}});
 
     uint256_t_sign f_plus_1_signed = {f_plus_1, 1};
     uint256_t_sign half_f_plus_1_signed = signed_div2_floor_256(f_plus_1_signed);
@@ -979,17 +1040,19 @@ __device__ __uint256_t recip2(const __uint256_t &f_in, const __uint256_t &g_in) 
 
     unsigned int shift_amount = (m > 0 ? m - 1 : 0);
     __uint256_t V_mod;
-    __uint256_t V_mod_tmp;
+    __uint256_t V_mod_tmp = {};
 
     if (shift_amount >= v.exp) {
         __uint1024_t v_shifted = lshift_1024(v.num, shift_amount - v.exp);
-        V_mod_tmp.limb[0] = v_shifted.limb[0];
-        V_mod_tmp.limb[1] = v_shifted.limb[1];
+        for (int i = 0; i < 4; i++) {
+            V_mod_tmp.limb[i] = v_shifted.limb[i];
+        }
         V_mod = simple_mod_256(V_mod_tmp, f_in);
     } else {
         __uint1024_t v_shifted = rshift_1024(v.num, v.exp - shift_amount);
-        V_mod_tmp.limb[0] = v_shifted.limb[0];
-        V_mod_tmp.limb[1] = v_shifted.limb[1];
+        for (int i = 0; i < 4; i++) {
+            V_mod_tmp.limb[i] = v_shifted.limb[i];
+        }
         V_mod = simple_mod_256(V_mod_tmp, f_in);
     }
 
