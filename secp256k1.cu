@@ -806,10 +806,17 @@ __device__ __uint256_t adjust_sign(__uint256_t value, int sign, const __uint256_
 //TEST
 __device__ __uint256_t simple_mod_256(const __uint256_t &x, const __uint256_t &mod) {
     __uint256_t res = x;
+    __uint256_t res_minus_mod = sub_256(res, mod);
+    bool ge1 = !borrow_256(res, mod);
+    __uint128_t mask1 = (__uint128_t)-(int)ge1;
+    res.limb[0] = (res_minus_mod.limb[0] & mask1) | (res.limb[0] & ~mask1);
+    res.limb[1] = (res_minus_mod.limb[1] & mask1) | (res.limb[1] & ~mask1);
 
-    while (!borrow_256(res, mod)) {
-        res = sub_256(res, mod);
-    }
+    res_minus_mod = sub_256(res, mod);
+    bool ge2 = !borrow_256(res, mod);
+    __uint128_t mask2 = (__uint128_t)-(int)ge2;
+    res.limb[0] = (res_minus_mod.limb[0] & mask2) | (res.limb[0] & ~mask2);
+    res.limb[1] = (res_minus_mod.limb[1] & mask2) | (res.limb[1] & ~mask2);
 
     return res;
 }
