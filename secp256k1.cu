@@ -301,7 +301,9 @@ __device__ void mod_sqr_mont_p(uint64_t out[4], const uint64_t in[4]) {
     mod_mul_mont_p(out, in, in);
 }
 
-// ----------- ALMOST INV -----------
+/* ----------- ALMOST INVERSE C++ -----------
+    Based on the Paper Almost-Inverse/Bernstein-Yang, REF: https://eprint.iacr.org/2019/266.pdf
+*/
 
 BigInt div2_floor(const BigInt &a) {
     return a / 2;
@@ -400,7 +402,7 @@ BigInt recip2(BigInt f, BigInt g) {
     return inv;
 }
 
-// ------------- FINAL -------------
+// ------------- END C++ -------------
 
 __device__ void jacobian_init(ECPointJacobian *point) {
     bignum_zero(point->X);
@@ -781,5 +783,6 @@ int main() {
 
     return 0;
 }
+
 
 
