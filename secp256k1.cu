@@ -826,8 +826,13 @@ __device__ __uint256_t barrett_reduction(const __uint1024_t &x, const __uint256_
 }
 
 __device__ __uint256_t mulmod_256(const __uint256_t &a, const __uint256_t &b, const __uint256_t &mod) {
-    __uint512_t prod = mul_256_512(a, b);
-    __uint256_t result = barrett_reduction(prod, mod);
+    __uint512_t prod512 = mul_256_512(a, b);
+    __uint1024_t prod1024 = {};
+    for (int i = 0; i < 8; i++) {
+        prod1024.limb[i] = prod512.limb[i];
+    }
+
+    __uint256_t result = barrett_reduction(prod1024, mod);
 
     return result;
 }
