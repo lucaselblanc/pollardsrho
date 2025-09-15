@@ -26,12 +26,12 @@ BigInt truncate(const BigInt& f, int t) {
     return result;
 }
 
-int bit_length(const BigInt &x, int max_bits=MAX_BITS) {
-    int bits = 0;
-    for (int i = 0; i < max_bits; ++i) {
-        if ((x >> i) & 1) bits++;
-    }
-    return bits;
+int bit_length(const BigInt &x) {  
+    int msb = 0;  
+    for (int i = 0; i < MAX_BITS; ++i) {  
+        msb = ((x >> i) & 1) ? i + 1 : msb;  
+    }  
+    return msb;  
 }
 
 auto divsteps2(int n, int t, int delta, BigInt f, BigInt g) {
