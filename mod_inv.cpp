@@ -104,20 +104,14 @@ BigInt recip2(BigInt f, BigInt g) {
     BigInt precomp = mod_pow(base, BigInt(m - 1), f);
 
     auto result = divsteps2(m, m + 1, 1, f, g);
-    int delta = get<0>(result);
-
     BigInt fm = get<1>(result);
-    BigInt gm = get<2>(result);
     auto P = get<3>(result);
-    BigInt U_scaled = P.first.first;
     BigInt V_scaled = P.first.second;
-    BigInt Q_scaled = P.second.first;
-    BigInt R_scaled = P.second.second;
-    BigInt V_int = (V_scaled >> 1);
 
+    BigInt V_int = (V_scaled * (BigInt(1) << (m - 1))) >> m;
     if (fm < 0) V_int = -V_int;
-    BigInt inv = (V_int * precomp) % f;
 
+    BigInt inv = (V_int * precomp) % f;
     if (inv < 0) inv += f;
     return inv;
 }
