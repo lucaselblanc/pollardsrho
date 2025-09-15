@@ -10,7 +10,6 @@ using std::get;
 using std::pair;
 using std::make_pair;
 
-constexpr int PRECISION_BITS = 1024;
 constexpr int MAX_BITS = 1024;
 
 BigInt div2_floor(const BigInt &a) {
