@@ -108,6 +108,8 @@ if (fm < 0) V_int = -V_int;
     return inv;
 }
 
+//g++ -O2 -std=c++17 -o mod_inv mod_inv.cpp
+
 int main() {
     BigInt f("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
     BigInt g("0x33e7665705359f04f28b88cf897c603c9");
