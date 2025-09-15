@@ -12,10 +12,21 @@
 
 /* --- AINDA EM TESTES --- */
 
+#include <iostream>
+#include <tuple>
+#include <boost/multiprecision/cpp_int.hpp>
 #include <stdio.h>
 #include <stdint.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+
+using boost::multiprecision::cpp_int;
+using BigInt = cpp_int;
+using std::make_tuple;
+using std::tuple;
+using std::get;
+using std::pair;
+using std::make_pair;
 
 __constant__ uint64_t P_CONST[4] = {
     0xFFFFFFFEFFFFFC2FULL,
@@ -623,6 +634,7 @@ __global__ void point_is_valid(int *result, const ECPoint *point) {
 __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub) {
     kernel_get_compressed_public_key(out, pub);
 }
+
 
 __global__ void test_mod_inverse(const __uint256_t* f, const __uint256_t* g, __uint256_t* result) {
     *result = recip2(*f, *g);
