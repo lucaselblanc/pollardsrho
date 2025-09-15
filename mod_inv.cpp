@@ -98,14 +98,14 @@ BigInt recip2(BigInt f, BigInt g) {
     auto result = divsteps2(m, m + 1, 1, f, g);
     BigInt fm = get<1>(result);
     auto P = get<3>(result);
-    BigInt V_scaled = P.first.second;
 
-    BigInt V_int = V_scaled * (BigInt(1) << (m - 1));
-if (fm < 0) V_int = -V_int;
+    BigInt scale = BigInt(1) << m;
+    BigInt V_scaled = P.first.second;
+    BigInt V_int = (V_scaled * (BigInt(1) << (m - 1))) / scale;
+    if (fm < 0) V_int = -V_int;
 
     BigInt inv = (V_int * precomp) % f;
     if (inv < 0) inv += f;
-    return inv;
 }
 
 //g++ -O2 -std=c++17 -o mod_inv mod_inv.cpp
