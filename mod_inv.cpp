@@ -1,4 +1,16 @@
-//based on the paper: https://eprint.iacr.org/2019/266.pdf
+/******************************************************************************************************
+ * This file is part of the Pollard's Rho distribution: (https://github.com/lucaselblanc/pollardsrho) *
+ * Copyright (c) 2024, 2025 Lucas Leblanc.                                                            *
+ * Distributed under the MIT software license, see the accompanying.                                  *
+ * file COPYING or https://www.opensource.org/licenses/mit-license.php.                               *
+ ******************************************************************************************************/
+
+/*****************************************
+ * Pollard's Rho Algorithm for SECP256K1 *
+ * Written by Lucas Leblanc              *
+******************************************/
+
+//Based on the Paper Almost-Inverse/Bernstein-Yang, REF: https://eprint.iacr.org/2019/266.pdf
 
 #include <iostream>
 #include <tuple>
