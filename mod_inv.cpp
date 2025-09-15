@@ -33,7 +33,7 @@ BigInt truncate(const BigInt& f, int t) {
 int bit_length(const BigInt &x, int max_bits=MAX_BITS) {
     int bits = 0;
     for (int i = 0; i < max_bits; ++i) {
-        bits += ((x >> i) & 1);
+        if ((x >> i) & 1) bits++;
     }
     return bits;
 }
@@ -64,16 +64,16 @@ auto divsteps2(int n, int t, int delta, BigInt f, BigInt g) {
     for (int i = 0; i < n; ++i) {
         f = truncate(f, t);
 
-        BigInt g_odd = g & 1;
-        BigInt delta_pos = (delta > 0) ? 1 : 0;
-        BigInt swap_mask = delta_pos & g_odd;
+        int g_odd = (g & 1) != 0;
+        int delta_pos = (delta > 0) ? 1 : 0;
+        int swap_mask = delta_pos & g_odd;
 
-        BigInt new_f = swap_mask * g + (1 - swap_mask) * f;
-        BigInt new_g = swap_mask * (-f) + (1 - swap_mask) * g;
-        BigInt new_U = swap_mask * Q + (1 - swap_mask) * U;
-        BigInt new_Q = swap_mask * (-U) + (1 - swap_mask) * Q;
-        BigInt new_V = swap_mask * R + (1 - swap_mask) * V;
-        BigInt new_R = swap_mask * (-V) + (1 - swap_mask) * R;
+        BigInt new_f = swap_mask ? g : f;
+        BigInt new_g = swap_mask ? -f : g;
+        BigInt new_U = swap_mask ? Q : U;
+        BigInt new_Q = swap_mask ? -U : Q;
+        BigInt new_V = swap_mask ? R : V;
+        BigInt new_R = swap_mask ? -V : R;
 
         f = new_f;
         g = new_g;
