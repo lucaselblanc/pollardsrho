@@ -117,8 +117,8 @@ BigInt recip2(BigInt f, BigInt g) {
 }
 
 int main() {
-    BigInt f = 12345;
-    BigInt g = 6789;
+    BigInt f = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F;
+    BigInt g = 0x33e7665705359f04f28b88cf897c603c9;
     try {
         BigInt inv = recip2(f, g);
         std::cout << "Inverso: " << inv << std::endl;
