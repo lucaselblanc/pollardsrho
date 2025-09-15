@@ -90,6 +90,8 @@ __constant__ uint64_t ONE_MONT[4] = {0x00000001000003D1ULL, 0x0000000000000000UL
 
 __constant__ uint64_t SEVEN_MONT[4] = {0x0000000700001A97ULL, 0x0000000000000000ULL, 0x0000000000000000ULL, 0x0000000000000000ULL};
 
+constexpr int MAX_BITS = 256;
+
 typedef struct {
     uint64_t x[4];
     uint64_t y[4];
@@ -684,3 +686,4 @@ int main() {
 
     return 0;
 }
+
