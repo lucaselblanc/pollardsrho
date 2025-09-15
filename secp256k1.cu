@@ -443,6 +443,15 @@ cpp_int array_to_bigint(const uint64_t in[], size_t n_words) {
     return result;
 }
 
+__host__ void almost_inverse(uint64_t temp_res[4], const uint64_t f[4], const uint64_t g[4]) {
+    BigInt temp_f = array_to_bigint(f, 4);
+    BigInt temp_g = array_to_bigint(g, 4);
+    BigInt temp_res = recip2(temp_f, temp_g);
+    for (int i = 0; i < 4; i++) {
+        temp_res[i] = (temp_res >> (64 * i)) & 0xFFFFFFFFFFFFFFFFULL;
+    }
+}
+
 __device__ __host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     if (jacobian_is_infinity(jac)) {
         bignum_zero(aff->x);
@@ -455,14 +464,7 @@ __device__ __host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian 
 
     from_montgomery_p(z_norm, jac->Z);
 
-    cpp_int f = array_to_bigint(z_norm, 4);
-    cpp_int g = array_to_bigint(z_inv, 4);
-
-    cpp_int inv = recip2(f, g);
-
-    for (size_t i = 0; i < 4; ++i) {
-        z_inv[i] = static_cast<uint64_t>(inv >> (64 * i));
-    }
+    //inv = recip2(f, g);
 
     mod_mul_mont_p(z_inv_sqr, z_inv, z_inv);
     mod_mul_mont_p(z_inv_cube, z_inv_sqr, z_inv);
@@ -800,3 +802,4 @@ int main() {
 
     return 0;
 }
+
