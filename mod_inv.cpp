@@ -93,7 +93,7 @@ BigInt recip2(BigInt f, BigInt g) {
     int m = iterations(d);
 
     BigInt base = (f + 1) / 2;
-    BigInt precomp = boost::multiprecision::powm((f + 1)/2, m - 1, f);
+    BigInt precomp = boost::multiprecision::powm(base, m - 1, f);
 
     auto result = divsteps2(m, m + 1, 1, f, g);
     BigInt fm = get<1>(result);
@@ -106,6 +106,8 @@ BigInt recip2(BigInt f, BigInt g) {
 
     BigInt inv = (V_int * precomp) % f;
     if (inv < 0) inv += f;
+
+    return inv;
 }
 
 //g++ -O2 -std=c++17 -o mod_inv mod_inv.cpp
