@@ -127,7 +127,7 @@ BigInt recip2(BigInt f, BigInt g) {
 
 int main() {
     BigInt f("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16);
-BigInt g("33e7665705359f04f28b88cf897c603c9", 16);
+    BigInt g("33e7665705359f04f28b88cf897c603c9", 16);
 
     try {
         BigInt inv = recip2(f, g);
