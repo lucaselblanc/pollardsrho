@@ -14,11 +14,7 @@ constexpr int PRECISION_BITS = 1024;
 constexpr int MAX_BITS = 1024;
 
 BigInt div2_floor(const BigInt &a) {
-    BigInt sign_mask = (a < 0) ? -1 : 0;
-    BigInt na = (a ^ sign_mask) - sign_mask;
-    BigInt half = na >> 1;
-    half += (na & 1) & (sign_mask & 1);
-    return (half ^ sign_mask) - sign_mask;
+    return a / 2;
 }
 
 BigInt truncate(const BigInt& f, int t) {
@@ -36,19 +32,6 @@ int bit_length(const BigInt &x, int max_bits=MAX_BITS) {
         if ((x >> i) & 1) bits++;
     }
     return bits;
-}
-
-BigInt mod_pow(BigInt base, BigInt exp, const BigInt &mod, int exp_bits=MAX_BITS) {
-    BigInt res0 = 1;
-    BigInt res1 = base % mod;
-    for (int i = exp_bits-1; i >= 0; --i) {
-        BigInt bit = (exp >> i) & 1;
-        BigInt t0 = (res0 * res1) % mod;
-        BigInt t1 = (res1 * res1) % mod;
-        res0 = bit * t0 + (1 - bit) * res0;
-        res1 = bit * res1 + (1 - bit) * t1;
-    }
-    return res0 % mod;
 }
 
 auto divsteps2(int n, int t, int delta, BigInt f, BigInt g) {
@@ -110,15 +93,15 @@ BigInt recip2(BigInt f, BigInt g) {
     int m = iterations(d);
 
     BigInt base = (f + 1) / 2;
-    BigInt precomp = mod_pow(base, BigInt(m - 1), f, MAX_BITS);
+    BigInt precomp = boost::multiprecision::powm((f + 1)/2, m - 1, f);
 
     auto result = divsteps2(m, m + 1, 1, f, g);
     BigInt fm = get<1>(result);
     auto P = get<3>(result);
     BigInt V_scaled = P.first.second;
 
-    BigInt V_int = (V_scaled * (BigInt(1) << (m - 1))) >> m;
-    V_int = (fm < 0) ? -V_int : V_int;
+    BigInt V_int = V_scaled * (BigInt(1) << (m - 1));
+if (fm < 0) V_int = -V_int;
 
     BigInt inv = (V_int * precomp) % f;
     if (inv < 0) inv += f;
