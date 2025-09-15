@@ -434,7 +434,16 @@ __device__ void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
     jac->infinity = 0;
 }
 
-__device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
+cpp_int array_to_bigint(const uint64_t in[], size_t n_words) {
+    cpp_int result = 0;
+    for (size_t i = 0; i < n_words; ++i) {
+        cpp_int limb = in[i];
+        result += limb << (64 * i);
+    }
+    return result;
+}
+
+__device__ __host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     if (jacobian_is_infinity(jac)) {
         bignum_zero(aff->x);
         bignum_zero(aff->y);
@@ -446,7 +455,15 @@ __device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
 
     from_montgomery_p(z_norm, jac->Z);
 
-    //mod_inverse_p(z_inv, z_norm);
+    cpp_int f = array_to_bigint(z_norm, 4);
+    cpp_int g = array_to_bigint(z_inv, 4);
+
+    cpp_int inv = recip2(f, g);
+
+    for (size_t i = 0; i < 4; ++i) {
+        z_inv[i] = static_cast<uint64_t>(inv >> (64 * i));
+    }
+
     mod_mul_mont_p(z_inv_sqr, z_inv, z_inv);
     mod_mul_mont_p(z_inv_cube, z_inv_sqr, z_inv);
     mod_mul_mont_p(aff->x, jac->X, z_inv_sqr);
@@ -783,6 +800,3 @@ int main() {
 
     return 0;
 }
-
-
-
