@@ -131,8 +131,11 @@ int main() {
 
     try {
         BigInt inv = recip2(f, g);
-        std::cout << "Inverso: " << inv << std::endl;
-        std::cout << "Verificação: " << (inv * g % f) << std::endl;
+        BigInt check = (inv * g) % f;
+
+        std::cout << std::hex << inv << std::endl;
+        std::cout << std::hex << check << std::endl;
+
     } catch (const std::exception &e) {
         std::cerr << "Erro: " << e.what() << std::endl;
     }
