@@ -453,7 +453,7 @@ __host__ uint64_t almost_inverse(const uint64_t f[4], const uint64_t g[4]) {
     return temp_res;
 }
 
-__device__ __host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
+__host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     if (jacobian_is_infinity(jac)) {
         bignum_zero(aff->x);
         bignum_zero(aff->y);
@@ -465,7 +465,7 @@ __device__ __host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian 
 
     from_montgomery_p(z_norm, jac->Z);
 
-    //almost_inverse(z_norm, z_inv);
+    almost_inverse(z_norm, z_inv);
 
     mod_mul_mont_p(z_inv_sqr, z_inv, z_inv);
     mod_mul_mont_p(z_inv_cube, z_inv_sqr, z_inv);
