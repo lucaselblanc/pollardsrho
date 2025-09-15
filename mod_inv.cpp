@@ -1,3 +1,5 @@
+//based on the paper: https://eprint.iacr.org/2019/266.pdf
+
 #include <iostream>
 #include <tuple>
 #include <boost/multiprecision/cpp_int.hpp>
