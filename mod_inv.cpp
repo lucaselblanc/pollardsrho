@@ -110,7 +110,7 @@ BigInt recip2(BigInt f, BigInt g) {
     int m = iterations(d);
 
     BigInt base = (f + 1) / 2;
-    BigInt precomp = mod_pow_ct(base, BigInt(m - 1), f, MAX_BITS);
+    BigInt precomp = mod_pow(base, BigInt(m - 1), f, MAX_BITS);
 
     auto result = divsteps2(m, m + 1, 1, f, g);
     BigInt fm = get<1>(result);
