@@ -10,43 +10,45 @@ using std::get;
 using std::pair;
 using std::make_pair;
 
+constexpr int PRECISION_BITS = 1024;
+constexpr int MAX_BITS = 1024;
+
 BigInt div2_floor(const BigInt &a) {
-    if (a >= 0) return a >> 1;
-    BigInt na = -a;
-    return - ((na + 1) >> 1);
+    BigInt sign_mask = (a < 0) ? -1 : 0;
+    BigInt na = (a ^ sign_mask) - sign_mask;
+    BigInt half = na >> 1;
+    half += (na & 1) & (sign_mask & 1);
+    return (half ^ sign_mask) - sign_mask;
 }
 
 BigInt truncate(const BigInt& f, int t) {
-    if (t == 0) return BigInt(0);
     BigInt mask = (BigInt(1) << t) - 1;
     BigInt result = f & mask;
-    BigInt bound = (BigInt(1) << (t - 1));
-    if (result >= bound) result -= (BigInt(1) << t);
+    BigInt bound = BigInt(1) << (t - 1);
+    BigInt over = (result >= bound) ? 1 : 0;
+    result -= over * (BigInt(1) << t);
     return result;
 }
 
-int bit_length(const BigInt& x) {
-    if (x == 0) return 0;
-    BigInt a = x >= 0 ? x : -x;
+int bit_length(const BigInt &x, int max_bits=MAX_BITS) {
     int bits = 0;
-    BigInt tmp = a;
-    while (tmp > 0) {
-        tmp = tmp >> 1;
-        ++bits;
+    for (int i = 0; i < max_bits; ++i) {
+        bits += ((x >> i) & 1);
     }
     return bits;
 }
 
-BigInt mod_pow(BigInt base, BigInt exp, const BigInt &mod) {
-    base %= mod;
-    if (base < 0) base += mod;
-    BigInt res = 1 % mod;
-    while (exp > 0) {
-        if ((exp & 1) != 0) res = (res * base) % mod;
-        exp >>= 1;
-        base = (base * base) % mod;
+BigInt mod_pow(BigInt base, BigInt exp, const BigInt &mod, int exp_bits=MAX_BITS) {
+    BigInt res0 = 1;
+    BigInt res1 = base % mod;
+    for (int i = exp_bits-1; i >= 0; --i) {
+        BigInt bit = (exp >> i) & 1;
+        BigInt t0 = (res0 * res1) % mod;
+        BigInt t1 = (res1 * res1) % mod;
+        res0 = bit * t0 + (1 - bit) * res0;
+        res1 = bit * res1 + (1 - bit) * t1;
     }
-    return res;
+    return res0 % mod;
 }
 
 auto divsteps2(int n, int t, int delta, BigInt f, BigInt g) {
@@ -59,26 +61,34 @@ auto divsteps2(int n, int t, int delta, BigInt f, BigInt g) {
     BigInt Q = 0;
     BigInt R = scale;
 
-    while (n > 0) {
+    for (int i = 0; i < n; ++i) {
         f = truncate(f, t);
-        bool g_odd = ((g & 1) != 0);
-        if (delta > 0 && g_odd) {
-            delta = -delta;
-            BigInt oldf = f;
-            f = g;
-            g = -oldf;
-            std::swap(U, Q);
-            std::swap(V, R);
-            U = -U;
-            V = -V;
-        }
-        int g0 = (int)((g & 1) != 0 ? 1 : 0);
-        delta = 1 + delta;
-        BigInt tmpg = g + BigInt(g0) * f;
+
+        BigInt g_odd = g & 1;
+        BigInt delta_pos = (delta > 0) ? 1 : 0;
+        BigInt swap_mask = delta_pos & g_odd;
+
+        BigInt new_f = swap_mask * g + (1 - swap_mask) * f;
+        BigInt new_g = swap_mask * (-f) + (1 - swap_mask) * g;
+        BigInt new_U = swap_mask * Q + (1 - swap_mask) * U;
+        BigInt new_Q = swap_mask * (-U) + (1 - swap_mask) * Q;
+        BigInt new_V = swap_mask * R + (1 - swap_mask) * V;
+        BigInt new_R = swap_mask * (-V) + (1 - swap_mask) * R;
+
+        f = new_f;
+        g = new_g;
+        U = new_U;
+        Q = new_Q;
+        V = new_V;
+        R = new_R;
+
+        delta = delta * (1 - 2 * swap_mask) + 1;
+
+        BigInt tmpg = g + g_odd * f;
         g = div2_floor(tmpg);
-        Q = div2_floor(Q + BigInt(g0) * U);
-        R = div2_floor(R + BigInt(g0) * V);
-        --n;
+        Q = div2_floor(Q + g_odd * U);
+        R = div2_floor(R + g_odd * V);
+
         --t;
         g = truncate(g, t);
     }
@@ -94,14 +104,13 @@ int iterations(int d) {
 }
 
 BigInt recip2(BigInt f, BigInt g) {
-    if ((f & 1) == 0) {
-        throw std::invalid_argument("f must be odd");
-    }
+    if ((f & 1) == 0) throw std::invalid_argument("f must be odd");
+
     int d = std::max(bit_length(f), bit_length(g));
     int m = iterations(d);
 
     BigInt base = (f + 1) / 2;
-    BigInt precomp = mod_pow(base, BigInt(m - 1), f);
+    BigInt precomp = mod_pow_ct(base, BigInt(m - 1), f, MAX_BITS);
 
     auto result = divsteps2(m, m + 1, 1, f, g);
     BigInt fm = get<1>(result);
@@ -109,7 +118,7 @@ BigInt recip2(BigInt f, BigInt g) {
     BigInt V_scaled = P.first.second;
 
     BigInt V_int = (V_scaled * (BigInt(1) << (m - 1))) >> m;
-    if (fm < 0) V_int = -V_int;
+    V_int = (fm < 0) ? -V_int : V_int;
 
     BigInt inv = (V_int * precomp) % f;
     if (inv < 0) inv += f;
@@ -119,9 +128,11 @@ BigInt recip2(BigInt f, BigInt g) {
 int main() {
     BigInt f = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F;
     BigInt g = 0x33e7665705359f04f28b88cf897c603c9;
+
     try {
         BigInt inv = recip2(f, g);
         std::cout << "Inverso: " << inv << std::endl;
+        std::cout << "Verificação: " << (inv * g % f) << std::endl;
     } catch (const std::exception &e) {
         std::cerr << "Erro: " << e.what() << std::endl;
     }
