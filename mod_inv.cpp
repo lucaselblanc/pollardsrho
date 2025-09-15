@@ -10,7 +10,7 @@ using std::get;
 using std::pair;
 using std::make_pair;
 
-constexpr int MAX_BITS = 1024;
+constexpr int MAX_BITS = 256;
 
 BigInt div2_floor(const BigInt &a) {
     return a / 2;
@@ -107,23 +107,4 @@ BigInt recip2(BigInt f, BigInt g) {
     if (inv < 0) inv += f;
 
     return inv;
-}
-
-//g++ -O2 -std=c++17 -o mod_inv mod_inv.cpp
-
-int main() {
-    BigInt f("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
-    BigInt g("0x33e7665705359f04f28b88cf897c603c9");
-
-    try {
-        BigInt inv = recip2(f, g);
-        BigInt check = (inv * g) % f;
-
-        std::cout << std::hex << inv << std::endl;
-        std::cout << std::hex << check << std::endl;
-
-    } catch (const std::exception &e) {
-        std::cerr << "Erro: " << e.what() << std::endl;
-    }
-    return 0;
 }
