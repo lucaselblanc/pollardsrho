@@ -659,7 +659,7 @@ __device__ void kernel_point_init(ECPoint *point) {
     point->infinity = 0;
 }
 
-__device__ void kernel_point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
+__host__ void kernel_point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
     ECPointJacobian P_jac, Q_jac, R_jac;
     
     affine_to_jacobian(&P_jac, P);
@@ -668,7 +668,7 @@ __device__ void kernel_point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q)
     jacobian_to_affine(R, &R_jac);
 }
 
-__device__ void kernel_point_double(ECPoint *R, const ECPoint *P) {
+__host__ void kernel_point_double(ECPoint *R, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
     
     affine_to_jacobian(&P_jac, P);
@@ -734,11 +734,11 @@ __global__ void point_init(ECPoint *point) {
     kernel_point_init(point);
 }
 
-__global__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
+__host__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
     kernel_point_add(R, P, Q);
 }
 
-__global__ void point_double(ECPoint *R, const ECPoint *P) {
+__host__ void point_double(ECPoint *R, const ECPoint *P) {
     kernel_point_double(R, P);
 }
 
