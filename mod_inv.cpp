@@ -47,7 +47,7 @@ int bit_length(const BigInt &x) {
     return msb;  
 }
 
-auto divsteps2(int n, int t, int delta, BigInt f, BigInt g) {
+auto divsteps2(int n, int t, int delta, BigInt g, BigInt f) {
     f = truncate(f, t);
     g = truncate(g, t);
 
@@ -99,7 +99,7 @@ int iterations(int d) {
     return (d < 46) ? (49 * d + 80) / 17 : (49 * d + 57) / 17;
 }
 
-BigInt recip2(BigInt f, BigInt g) {
+BigInt recip2(BigInt g, BigInt f) {
     if ((f & 1) == 0) throw std::invalid_argument("f must be odd");
 
     int d = std::max(bit_length(f), bit_length(g));
