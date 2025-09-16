@@ -17,8 +17,6 @@
 #include <boost/multiprecision/cpp_int.hpp>
 #include <stdio.h>
 #include <stdint.h>
-#include <cuda.h>
-#include <cuda_runtime.h>
 
 using boost::multiprecision::cpp_int;
 using BigInt = cpp_int;
@@ -28,67 +26,67 @@ using std::get;
 using std::pair;
 using std::make_pair;
 
-__constant__ uint64_t P_CONST[4] = {
+const uint64_t P_CONST[4] = {
     0xFFFFFFFEFFFFFC2FULL,
     0xFFFFFFFFFFFFFFFFULL,
     0xFFFFFFFFFFFFFFFFULL,
     0xFFFFFFFFFFFFFFFFULL
 };
 
-__constant__ uint64_t N_CONST[4] = {
+const uint64_t N_CONST[4] = {
     0xBFD25E8CD0364141ULL,
     0xBAAEDCE6AF48A03BULL,
     0xFFFFFFFFFFFFFFFEULL,
     0xFFFFFFFFFFFFFFFFULL
 };
 
-__constant__ uint64_t GX_CONST[4] = {
+const uint64_t GX_CONST[4] = {
     0x59F2815B16F81798ULL,
     0x029BFCDB2DCE28D9ULL,
     0x55A06295CE870B07ULL,
     0x79BE667EF9DCBBACULL
 };
 
-__constant__ uint64_t GY_CONST[4] = {
+const uint64_t GY_CONST[4] = {
     0x9C47D08FFB10D4B8ULL,
     0xFD17B448A6855419ULL,
     0x5DA4FBFC0E1108A8ULL,
     0x483ADA7726A3C465ULL
 };
 
-__constant__ uint64_t R_MOD_P[4] = {
+const uint64_t R_MOD_P[4] = {
     0x00000001000003D1ULL,
     0x0000000000000000ULL,
     0x0000000000000000ULL,
     0x0000000000000000ULL
 };
 
-__constant__ uint64_t R2_MOD_P[4] = {
+const uint64_t R2_MOD_P[4] = {
     0x000007A2000E90A1ULL,
     0x0000000100000000ULL,
     0x0000000000000000ULL,
     0x0000000000000000ULL
 };
 
-__constant__ uint64_t R2_MOD_N[4] = {
+const uint64_t R2_MOD_N[4] = {
     0x896CF21467D7D140ULL,
     0x741496C20E7CF878ULL,
     0xE697F5E45BCD07C6ULL,
     0x9D671CD581C69BC5ULL
 };
 
-__constant__ uint64_t MU_P = 0xD2253531ULL;
-__constant__ uint64_t MU_N = 0x5588B13FULL;
+const uint64_t MU_P = 0xD2253531ULL;
+const uint64_t MU_N = 0x5588B13FULL;
 
-__constant__ uint64_t ZERO[4]  = {0ULL, 0ULL, 0ULL, 0ULL};
-__constant__ uint64_t ONE[4]   = {1ULL, 0ULL, 0ULL, 0ULL};
-__constant__ uint64_t TWO[4]   = {2ULL, 0ULL, 0ULL, 0ULL};
-__constant__ uint64_t THREE[4] = {3ULL, 0ULL, 0ULL, 0ULL};
-__constant__ uint64_t SEVEN[4] = {7ULL, 0ULL, 0ULL, 0ULL};
+const uint64_t ZERO[4]  = {0ULL, 0ULL, 0ULL, 0ULL};
+const uint64_t ONE[4]   = {1ULL, 0ULL, 0ULL, 0ULL};
+const uint64_t TWO[4]   = {2ULL, 0ULL, 0ULL, 0ULL};
+const uint64_t THREE[4] = {3ULL, 0ULL, 0ULL, 0ULL};
+const uint64_t SEVEN[4] = {7ULL, 0ULL, 0ULL, 0ULL};
 
-__constant__ uint64_t ONE_MONT[4] = {0x00000001000003D1ULL, 0x0000000000000000ULL, 0x0000000000000000ULL, 0x0000000000000000ULL};
+const uint64_t ONE_MONT[4] = {0x00000001000003D1ULL, 0x0000000000000000ULL, 0x0000000000000000ULL, 0x0000000000000000ULL};
 
-__constant__ uint64_t SEVEN_MONT[4] = {0x0000000700001A97ULL, 0x0000000000000000ULL, 0x0000000000000000ULL, 0x0000000000000000ULL};
+const uint64_t SEVEN_MONT[4] = {0x0000000700001A97ULL, 0x0000000000000000ULL, 0x0000000000000000ULL, 0x0000000000000000ULL};
 
 constexpr int MAX_BITS = 256;
 
@@ -105,7 +103,7 @@ typedef struct {
     int infinity;
 } ECPointJacobian;
 
-__device__ int bignum_cmp(const uint64_t *a, const uint64_t *b) {
+int bignum_cmp(const uint64_t *a, const uint64_t *b) {
     for (int i = 3; i >= 0; i--) {
         if (a[i] > b[i]) return 1;
         if (a[i] < b[i]) return -1;
@@ -113,30 +111,30 @@ __device__ int bignum_cmp(const uint64_t *a, const uint64_t *b) {
     return 0;
 }
 
-__host__ int bignum_is_zero(const uint64_t *a) {
+int bignum_is_zero(const uint64_t *a) {
     for (int i = 0; i < 4; i++) {
         if (a[i] != 0ULL) return 0;
     }
     return 1;
 }
 
-__device__ int bignum_is_odd(const uint64_t *a) {
+int bignum_is_odd(const uint64_t *a) {
     return a[0] & 1ULL;
 }
 
-__device__ void bignum_copy(uint64_t *dst, const uint64_t *src) {
+void bignum_copy(uint64_t *dst, const uint64_t *src) {
     for (int i = 0; i < 4; i++) {
         dst[i] = src[i];
     }
 }
 
-__host__ void bignum_zero(uint64_t *a) {
+void bignum_zero(uint64_t *a) {
     for (int i = 0; i < 4; i++) {
         a[i] = 0ULL;
     }
 }
 
-__device__ int bignum_is_one(const uint64_t *a) {
+int bignum_is_one(const uint64_t *a) {
     if (a[0] != 1ULL) return 0;
     for (int i = 1; i < 4; i++) {
         if (a[i] != 0ULL) return 0;
@@ -144,12 +142,12 @@ __device__ int bignum_is_one(const uint64_t *a) {
     return 1;
 }
 
-__host__ void bignum_set_ui(uint64_t *a, uint64_t val) {
+void bignum_set_ui(uint64_t *a, uint64_t val) {
     bignum_zero(a);
     a[0] = val;
 }
 
-__device__ uint64_t bignum_add_carry(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+uint64_t bignum_add_carry(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t carry = 0ULL;
     for (int i = 0; i < 4; i++) {
         uint64_t temp = a[i] + b[i] + carry;
@@ -159,7 +157,7 @@ __device__ uint64_t bignum_add_carry(uint64_t *result, const uint64_t *a, const 
     return carry;
 }
 
-__device__ uint64_t bignum_sub_borrow(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+uint64_t bignum_sub_borrow(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t borrow = 0ULL;
     for (int i = 0; i < 4; i++) {
         uint64_t temp = a[i] - b[i] - borrow;
@@ -169,7 +167,7 @@ __device__ uint64_t bignum_sub_borrow(uint64_t *result, const uint64_t *a, const
     return borrow;
 }
 
-__device__ void bignum_shr1(uint64_t *result, const uint64_t *a) {
+void bignum_shr1(uint64_t *result, const uint64_t *a) {
     uint64_t carry = 0ULL;
     for (int i = 3; i >= 0; i--) {
         uint64_t next = (a[i] & 1ULL) << 63;
@@ -178,7 +176,7 @@ __device__ void bignum_shr1(uint64_t *result, const uint64_t *a) {
     }
 }
 
-__host__ void bignum_mul_full(uint64_t *result_high, uint64_t *result_low,
+void bignum_mul_full(uint64_t *result_high, uint64_t *result_low,
                                 const uint64_t *a, const uint64_t *b) {
     uint64_t temp_low[8] = {0};
     uint64_t temp_high[8] = {0};
@@ -214,7 +212,7 @@ __host__ void bignum_mul_full(uint64_t *result_high, uint64_t *result_low,
     }
 }
 
-__host__ void montgomery_reduce_p(uint64_t *result,
+void montgomery_reduce_p(uint64_t *result,
                                     const uint64_t *input_high,
                                     const uint64_t *input_low) {
     uint64_t temp[8];
@@ -256,19 +254,19 @@ __host__ void montgomery_reduce_p(uint64_t *result,
     }
 }
 
-__host__ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
+void to_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t high[4], low[4];
     bignum_mul_full(high, low, a, (uint64_t*)R2_MOD_P);
     montgomery_reduce_p(result, high, low);
 }
 
-__host__ void from_montgomery_p(uint64_t *result, const uint64_t *a) {
+void from_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t zero[4] = {0, 0, 0, 0};
     bignum_zero(zero);
     montgomery_reduce_p(result, zero, a);
 }
 
-__device__ void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t temp[4];
     uint64_t carry = bignum_add_carry(temp, a, b);
 
@@ -279,7 +277,7 @@ __device__ void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b
     }
 }
 
-__device__ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t temp[4];
     uint64_t borrow = bignum_sub_borrow(temp, a, b);
 
@@ -290,18 +288,18 @@ __device__ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b
     }
 }
 
-__host__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t high[4], low[4];
     bignum_mul_full(high, low, a, b);
     montgomery_reduce_p(result, high, low);
 }
 
-__host__ void mod_sqr_mont_p(uint64_t out[4], const uint64_t in[4]) {
+void mod_sqr_mont_p(uint64_t out[4], const uint64_t in[4]) {
     // out = in^2 mod P
     mod_mul_mont_p(out, in, in);
 }
 
-/* ----------- ALMOST INVERSE C++ -----------
+/*
     Based on the Paper Almost-Inverse/Bernstein-Yang, REF: https://eprint.iacr.org/2019/266.pdf
 */
 
@@ -402,27 +400,25 @@ BigInt recip2(BigInt f, BigInt g) {
     return inv;
 }
 
-// ------------- END C++ -------------
-
-__host__ void jacobian_init(ECPointJacobian *point) {
+void jacobian_init(ECPointJacobian *point) {
     bignum_zero(point->X);
     bignum_zero(point->Y);
     bignum_copy(point->Z, ONE_MONT);
     point->infinity = 0;
 }
 
-__host__ void jacobian_set_infinity(ECPointJacobian *point) {
+void jacobian_set_infinity(ECPointJacobian *point) {
     bignum_copy(point->X, ONE_MONT);
     bignum_copy(point->Y, ONE_MONT);
     bignum_zero(point->Z);
     point->infinity = 1;
 }
 
-__host__ int jacobian_is_infinity(const ECPointJacobian *point) {
+int jacobian_is_infinity(const ECPointJacobian *point) {
     return point->infinity || bignum_is_zero(point->Z);
 }
 
-__device__ void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
+void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
     if (aff->infinity) {
         jacobian_set_infinity(jac);
         return;
@@ -434,26 +430,7 @@ __device__ void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
     jac->infinity = 0;
 }
 
-cpp_int array_to_bigint(const uint64_t in[], size_t n_words) {
-    cpp_int result = 0;
-    for (size_t i = 0; i < n_words; ++i) {
-        cpp_int limb = in[i];
-        result += limb << (64 * i);
-    }
-    return result;
-}
-
-__host__ void almost_inverse(uint64_t out[4], const uint64_t f[4], const uint64_t g[4]) {
-    BigInt temp_f = array_to_bigint(f, 4);
-    BigInt temp_g = array_to_bigint(g, 4);
-    BigInt temp_res = recip2(temp_f, temp_g);
-
-    for (int i = 0; i < 4; i++) {
-        out[i] = (temp_res >> (64 * i)) & 0xFFFFFFFFFFFFFFFFULL;
-    }
-}
-
-__host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
+void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     if (jacobian_is_infinity(jac)) {
         bignum_zero(aff->x);
         bignum_zero(aff->y);
@@ -465,7 +442,7 @@ __host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
 
     from_montgomery_p(z_norm, jac->Z);
 
-    almost_inverse(z_norm, z_inv, P_CONST);
+    recip2(z_norm, z_inv);
 
     mod_mul_mont_p(z_inv_sqr, z_inv, z_inv);
     mod_mul_mont_p(z_inv_cube, z_inv_sqr, z_inv);
@@ -478,7 +455,7 @@ __host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     aff->infinity = 0;
 }
 
-__device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
+void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
     if (jacobian_is_infinity(point) || bignum_is_zero(point->Y)) {
         jacobian_set_infinity(result);
         return;
@@ -515,7 +492,7 @@ __device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *
     result->infinity = 0;
 }
 
-__device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
+void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
 
     int P_infinity = jacobian_is_infinity(P);
     int Q_infinity = jacobian_is_infinity(Q);
@@ -585,7 +562,7 @@ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, 
     result->infinity = 0;
 }
 
-__device__ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
+void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     uint64_t t[4];
     uint64_t borrow = bignum_sub_borrow(t, k, (uint64_t*)N_CONST);
 
@@ -596,7 +573,7 @@ __device__ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     }
 }
 
-__device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, const ECPointJacobian *point) {
+void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, const ECPointJacobian *point) {
     if (bignum_is_zero(scalar) || jacobian_is_infinity(point)) {
         jacobian_set_infinity(result);
         return;
@@ -640,7 +617,7 @@ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *sc
     *result = R0;
 }
 
-__host__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
+void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
     if (point_mont->infinity) {
         result->infinity = 1;
         bignum_zero(result->x);
@@ -653,13 +630,13 @@ __host__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) 
     result->infinity = 0;
 }
 
-__host__ void kernel_point_init(ECPoint *point) {
+void point_init(ECPoint *point) {
     bignum_zero(point->x);
     bignum_zero(point->y);
     point->infinity = 0;
 }
 
-__host__ void kernel_point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
+void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
     ECPointJacobian P_jac, Q_jac, R_jac;
     
     affine_to_jacobian(&P_jac, P);
@@ -668,7 +645,7 @@ __host__ void kernel_point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
     jacobian_to_affine(R, &R_jac);
 }
 
-__host__ void kernel_point_double(ECPoint *R, const ECPoint *P) {
+void point_double(ECPoint *R, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
     
     affine_to_jacobian(&P_jac, P);
@@ -676,7 +653,7 @@ __host__ void kernel_point_double(ECPoint *R, const ECPoint *P) {
     jacobian_to_affine(R, &R_jac);
 }
 
-__host__ void kernel_scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
+void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
 
     affine_to_jacobian(&P_jac, P);
@@ -684,7 +661,7 @@ __host__ void kernel_scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P
     jacobian_to_affine(R, &R_jac);
 }
 
-__host__ int kernel_point_is_valid(const ECPoint *point) {
+int point_is_valid(const ECPoint *point) {
     if (point->infinity) return 1;
 
     uint64_t lhs[4], rhs[4];
@@ -697,7 +674,7 @@ __host__ int kernel_point_is_valid(const ECPoint *point) {
     return (bignum_cmp(lhs, rhs) == 0);
 }
 
-__host__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
+void get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
     unsigned char prefix = (public_key->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
 
@@ -714,7 +691,7 @@ __host__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoint
     }
 }
 
-__host__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
+void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     ECPoint pub;
     ECPoint G;
     ECPointJacobian G_jac, pub_jac;
@@ -729,32 +706,8 @@ __host__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) 
 
     kernel_get_compressed_public_key(out, &pub);
 }
-
-__host__ void point_init(ECPoint *point) {
-    kernel_point_init(point);
-}
-
-__host__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
-    kernel_point_add(R, P, Q);
-}
-
-__host__ void point_double(ECPoint *R, const ECPoint *P) {
-    kernel_point_double(R, P);
-}
-
-__host__ void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
-    kernel_scalar_mult(R, k, P);
-}
-
-__global__ void point_is_valid(int *result, const ECPoint *point) {
-    *result = kernel_point_is_valid(point);
-}
-
-__host__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub) {
-    kernel_get_compressed_public_key(out, pub);
-}
 
-__host__ void test_mod_inverse(const __uint256_t* f, const __uint256_t* g, __uint256_t* result) {
+void test_mod_inverse(const __uint256_t* f, const __uint256_t* g, __uint256_t* result) {
     *result = recip2(*f, *g);
 }
 
@@ -777,28 +730,15 @@ int main() {
     /* g ≡ 1 (mod f): */
     //Hex: 7FDB62ED2D6FA0874ABD664C95B7CEF2ED79CC82D13FF3AC8E9766AA21BEBEAE (bebeae kkk)
     //Dec: 57831354042695616917422878622316954017183908093256327737334808907053491207854
+
+    __uint256_t *f, *g, *result;
 
-    __uint256_t result_host;
-    __uint256_t *f_device, *g_device, *result_device;
-    cudaMalloc(&f_device, sizeof(__uint256_t));
-    cudaMalloc(&g_device, sizeof(__uint256_t));
-    cudaMalloc(&result_device, sizeof(__uint256_t));
+    test_mod_inverse(f, g, result);
 
-    cudaMemcpy(f_device, &f, sizeof(__uint256_t), cudaMemcpyHostToDevice);
-    cudaMemcpy(g_device, &g, sizeof(__uint256_t), cudaMemcpyHostToDevice);
-
-    test_mod_inverse<<<1,1>>>(f_device, g_device, result_device);
-
-    cudaMemcpy(&result_host, result_device, sizeof(__uint256_t), cudaMemcpyDeviceToHost);
-
-    printf("Resultado limb[3] (mais alto): %016llx\n", (unsigned long long)result_host.limb[3]);
-    printf("Resultado limb[2]: %016llx\n", (unsigned long long)result_host.limb[2]);
-    printf("Resultado limb[1]: %016llx\n", (unsigned long long)result_host.limb[1]);
-    printf("Resultado limb[0] (mais baixo): %016llx\n", (unsigned long long)result_host.limb[0]);
-
-    cudaFree(f_device);
-    cudaFree(g_device);
-    cudaFree(result_device);
+    printf("Resultado limb[3] (mais alto): %016llx\n", (unsigned long long)result.limb[3]);
+    printf("Resultado limb[2]: %016llx\n", (unsigned long long)result.limb[2]);
+    printf("Resultado limb[1]: %016llx\n", (unsigned long long)result.limb[1]);
+    printf("Resultado limb[0] (mais baixo): %016llx\n", (unsigned long long)result.limb[0]);
 
     return 0;
 }
