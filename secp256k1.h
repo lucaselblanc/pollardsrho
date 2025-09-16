@@ -21,12 +21,6 @@
 using boost::multiprecision::cpp_int;
 using BigInt = cpp_int;
 
-typedef struct {
-    uint64_t x[4];
-    uint64_t y[4];
-    int infinity;
-} ECPoint;
-
 void point_init(ECPoint *point);
 void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q);
 void point_double(ECPoint *R, const ECPoint *P);
