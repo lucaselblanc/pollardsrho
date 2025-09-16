@@ -113,7 +113,7 @@ __device__ int bignum_cmp(const uint64_t *a, const uint64_t *b) {
     return 0;
 }
 
-__device__ __host__ int bignum_is_zero(const uint64_t *a) {
+__host__ int bignum_is_zero(const uint64_t *a) {
     for (int i = 0; i < 4; i++) {
         if (a[i] != 0ULL) return 0;
     }
@@ -130,7 +130,7 @@ __device__ void bignum_copy(uint64_t *dst, const uint64_t *src) {
     }
 }
 
-__device__ __host__ void bignum_zero(uint64_t *a) {
+__host__ void bignum_zero(uint64_t *a) {
     for (int i = 0; i < 4; i++) {
         a[i] = 0ULL;
     }
