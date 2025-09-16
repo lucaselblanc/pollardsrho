@@ -574,8 +574,8 @@ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     get_compressed_public_key(out, &pub);
 }
 
-void test_mod_inverse(const uint64_t *g, const uint64_t *f, uint64_t *result) {
-    recip2(result, g, f);
+void test_mod_inverse(BigInt g, BigInt f) {
+    recip2(g, f);
 }
 
 int main() {
@@ -584,7 +584,7 @@ int main() {
     
     /* g ≡ 1 (mod f): */
     BigInt result;
-    test_mod_inverse(g, f, result);
+    result = test_mod_inverse(g, f);
     
     std::cout << std::hex << result << std::endl;
     
