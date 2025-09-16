@@ -15,6 +15,9 @@
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
+#include <boost/multiprecision/cpp_int.hpp>
+#include <stdint.h>
+
 typedef struct {
     uint64_t x[4];
     uint64_t y[4];
