@@ -18,6 +18,9 @@
 #include <boost/multiprecision/cpp_int.hpp>
 #include <stdint.h>
 
+using boost::multiprecision::cpp_int;
+using BigInt = cpp_int;
+
 typedef struct {
     uint64_t x[4];
     uint64_t y[4];
