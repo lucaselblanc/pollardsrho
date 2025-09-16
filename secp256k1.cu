@@ -290,7 +290,21 @@ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     
     uint64_t z_norm[4], z_inv[4], z_inv_sqr[4], z_inv_cube[4];
     from_montgomery_p(z_norm, jac->Z);
-    recip2(z_inv, z_norm, P_CONST);
+
+    cpp_int g = 0;  
+
+    for (int i = 0; i < 4; ++i) {  
+        g <<= 64;  
+        g |= z_norm[i];  
+    }  
+
+    cpp_int temp_g = recip2(g, P_CONST);
+
+    for (int i = 3; i >= 0; --i) {
+        z_inv[i] = static_cast<uint64_t>(temp_g & 0xFFFFFFFFFFFFFFFFULL);
+        temp_g >>= 64;
+    }
+
     to_montgomery_p(z_inv, z_inv);
     mod_mul_mont_p(z_inv_sqr, z_inv, z_inv);
     mod_mul_mont_p(z_inv_cube, z_inv_sqr, z_inv);
