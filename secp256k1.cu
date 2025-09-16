@@ -92,7 +92,7 @@ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uin
         cmp = gt - lt + (cmp & (1 - (gt | lt)));
     }
     
-    uint64_t mask = (cmp >= 0) ? 0xFFFFFFFFFFFFFFFFULL : 0;
+    uint64_t mask = 0xFFFFFFFFFFFFFFFFULL;
     uint64_t borrow = 0ULL;
     for (int i = 0; i < 4; i++) {
         uint64_t temp_val = result[i] - (P_CONST[i] & mask) - borrow;
