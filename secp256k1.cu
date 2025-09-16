@@ -554,7 +554,7 @@ void generate_public_key(unsigned char *out, const BigInt &PRIV_KEY) {
     get_compressed_public_key(out, &pub);
 }
 
-void test_mod_inverse(const BigInt &f, const BigInt &g, BigInt &result) {
+void test_mod_inverse(const BigInt &g, const BigInt &f, BigInt &result) {
     result = recip2(g, f);
 }
 
