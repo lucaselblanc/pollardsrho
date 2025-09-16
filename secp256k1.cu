@@ -27,6 +27,7 @@ using std::get;
 using std::pair;
 using std::make_pair;
 
+BigInt f = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
 const uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint64_t GX_CONST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
@@ -298,7 +299,7 @@ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
         g |= z_norm[i];  
     }  
 
-    cpp_int temp_g = recip2(g, P_CONST);
+    cpp_int temp_g = recip2(g, f);
 
     for (int i = 3; i >= 0; --i) {
         z_inv[i] = static_cast<uint64_t>(temp_g & 0xFFFFFFFFFFFFFFFFULL);
@@ -578,8 +579,7 @@ BigInt test_mod_inverse(const BigInt &g, const BigInt &f) {
     return recip2(g, f);
 }
 
-int main() {
-    BigInt f = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
+int main() {
     BigInt g = BigInt("0x33e7665705359f04f28b88cf897c603c9");
     
     /* g ≡ 1 (mod f): */
