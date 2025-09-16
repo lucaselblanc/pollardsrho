@@ -23,14 +23,14 @@ typedef struct {
     int infinity;
 } ECPoint;
 
-__global__ void point_init(ECPoint *point);
-__global__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q);
-__global__ void point_double(ECPoint *R, const ECPoint *P);
-__global__ void scalar_mult(ECPoint *R, const unsigned int *k, const ECPoint *P);
-__global__ void point_is_valid(int *result, const ECPoint *point);
-__global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub);
+void point_init(ECPoint *point);
+void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q);
+void point_double(ECPoint *R, const ECPoint *P);
+void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P);
+int point_is_valid(const ECPoint *point);
+void get_compressed_public_key(unsigned char *out, const ECPoint *public_key);
 
 //test
-__global__ void test_mod_inverse(const __uint256_t* f, const __uint256_t* g, __uint256_t* result);
+void test_mod_inverse(const uint64_t *g, const uint64_t *f, uint64_t *result);
 
 #endif /* EC_SECP256K1_H */
