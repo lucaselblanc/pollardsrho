@@ -48,12 +48,6 @@ const uint64_t SEVEN_MONT[4] = {0x0000000700001A97ULL, 0x0000000000000000ULL, 0x
 constexpr int MAX_BITS = 256;
 
 typedef struct {
-    uint64_t x[4];
-    uint64_t y[4];
-    int infinity;
-} ECPoint;
-
-typedef struct {
     uint64_t X[4];
     uint64_t Y[4];
     uint64_t Z[4];
