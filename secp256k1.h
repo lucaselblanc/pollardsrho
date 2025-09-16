@@ -27,6 +27,7 @@ void point_double(ECPoint *R, const ECPoint *P);
 void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P);
 int point_is_valid(const ECPoint *point);
 void get_compressed_public_key(unsigned char *out, const ECPoint *public_key);
+BigInt recip2(BigInt g, BigInt f);
 
 //test
 void test_mod_inverse(const uint64_t *g, const uint64_t *f, uint64_t *result);
