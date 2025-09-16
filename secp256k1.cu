@@ -453,9 +453,7 @@ __host__ void almost_inverse(uint64_t out[4], const uint64_t f[4], const uint64_
     }
 }
 
-//bignum_mul_full
-
-__host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
+__device__ __host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     if (jacobian_is_infinity(jac)) {
         bignum_zero(aff->x);
         bignum_zero(aff->y);
@@ -755,8 +753,7 @@ __global__ void point_is_valid(int *result, const ECPoint *point) {
 __global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub) {
     kernel_get_compressed_public_key(out, pub);
 }
-
-
+
 __global__ void test_mod_inverse(const __uint256_t* f, const __uint256_t* g, __uint256_t* result) {
     *result = recip2(*f, *g);
 }
@@ -805,5 +802,3 @@ int main() {
 
     return 0;
 }
-
-
