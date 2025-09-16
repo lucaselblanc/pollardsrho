@@ -296,7 +296,7 @@ __host__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t
     montgomery_reduce_p(result, high, low);
 }
 
-__device__ void mod_sqr_mont_p(uint64_t out[4], const uint64_t in[4]) {
+__host__ void mod_sqr_mont_p(uint64_t out[4], const uint64_t in[4]) {
     // out = in^2 mod P
     mod_mul_mont_p(out, in, in);
 }
@@ -684,7 +684,7 @@ __host__ void kernel_scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P
     jacobian_to_affine(R, &R_jac);
 }
 
-__device__ int kernel_point_is_valid(const ECPoint *point) {
+__host__ int kernel_point_is_valid(const ECPoint *point) {
     if (point->infinity) return 1;
 
     uint64_t lhs[4], rhs[4];
@@ -730,7 +730,7 @@ __host__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) 
     kernel_get_compressed_public_key(out, &pub);
 }
 
-__global__ void point_init(ECPoint *point) {
+__host__ void point_init(ECPoint *point) {
     kernel_point_init(point);
 }
 
@@ -742,7 +742,7 @@ __host__ void point_double(ECPoint *R, const ECPoint *P) {
     kernel_point_double(R, P);
 }
 
-__global__ void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
+__host__ void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
     kernel_scalar_mult(R, k, P);
 }
 
