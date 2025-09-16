@@ -704,7 +704,7 @@ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     jacobian_scalar_mult(&pub_jac, PRIV_KEY, &G_jac);
     jacobian_to_affine(&pub, &pub_jac);
 
-    kernel_get_compressed_public_key(out, &pub);
+    get_compressed_public_key(out, &pub);
 }
 
 void test_mod_inverse(const __uint256_t* f, const __uint256_t* g, __uint256_t* result) {
