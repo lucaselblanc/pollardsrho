@@ -113,7 +113,7 @@ __device__ int bignum_cmp(const uint64_t *a, const uint64_t *b) {
     return 0;
 }
 
-__device__ int bignum_is_zero(const uint64_t *a) {
+__device__ __host__ int bignum_is_zero(const uint64_t *a) {
     for (int i = 0; i < 4; i++) {
         if (a[i] != 0ULL) return 0;
     }
@@ -130,7 +130,7 @@ __device__ void bignum_copy(uint64_t *dst, const uint64_t *src) {
     }
 }
 
-__device__ void bignum_zero(uint64_t *a) {
+__device__ __host__ void bignum_zero(uint64_t *a) {
     for (int i = 0; i < 4; i++) {
         a[i] = 0ULL;
     }
@@ -178,7 +178,7 @@ __device__ void bignum_shr1(uint64_t *result, const uint64_t *a) {
     }
 }
 
-__device__ void bignum_mul_full(uint64_t *result_high, uint64_t *result_low,
+__device__ __host__ void bignum_mul_full(uint64_t *result_high, uint64_t *result_low,
                                 const uint64_t *a, const uint64_t *b) {
     uint64_t temp_low[8] = {0};
     uint64_t temp_high[8] = {0};
@@ -262,7 +262,7 @@ __device__ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
     montgomery_reduce_p(result, high, low);
 }
 
-__device__ void from_montgomery_p(uint64_t *result, const uint64_t *a) {
+__device__ __host__ void from_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t zero[4] = {0, 0, 0, 0};
     bignum_zero(zero);
     montgomery_reduce_p(result, zero, a);
@@ -290,7 +290,7 @@ __device__ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b
     }
 }
 
-__device__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+__device__ __host__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t high[4], low[4];
     bignum_mul_full(high, low, a, b);
     montgomery_reduce_p(result, high, low);
@@ -418,7 +418,7 @@ __device__ void jacobian_set_infinity(ECPointJacobian *point) {
     point->infinity = 1;
 }
 
-__device__ int jacobian_is_infinity(const ECPointJacobian *point) {
+__device__ __host__ int jacobian_is_infinity(const ECPointJacobian *point) {
     return point->infinity || bignum_is_zero(point->Z);
 }
 
@@ -452,6 +452,8 @@ __host__ void almost_inverse(uint64_t out[4], const uint64_t f[4], const uint64_
         out[i] = (temp_res >> (64 * i)) & 0xFFFFFFFFFFFFFFFFULL;
     }
 }
+
+//bignum_mul_full
 
 __host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     if (jacobian_is_infinity(jac)) {
