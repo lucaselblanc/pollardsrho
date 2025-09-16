@@ -15,8 +15,6 @@
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
-#include <cuda_runtime.h>
-
 typedef struct {
     uint64_t x[4];
     uint64_t y[4];
