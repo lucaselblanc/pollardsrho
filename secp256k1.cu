@@ -178,7 +178,7 @@ __device__ void bignum_shr1(uint64_t *result, const uint64_t *a) {
     }
 }
 
-__device__ __host__ void bignum_mul_full(uint64_t *result_high, uint64_t *result_low,
+__host__ void bignum_mul_full(uint64_t *result_high, uint64_t *result_low,
                                 const uint64_t *a, const uint64_t *b) {
     uint64_t temp_low[8] = {0};
     uint64_t temp_high[8] = {0};
@@ -214,7 +214,7 @@ __device__ __host__ void bignum_mul_full(uint64_t *result_high, uint64_t *result
     }
 }
 
-__device__ void montgomery_reduce_p(uint64_t *result,
+__host__ void montgomery_reduce_p(uint64_t *result,
                                     const uint64_t *input_high,
                                     const uint64_t *input_low) {
     uint64_t temp[8];
@@ -256,13 +256,13 @@ __device__ void montgomery_reduce_p(uint64_t *result,
     }
 }
 
-__device__ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
+__host__ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t high[4], low[4];
     bignum_mul_full(high, low, a, (uint64_t*)R2_MOD_P);
     montgomery_reduce_p(result, high, low);
 }
 
-__device__ __host__ void from_montgomery_p(uint64_t *result, const uint64_t *a) {
+__host__ void from_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t zero[4] = {0, 0, 0, 0};
     bignum_zero(zero);
     montgomery_reduce_p(result, zero, a);
@@ -290,7 +290,7 @@ __device__ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b
     }
 }
 
-__device__ __host__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+__host__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t high[4], low[4];
     bignum_mul_full(high, low, a, b);
     montgomery_reduce_p(result, high, low);
@@ -418,7 +418,7 @@ __device__ void jacobian_set_infinity(ECPointJacobian *point) {
     point->infinity = 1;
 }
 
-__device__ __host__ int jacobian_is_infinity(const ECPointJacobian *point) {
+__host__ int jacobian_is_infinity(const ECPointJacobian *point) {
     return point->infinity || bignum_is_zero(point->Z);
 }
 
