@@ -144,7 +144,7 @@ __device__ int bignum_is_one(const uint64_t *a) {
     return 1;
 }
 
-__device__ void bignum_set_ui(uint64_t *a, uint64_t val) {
+__host__ void bignum_set_ui(uint64_t *a, uint64_t val) {
     bignum_zero(a);
     a[0] = val;
 }
@@ -404,14 +404,14 @@ BigInt recip2(BigInt f, BigInt g) {
 
 // ------------- END C++ -------------
 
-__device__ void jacobian_init(ECPointJacobian *point) {
+__host__ void jacobian_init(ECPointJacobian *point) {
     bignum_zero(point->X);
     bignum_zero(point->Y);
     bignum_copy(point->Z, ONE_MONT);
     point->infinity = 0;
 }
 
-__device__ void jacobian_set_infinity(ECPointJacobian *point) {
+__host__ void jacobian_set_infinity(ECPointJacobian *point) {
     bignum_copy(point->X, ONE_MONT);
     bignum_copy(point->Y, ONE_MONT);
     bignum_zero(point->Z);
@@ -640,7 +640,7 @@ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *sc
     *result = R0;
 }
 
-__device__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
+__host__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
     if (point_mont->infinity) {
         result->infinity = 1;
         bignum_zero(result->x);
@@ -653,7 +653,7 @@ __device__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont
     result->infinity = 0;
 }
 
-__device__ void kernel_point_init(ECPoint *point) {
+__host__ void kernel_point_init(ECPoint *point) {
     bignum_zero(point->x);
     bignum_zero(point->y);
     point->infinity = 0;
