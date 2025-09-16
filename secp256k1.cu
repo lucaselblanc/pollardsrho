@@ -453,7 +453,7 @@ __host__ void almost_inverse(uint64_t out[4], const uint64_t f[4], const uint64_
     }
 }
 
-__device__ __host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
+__host__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     if (jacobian_is_infinity(jac)) {
         bignum_zero(aff->x);
         bignum_zero(aff->y);
@@ -676,7 +676,7 @@ __device__ void kernel_point_double(ECPoint *R, const ECPoint *P) {
     jacobian_to_affine(R, &R_jac);
 }
 
-__device__ void kernel_scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
+__host__ void kernel_scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
 
     affine_to_jacobian(&P_jac, P);
@@ -697,7 +697,7 @@ __device__ int kernel_point_is_valid(const ECPoint *point) {
     return (bignum_cmp(lhs, rhs) == 0);
 }
 
-__device__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
+__host__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
     unsigned char prefix = (public_key->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
 
@@ -714,7 +714,7 @@ __device__ void kernel_get_compressed_public_key(unsigned char *out, const ECPoi
     }
 }
 
-__global__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
+__host__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     ECPoint pub;
     ECPoint G;
     ECPointJacobian G_jac, pub_jac;
@@ -750,11 +750,11 @@ __global__ void point_is_valid(int *result, const ECPoint *point) {
     *result = kernel_point_is_valid(point);
 }
 
-__global__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub) {
+__host__ void get_compressed_public_key(unsigned char *out, const ECPoint *pub) {
     kernel_get_compressed_public_key(out, pub);
 }
 
-__global__ void test_mod_inverse(const __uint256_t* f, const __uint256_t* g, __uint256_t* result) {
+__host__ void test_mod_inverse(const __uint256_t* f, const __uint256_t* g, __uint256_t* result) {
     *result = recip2(*f, *g);
 }
 
