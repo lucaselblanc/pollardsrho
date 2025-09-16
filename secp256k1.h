@@ -30,6 +30,6 @@ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key);
 BigInt recip2(BigInt g, BigInt f);
 
 //test
-void test_mod_inverse(const uint64_t *g, const uint64_t *f, uint64_t *result);
+void test_mod_inverse(BigInt g, BigInt f, BigInt result);
 
 #endif /* EC_SECP256K1_H */
