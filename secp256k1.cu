@@ -144,7 +144,7 @@ void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         cmp = gt - lt + (cmp & (1 - (gt | lt)));
     }
     
-    uint64_t reduce_mask = (carry || cmp >= 0) ? 0xFFFFFFFFFFFFFFFFULL : 0;
+    uint64_t reduce_mask = 0xFFFFFFFFFFFFFFFFULL;
     uint64_t borrow = 0ULL;
     for (int i = 0; i < 4; i++) {
         uint64_t sub = temp[i] - (P_CONST[i] & reduce_mask) - borrow;
@@ -162,7 +162,7 @@ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         temp[i] = sub;
     }
     
-    uint64_t mask = borrow ? 0xFFFFFFFFFFFFFFFFULL : 0;
+    uint64_t mask = 0xFFFFFFFFFFFFFFFFULL;
     uint64_t carry = 0ULL;
     for (int i = 0; i < 4; i++) {
         uint64_t add = temp[i] + (P_CONST[i] & mask) + carry;
@@ -574,8 +574,8 @@ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     get_compressed_public_key(out, &pub);
 }
 
-void test_mod_inverse(BigInt g, BigInt f) {
-    recip2(g, f);
+BigInt test_mod_inverse(const BigInt &g, const BigInt &f) {
+    return recip2(g, f);
 }
 
 int main() {
@@ -583,8 +583,7 @@ int main() {
     BigInt g = BigInt("0x33e7665705359f04f28b88cf897c603c9");
     
     /* g ≡ 1 (mod f): */
-    BigInt result;
-    result = test_mod_inverse(g, f);
+    BigInt result = test_mod_inverse(g, f);
     
     std::cout << std::hex << result << std::endl;
     
