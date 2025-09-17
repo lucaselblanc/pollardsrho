@@ -31,14 +31,16 @@ recurse: $(TARGET)
 ifeq ($(GPU_ARCH),0)
 	CXXFLAGS  := -O0 -march=native -Wall -std=c++14 -pthread
 	NVCCFLAGS = -O0 -G -g \
+	-std=c++14 \
 	-ccbin $(CXX) \
-	-Xcompiler "-O0 -std=c++14 -pthread" \
+	-Xcompiler "-O0 -pthread" \
 	--expt-relaxed-constexpr
 else
 	NVCCFLAGS = -O0 -G -g \
+	-std=c++14 \
 	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
 	-ccbin $(CXX) \
-	-Xcompiler "-O0 -std=c++14 -pthread" \
+	-Xcompiler "-O0 -pthread" \
 	$(INCLUDES) \
 	--expt-relaxed-constexpr
 endif
