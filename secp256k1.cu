@@ -15,7 +15,6 @@
 #include "secp256k1.h"
 #include <iostream>
 #include <tuple>
-
 #include <stdio.h>
 #include <stdint.h>
 
@@ -31,19 +30,9 @@ const uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFF
 const uint64_t GX_CONST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
 const uint64_t GY_CONST[4] = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
 const uint64_t R_MOD_P[4] = { 0x00000001000003D1ULL, 0x0000000000000000ULL, 0x0000000000000000ULL, 0x0000000000000000ULL };
-const uint64_t R2_MOD_P[4] = { 0x000007A2000E90A1ULL, 0x0000000100000000ULL, 0x0000000000000000ULL, 0x0000000000000000ULL };
-const uint64_t R2_MOD_N[4] = { 0x896CF21467D7D140ULL, 0x741496C20E7CF878ULL, 0xE697F5E45BCD07C6ULL, 0x9D671CD581C69BC5ULL };
 const uint64_t MU_P = 0xD2253531ULL;
-const uint64_t MU_N = 0x5588B13FULL;
-const uint64_t ZERO[4] = {0ULL, 0ULL, 0ULL, 0ULL};
-const uint64_t ONE[4] = {1ULL, 0ULL, 0ULL, 0ULL};
-const uint64_t TWO[4] = {2ULL, 0ULL, 0ULL, 0ULL};
-const uint64_t THREE[4] = {3ULL, 0ULL, 0ULL, 0ULL};
-const uint64_t SEVEN[4] = {7ULL, 0ULL, 0ULL, 0ULL};
 const uint64_t ONE_MONT[4] = {0x00000001000003D1ULL, 0x0000000000000000ULL, 0x0000000000000000ULL, 0x0000000000000000ULL};
 const uint64_t SEVEN_MONT[4] = {0x0000000700001A97ULL, 0x0000000000000000ULL, 0x0000000000000000ULL, 0x0000000000000000ULL};
-
-constexpr int MAX_BITS = 256;
 
 typedef struct {
     uint64_t X[4];
@@ -198,7 +187,7 @@ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
         cmp = gt - lt + (cmp & (1 - (gt | lt)));
     }
     
-    if (cmp >= 0) {
+    if (cmp) {
         BigInt k_big = 0, n_big = 0;
         for (int i = 0; i < 4; i++) {
             k_big += BigInt(k[i]) << (i * 64);
