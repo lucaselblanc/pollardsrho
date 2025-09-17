@@ -12,10 +12,6 @@
 
 /* --- AINDA EM TESTES --- */
 
-#ifndef BOOST_MP_NO_SERIALIZATION
-#define BOOST_MP_NO_SERIALIZATION
-#endif
-
 #include "secp256k1.h"
 #include <iostream>
 #include <tuple>
