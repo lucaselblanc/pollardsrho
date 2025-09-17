@@ -28,19 +28,21 @@ recurse: $(TARGET)
 
 -include gpu_arch
 
-#NVCCFLAGS = -O0 -G -g \
+ifeq ($(GPU_ARCH),0)
+	NVCCFLAGS = -O0 -G -g \
+	-gencode arch=compute_60,code=sm_60 \
+	-ccbin $(CXX) \
+	-Xcompiler "-O0 -std=c++14 -pthread" \
+	$(INCLUDES) \
+	--expt-relaxed-constexpr
+else
+	NVCCFLAGS = -O0 -G -g \
 	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
 	-ccbin $(CXX) \
 	-Xcompiler "-O0 -std=c++14 -pthread" \
 	$(INCLUDES) \
 	--expt-relaxed-constexpr
-
-NVCCFLAGS = -O0 -G -g \
-	-gencode arch=compute_62,code=sm_62 \
-	-ccbin $(CXX) \
-	-Xcompiler "-O0 -std=c++14 -pthread" \
-	$(INCLUDES) \
-	--expt-relaxed-constexpr
+endif
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
