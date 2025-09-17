@@ -16,6 +16,7 @@
 #include <iostream>
 #include <tuple>
 #include <boost/multiprecision/cpp_int.hpp>
+#include <boost/serialization/nvp.hpp>
 #include <stdio.h>
 #include <stdint.h>
 
