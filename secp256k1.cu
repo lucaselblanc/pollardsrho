@@ -14,11 +14,11 @@
 
 #include "secp256k1.h"
 #include <iostream>
-#include <tuple>
-#include <boost/multiprecision/cpp_int.hpp>
-#include <boost/serialization/nvp.hpp>
+#include <tuple>
 #include <stdio.h>
 #include <stdint.h>
+#define BOOST_MP_NO_SERIALIZATION
+#include <boost/multiprecision/cpp_int.hpp>
 
 using boost::multiprecision::cpp_int;
 using BigInt = cpp_int;
