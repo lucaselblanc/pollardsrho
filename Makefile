@@ -22,7 +22,7 @@ arch: arch.cu
 	$(NVCC) arch.cu -o arch
 
 gpu_arch: arch
-	@./arch > gpu_arch
+	@./arch > gpu_arch 2>/dev/null || echo "GPU_ARCH := 0" > gpu_arch
 
 recurse: $(TARGET)
 
