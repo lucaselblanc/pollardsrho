@@ -38,7 +38,10 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 3. Compile the project:
     ```bash
     ~/$cd pollardsrho
-    ~/pollardsrho$ make
+    ~/pollardsrho$ make 
+    
+    //OR:
+    ~/nvcc -O0 -G -g -gencode arch=compute_62,code=sm_62 -ccbin g++ -Xcompiler "-O0 -std=c++14 -pthread" -I/usr/local/cuda/include --expt-relaxed-constexpr -c secp256k1.cu -o secp256k1.o
     ```
 
 4. Run the program:
