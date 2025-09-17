@@ -26,7 +26,7 @@ gpu_arch: arch
 
 recurse: $(TARGET)
 
-include gpu_arch
+-include gpu_arch
 
 #NVCCFLAGS = -O0 -G -g \
 	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
