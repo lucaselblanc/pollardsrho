@@ -12,19 +12,12 @@
 
 /* --- AINDA EM TESTES --- */
 
-#ifndef BOOST_MP_NO_SERIALIZATION
-#define BOOST_MP_NO_SERIALIZATION
-#endif
-
 #include "secp256k1.h"
 #include <iostream>
 #include <tuple>
 #include <stdio.h>
 #include <stdint.h>
-#include <boost/multiprecision/cpp_int.hpp>
 
-using boost::multiprecision::cpp_int;
-using BigInt = cpp_int;
 using std::make_tuple;
 using std::tuple;
 using std::get;
