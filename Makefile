@@ -45,7 +45,7 @@ NVCCFLAGS = -O0 -G -g \
 	--expt-relaxed-constexpr
 
 %.o: %.cpp
-	$(NVCC) --x cu $(NVCCFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 %.o: %.cu
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
