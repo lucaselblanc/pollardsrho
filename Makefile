@@ -31,7 +31,6 @@ recurse: $(TARGET)
 ifeq ($(GPU_ARCH),0)
 	CXXFLAGS  := -O0 -march=native -Wall -std=c++14 -pthread
 	NVCCFLAGS = -O0 -G -g \
-	-gencode arch=compute_60,code=sm_60 \
 	-ccbin $(CXX) \
 	-Xcompiler "-O0 -std=c++14 -pthread" \
 	--expt-relaxed-constexpr
@@ -49,7 +48,6 @@ endif
 
 %.o: %.cu
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
-
 $(TARGET): $(OBJ)
 	$(NVCC) $(OBJ) -o $@ $(LDFLAGS) $(LDLIBS)
 
