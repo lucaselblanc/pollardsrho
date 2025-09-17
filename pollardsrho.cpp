@@ -542,12 +542,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
                     if (x_equal && compare_uint256(hare.k1, hare.k2) != 0) {
 
-                        /*
-                            Calcular a diferença (d) entre os pontos pubkey1 e pubkey2:
-                            d = k1 - k2 tal que P1 = k1 * G e P2 = k2 * G
+                            //Calcular a diferença (d) entre os pontos pubkey1 e pubkey2:
+                            //d = k1 - k2 tal que P1 = k1 * G e P2 = k2 * G
 
-                            Verificar se: (d * G ≡ 0), caso verdadeiro: found_key = (k2 + d) % n;
-                        */
+                            //Verificar se: (d * G ≡ 0), caso verdadeiro: found_key = (k2 + d) % n;
 
 /*
 
@@ -712,5 +710,6 @@ int main(int argc, char* argv[]) {
     std::cout << "Chave privada encontrada: " << uint_256_to_hex(found_key) << std::endl;
 
     return 0;
+
 }
 */
