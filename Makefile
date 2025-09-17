@@ -33,7 +33,6 @@ include gpu_arch
 	-ccbin $(CXX) \
 	-Xcompiler "-O0 -std=c++14 -pthread" \
 	$(INCLUDES) \
-	-DBOOST_MP_NO_SERIALIZATION \
 	--expt-relaxed-constexpr
 
 NVCCFLAGS = -O0 -G -g \
@@ -41,7 +40,6 @@ NVCCFLAGS = -O0 -G -g \
 	-ccbin $(CXX) \
 	-Xcompiler "-O0 -std=c++14 -pthread" \
 	$(INCLUDES) \
-	-DBOOST_MP_NO_SERIALIZATION \
 	--expt-relaxed-constexpr
 
 %.o: %.cpp
