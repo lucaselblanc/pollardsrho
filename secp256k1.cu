@@ -14,7 +14,8 @@
 
 #include "secp256k1.h"
 #include <iostream>
-#include <tuple>
+#include <tuple>
+
 #include <stdio.h>
 #include <stdint.h>
 
@@ -570,7 +571,8 @@ BigInt test_mod_inverse(const BigInt &g, const BigInt &f) {
     return recip2(g, f);
 }
 
-int main() {
+int main() {
+
     BigInt g = BigInt("0x33e7665705359f04f28b88cf897c603c9");
     
     /* g ≡ 1 (mod f): */
