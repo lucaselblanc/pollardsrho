@@ -12,8 +12,6 @@
 
 /* --- AINDA EM TESTES --- */
 
-#define BOOST_MP_NO_SERIALIZATION
-
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
