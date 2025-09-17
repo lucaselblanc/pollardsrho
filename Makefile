@@ -29,6 +29,7 @@ recurse: $(TARGET)
 -include gpu_arch
 
 ifeq ($(GPU_ARCH),0)
+	CXXFLAGS  := -O0 -march=native -Wall -std=c++14 -pthread
 	NVCCFLAGS = -O0 -G -g \
 	-gencode arch=compute_60,code=sm_60 \
 	-ccbin $(CXX) \
@@ -44,7 +45,7 @@ else
 endif
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+$(CXX) $(CXXFLAGS) -c $< -o $@
 
 %.o: %.cu
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
