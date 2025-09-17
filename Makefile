@@ -40,7 +40,8 @@ NVCCFLAGS = -O0 -G -g \
 	-ccbin $(CXX) \
 	-Xcompiler "-O0 -std=c++14 -pthread" \
 	$(INCLUDES) \
--DBOOST_MP_NO_SERIALIZATION \ --expt-relaxed-constexpr
+-DBOOST_MP_NO_SERIALIZATION \
+--expt-relaxed-constexpr
 
 %.o: %.cpp
 	$(NVCC) --x cu $(NVCCFLAGS) -c $< -o $@
