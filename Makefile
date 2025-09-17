@@ -33,7 +33,6 @@ ifeq ($(GPU_ARCH),0)
 	-gencode arch=compute_60,code=sm_60 \
 	-ccbin $(CXX) \
 	-Xcompiler "-O0 -std=c++14 -pthread" \
-	$(INCLUDES) \
 	--expt-relaxed-constexpr
 else
 	NVCCFLAGS = -O0 -G -g \
