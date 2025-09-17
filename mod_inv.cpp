@@ -39,17 +39,17 @@ BigInt truncate(const BigInt& f, int t) {
     return result;
 }
 
-int bit_length(const BigInt &x) {  
-    int msb = 0;  
-    for (int i = 0; i < MAX_BITS; ++i) {  
-        msb = ((x >> i) & 1) ? i + 1 : msb;  
-    }  
-    return msb;  
+int bit_length(const BigInt &x) {
+    int msb = 0;
+    for (int i = 0; i < MAX_BITS; ++i) {
+        msb = ((x >> i) & 1) ? i + 1 : msb;
+    }
+    return msb;
 }
 
 auto divsteps2(int n, int t, int delta, BigInt g, BigInt f) {
-    f = truncate(f, t);
     g = truncate(g, t);
+    f = truncate(f, t);
 
     BigInt scale = BigInt(1) << n;
     BigInt U = scale;
@@ -92,7 +92,7 @@ auto divsteps2(int n, int t, int delta, BigInt g, BigInt f) {
     auto UV = make_pair(U, V);
     auto QR = make_pair(Q, R);
     auto P  = make_pair(UV, QR);
-    return make_tuple(delta, f, g, P);
+    return make_tuple(delta, g, f, P);
 }
 
 int iterations(int d) {
@@ -108,7 +108,7 @@ BigInt recip2(BigInt g, BigInt f) {
     BigInt base = (f + 1) / 2;
     BigInt precomp = boost::multiprecision::powm(base, m - 1, f);
 
-    auto result = divsteps2(m, m + 1, 1, f, g);
+    auto result = divsteps2(m, m + 1, 1, g, f);
     BigInt fm = get<1>(result);
     auto P = get<3>(result);
 
