@@ -9,7 +9,7 @@ CXXFLAGS  := -O0 -march=native -Wall -std=c++14 -pthread $(INCLUDES)
 LDFLAGS   := -L$(CUDA_HOME)/lib64
 LDLIBS    := -lcudart -lpthread
 
-SRC_CPP   := pollardsrho.cpp
+SRC_CPP   := pollardsrho.cpp mod_inv.cpp
 SRC_CU    := secp256k1.cu
 OBJ       := $(SRC_CPP:.cpp=.o) $(SRC_CU:.cu=.o)
 
