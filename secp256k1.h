@@ -15,6 +15,10 @@
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
+#ifndef BOOST_MP_NO_SERIALIZATION
+#define BOOST_MP_NO_SERIALIZATION
+#endif
+
 #include <boost/multiprecision/cpp_int.hpp>
 #include <stdint.h>
 
