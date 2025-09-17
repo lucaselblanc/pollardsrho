@@ -12,12 +12,13 @@
 
 /* --- AINDA EM TESTES --- */
 
+#define BOOST_MP_NO_SERIALIZATION
+
 #include "secp256k1.h"
 #include <iostream>
 #include <tuple>
 #include <stdio.h>
 #include <stdint.h>
-#define BOOST_MP_NO_SERIALIZATION
 #include <boost/multiprecision/cpp_int.hpp>
 
 using boost::multiprecision::cpp_int;
