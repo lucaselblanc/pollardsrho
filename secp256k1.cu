@@ -232,25 +232,6 @@ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     }
 }
 
-BigInt uint64_array_to_bigint(const uint64_t *a) {
-    BigInt result = 0;
-
-    for (int i = 3; i >= 0; i--) {
-        result <<= 64;
-        result |= BigInt(a[i]);
-    }
-    return result;
-}
-
-void bigint_to_uint64_array(uint64_t *result, const BigInt &value) {
-    BigInt temp = value;
-
-    for (int i = 3; i >= 0; i--) {
-        result[i] = static_cast<uint64_t>(temp & 0xFFFFFFFFFFFFFFFFULL);
-        temp >>= 64;
-    }
-}
-
 void jacobian_init(ECPointJacobian *point) {
     for (int i = 0; i < 4; i++) {
         point->X[i] = 0;
@@ -579,10 +560,7 @@ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     get_compressed_public_key(out, &pub);
 }
 
-BigInt test_mod_inverse(const BigInt &g, const BigInt &f) {
-    return recip2(g, f);
-}
-
+//Testes
 void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]) {
     auto print_u64_4 = [](const char *label, const uint64_t v[4]) {
         printf("%s = 0x", label);
@@ -606,7 +584,6 @@ void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]
     print_u64_4("SEVEN_MONT", SEVEN_MONT);
     printf("\n");
 
-    // 1) Teste de conversão Montgomery <-> normal
     uint64_t gx_m[4], gy_m[4], gx_back[4], gy_back[4];
     to_montgomery_p(gx_m, GX_CONST);
     to_montgomery_p(gy_m, GY_CONST);
@@ -619,36 +596,30 @@ void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]
     print_u64_4("GY (from mont)", gy_back);
     printf("\n");
 
-    // 2) Testes aritméticos mod p (usando representações em Montgomery)
     uint64_t tmp_m[4], tmp_norm[4];
 
-    // add
     mod_add_p(tmp_m, gx_m, gy_m);
     print_u64_4_words("GX+GY (mont)", tmp_m);
     from_montgomery_p(tmp_norm, tmp_m);
     print_u64_4("GX+GY (normal)", tmp_norm);
 
-    // sub
     mod_sub_p(tmp_m, gx_m, gy_m);
     print_u64_4_words("GX-GY (mont)", tmp_m);
     from_montgomery_p(tmp_norm, tmp_m);
     print_u64_4("GX-GY (normal)", tmp_norm);
 
-    // mul
     uint64_t mul_m[4], mul_norm[4];
     mod_mul_mont_p(mul_m, gx_m, gy_m);
     print_u64_4_words("GX*GY (mont)", mul_m);
     from_montgomery_p(mul_norm, mul_m);
     print_u64_4("GX*GY (normal)", mul_norm);
 
-    // sqr
     uint64_t sq_m[4], sq_norm[4];
     mod_sqr_mont_p(sq_m, gx_m);
     print_u64_4_words("GX^2 (mont)", sq_m);
     from_montgomery_p(sq_norm, sq_m);
     print_u64_4("GX^2 (normal)", sq_norm);
 
-    // Comparação com BigInt (verificação independente)
     {
         BigInt gx_big = uint64_array_to_bigint(GX_CONST);
         BigInt gy_big = uint64_array_to_bigint(GY_CONST);
@@ -660,20 +631,17 @@ void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]
     }
     printf("\n");
 
-    // 3) Teste de redução de escalar (n)
     uint64_t all_ones[4] = { 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
     uint64_t reduced[4];
     scalar_reduce_n(reduced, all_ones);
     print_u64_4("Scalar reduce(all_ones) ->", reduced);
 
-    // teste com PRIV_KEY fornecida
     uint64_t k_copy[4];
     for (int i = 0; i < 4; ++i) k_copy[i] = PRIV_KEY[i];
     scalar_reduce_n(reduced, k_copy);
     print_u64_4("Scalar reduce(PRIV_KEY) ->", reduced);
     printf("\n");
 
-    // 4) Jacobian / operações sobre pontos
     ECPoint G_aff;
     to_montgomery_p(G_aff.x, GX_CONST);
     to_montgomery_p(G_aff.y, GY_CONST);
@@ -687,7 +655,6 @@ void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]
     print_u64_4_words("G_jac.Y", G_jac.Y);
     print_u64_4_words("G_jac.Z", G_jac.Z);
 
-    // double
     ECPointJacobian dbl;
     jacobian_double(&dbl, &G_jac);
     print_u64_4_words("dbl.X (mont)", dbl.X);
@@ -703,7 +670,6 @@ void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]
     print_u64_4("dbl.Z (normal)", dblz_n);
     printf("\n");
 
-    // add (G + G) -> deve igualar double
     ECPointJacobian addres;
     jacobian_add(&addres, &G_jac, &G_jac);
     print_u64_4_words("addres.X (mont)", addres.X);
@@ -718,7 +684,6 @@ void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]
     print_u64_4("addres.Y (normal)", addy_n);
     print_u64_4("addres.Z (normal)", addz_n);
 
-    // comparar double vs add (normal)
     int same = 1;
     for (int i = 0; i < 4; ++i) {
         if (dblx_n[i] != addx_n[i] || dbly_n[i] != addy_n[i]) { same = 0; break; }
@@ -726,7 +691,6 @@ void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]
     printf("double == add (normal coords)? %s\n", same ? "YES" : "NO");
     printf("\n");
 
-    // 5) Multiplicação escalar (k * G) e conversão final para affine -> chave compactada
     ECPointJacobian result_jac;
     jacobian_scalar_mult(&result_jac, PRIV_KEY, &G_jac);
     print_u64_4_words("scalar_mult result_jac.X (mont)", result_jac.X);
@@ -734,17 +698,15 @@ void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]
     print_u64_4_words("scalar_mult result_jac.Z (mont)", result_jac.Z);
 
     ECPoint result_aff;
-    jacobian_to_affine(&result_aff, &result_jac); // usa recip2 internamente (ok)
+    jacobian_to_affine(&result_aff, &result_jac);
     print_u64_4("result_aff.x (normal)", result_aff.x);
     print_u64_4("result_aff.y (normal)", result_aff.y);
 
-    // preencher out_pubkey com a chave compactada e imprimir
     get_compressed_public_key(out_pubkey, &result_aff);
     printf("Compressed Public Key (computed): ");
     for (int i = 0; i < 33; ++i) printf("%02x", out_pubkey[i]);
     printf("\n");
 
-    // 6) Comparações finais com valores esperados óbvios
     {
         // valor esperado da chave pública para k=1 (hex string já no seu código)
         const char *expected = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -755,16 +717,6 @@ void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]
 }
 
 int main() {
-
-    BigInt g("0x33e7665705359f04f28b88cf897c603c9");
-
-    /* g ≡ 1 (mod f): */
-    BigInt result = test_mod_inverse(g, f);
-    const std::string expected_inverse = "7fdb62ed2d6fa0874abd664c95b7cef2ed79cc82d13ff3ac8e9766aa21bebeae";
-
-    std::cout << std::hex << result << std::endl;
-    std::cout << "Inverso esperado para g: " << expected_inverse << std::endl;
-
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
@@ -782,7 +734,8 @@ int main() {
 
     unsigned char out_pubkey[33];
 
-    debug_print_traces(PRIV_KEY, out_pubkey);
+    //debug_print_traces(PRIV_KEY, out_pubkey);
 
     return 0;
+
 }
