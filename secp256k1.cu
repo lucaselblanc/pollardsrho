@@ -193,38 +193,6 @@ void mod_sqr_mont_p(uint64_t *out, const uint64_t *in) {
     mod_mul_mont_p(out, in, in);
 }
 
-/*
-void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
-    bool ge = false;
-    for (int i = 3; i >= 0; i--) {
-        if (k[i] > N_CONST[i]) { ge = true; break; }
-        if (k[i] < N_CONST[i]) { ge = false; break; }
-    }
-
-    if (ge) {
-        BigInt k_big = 0;
-        BigInt n_big = 0;
-        for (int i = 3; i >= 0; i--) {
-            k_big <<= 64;
-            k_big |= BigInt(k[i]);
-            n_big <<= 64;
-            n_big |= BigInt(N_CONST[i]);
-        }
-
-        BigInt result = k_big % n_big;
-
-        for (int i = 0; i < 4; i++) {
-            r[i] = static_cast<uint64_t>(result & 0xFFFFFFFFFFFFFFFFULL);
-            result >>= 64;
-        }
-    } else {
-        for (int i = 0; i < 4; i++) {
-            r[i] = k[i];
-        }
-    }
-}
-*/
-
 void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     bool ge = false;
     for (int i = 3; i >= 0; i--) {
@@ -576,7 +544,6 @@ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
 
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
     unsigned char pubkey_compressed[33];
 
@@ -587,7 +554,6 @@ int main() {
         printf("%02x", pubkey_compressed[i]);
     }
     std::cout << std::endl;
-
     std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
 
     return 0;
