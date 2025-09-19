@@ -14,17 +14,8 @@
 
 #include "secp256k1.h"
 #include <iostream>
-#include <tuple>
 #include <stdio.h>
 #include <stdint.h>
-
-using std::make_tuple;
-using std::tuple;
-using std::get;
-using std::pair;
-using std::make_pair;
-
-BigInt f("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
 
 const uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
