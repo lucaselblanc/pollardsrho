@@ -193,6 +193,7 @@ void mod_sqr_mont_p(uint64_t *out, const uint64_t *in) {
     mod_mul_mont_p(out, in, in);
 }
 
+/*
 void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     bool ge = false;
     for (int i = 3; i >= 0; i--) {
@@ -215,6 +216,28 @@ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
         for (int i = 0; i < 4; i++) {
             r[i] = static_cast<uint64_t>(result & 0xFFFFFFFFFFFFFFFFULL);
             result >>= 64;
+        }
+    } else {
+        for (int i = 0; i < 4; i++) {
+            r[i] = k[i];
+        }
+    }
+}
+*/
+
+void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
+    bool ge = false;
+    for (int i = 3; i >= 0; i--) {
+        if (k[i] > N_CONST[i]) { ge = true; break; }
+        if (k[i] < N_CONST[i]) { ge = false; break; }
+    }
+
+    if (ge) {
+        uint64_t borrow = 0;
+        for (int i = 0; i < 4; i++) {
+            uint64_t temp = k[i] - N_CONST[i] - borrow;
+            borrow = (k[i] < N_CONST[i] + borrow) ? 1 : 0;
+            r[i] = temp;
         }
     } else {
         for (int i = 0; i < 4; i++) {
@@ -725,7 +748,7 @@ int main() {
 
     unsigned char out_pubkey[33];
 
-    //debug_print_traces(PRIV_KEY, out_pubkey);
+    debug_print_traces(PRIV_KEY, out_pubkey);
 
     return 0;
 
