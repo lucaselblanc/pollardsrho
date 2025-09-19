@@ -27,8 +27,6 @@ const uint64_t SEVEN_MONT[4] = { 0x0000007000001AB7, 0x0ULL, 0x0ULL, 0x0ULL };
 const uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint64_t MU_P = 0xD838091DD2253531ULL;
 
-BigInt f("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
-
 typedef struct {
     uint64_t X[4];
     uint64_t Y[4];
@@ -576,162 +574,6 @@ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     get_compressed_public_key(out, &pub);
 }
 
-//Testes
-void debug_print_traces(const uint64_t PRIV_KEY[4], unsigned char out_pubkey[33]) {
-    auto print_u64_4 = [](const char *label, const uint64_t v[4]) {
-        printf("%s = 0x", label);
-        for (int i = 3; i >= 0; --i) printf("%016llx", (unsigned long long)v[i]);
-        printf("\n");
-    };
-
-    auto print_u64_4_words = [](const char *label, const uint64_t v[4]) {
-        printf("%s :", label);
-        for (int i = 3; i >= 0; --i) printf(" %016llx", (unsigned long long)v[i]);
-        printf("\n");
-    };
-
-    printf("=== Constantes (originais) ===\n");
-    print_u64_4("P_CONST", P_CONST);
-    print_u64_4("N_CONST", N_CONST);
-    print_u64_4("GX_CONST", GX_CONST);
-    print_u64_4("GY_CONST", GY_CONST);
-    print_u64_4("R2_MOD_P", R2_MOD_P);
-    print_u64_4("ONE_MONT", ONE_MONT);
-    print_u64_4("SEVEN_MONT", SEVEN_MONT);
-    printf("\n");
-
-    uint64_t gx_m[4], gy_m[4], gx_back[4], gy_back[4];
-    to_montgomery_p(gx_m, GX_CONST);
-    to_montgomery_p(gy_m, GY_CONST);
-    print_u64_4("GX (mont)", gx_m);
-    print_u64_4("GY (mont)", gy_m);
-
-    from_montgomery_p(gx_back, gx_m);
-    from_montgomery_p(gy_back, gy_m);
-    print_u64_4("GX (from mont)", gx_back);
-    print_u64_4("GY (from mont)", gy_back);
-    printf("\n");
-
-    uint64_t tmp_m[4], tmp_norm[4];
-
-    mod_add_p(tmp_m, gx_m, gy_m);
-    print_u64_4_words("GX+GY (mont)", tmp_m);
-    from_montgomery_p(tmp_norm, tmp_m);
-    print_u64_4("GX+GY (normal)", tmp_norm);
-
-    mod_sub_p(tmp_m, gx_m, gy_m);
-    print_u64_4_words("GX-GY (mont)", tmp_m);
-    from_montgomery_p(tmp_norm, tmp_m);
-    print_u64_4("GX-GY (normal)", tmp_norm);
-
-    uint64_t mul_m[4], mul_norm[4];
-    mod_mul_mont_p(mul_m, gx_m, gy_m);
-    print_u64_4_words("GX*GY (mont)", mul_m);
-    from_montgomery_p(mul_norm, mul_m);
-    print_u64_4("GX*GY (normal)", mul_norm);
-
-    uint64_t sq_m[4], sq_norm[4];
-    mod_sqr_mont_p(sq_m, gx_m);
-    print_u64_4_words("GX^2 (mont)", sq_m);
-    from_montgomery_p(sq_norm, sq_m);
-    print_u64_4("GX^2 (normal)", sq_norm);
-
-    {
-        BigInt gx_big = uint64_array_to_bigint(GX_CONST);
-        BigInt gy_big = uint64_array_to_bigint(GY_CONST);
-        BigInt p_big  = f;
-        BigInt expect_mul = (gx_big * gy_big) % p_big;
-        BigInt expect_sqr = (gx_big * gx_big) % p_big;
-        std::cout << "Expected GX*GY (bigint mod p) = 0x" << std::hex << expect_mul << std::endl;
-        std::cout << "Expected GX^2 (bigint mod p) = 0x" << std::hex << expect_sqr << std::endl;
-    }
-    printf("\n");
-
-    uint64_t all_ones[4] = { 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-    uint64_t reduced[4];
-    scalar_reduce_n(reduced, all_ones);
-    print_u64_4("Scalar reduce(all_ones) ->", reduced);
-
-    uint64_t k_copy[4];
-    for (int i = 0; i < 4; ++i) k_copy[i] = PRIV_KEY[i];
-    scalar_reduce_n(reduced, k_copy);
-    print_u64_4("Scalar reduce(PRIV_KEY) ->", reduced);
-    printf("\n");
-
-    ECPoint G_aff;
-    to_montgomery_p(G_aff.x, GX_CONST);
-    to_montgomery_p(G_aff.y, GY_CONST);
-    G_aff.infinity = 0;
-    print_u64_4("G_aff.x (mont)", G_aff.x);
-    print_u64_4("G_aff.y (mont)", G_aff.y);
-
-    ECPointJacobian G_jac;
-    affine_to_jacobian(&G_jac, &G_aff);
-    print_u64_4_words("G_jac.X", G_jac.X);
-    print_u64_4_words("G_jac.Y", G_jac.Y);
-    print_u64_4_words("G_jac.Z", G_jac.Z);
-
-    ECPointJacobian dbl;
-    jacobian_double(&dbl, &G_jac);
-    print_u64_4_words("dbl.X (mont)", dbl.X);
-    print_u64_4_words("dbl.Y (mont)", dbl.Y);
-    print_u64_4_words("dbl.Z (mont)", dbl.Z);
-
-    uint64_t dblx_n[4], dbly_n[4], dblz_n[4];
-    from_montgomery_p(dblx_n, dbl.X);
-    from_montgomery_p(dbly_n, dbl.Y);
-    from_montgomery_p(dblz_n, dbl.Z);
-    print_u64_4("dbl.X (normal)", dblx_n);
-    print_u64_4("dbl.Y (normal)", dbly_n);
-    print_u64_4("dbl.Z (normal)", dblz_n);
-    printf("\n");
-
-    ECPointJacobian addres;
-    jacobian_add(&addres, &G_jac, &G_jac);
-    print_u64_4_words("addres.X (mont)", addres.X);
-    print_u64_4_words("addres.Y (mont)", addres.Y);
-    print_u64_4_words("addres.Z (mont)", addres.Z);
-
-    uint64_t addx_n[4], addy_n[4], addz_n[4];
-    from_montgomery_p(addx_n, addres.X);
-    from_montgomery_p(addy_n, addres.Y);
-    from_montgomery_p(addz_n, addres.Z);
-    print_u64_4("addres.X (normal)", addx_n);
-    print_u64_4("addres.Y (normal)", addy_n);
-    print_u64_4("addres.Z (normal)", addz_n);
-
-    int same = 1;
-    for (int i = 0; i < 4; ++i) {
-        if (dblx_n[i] != addx_n[i] || dbly_n[i] != addy_n[i]) { same = 0; break; }
-    }
-    printf("double == add (normal coords)? %s\n", same ? "YES" : "NO");
-    printf("\n");
-
-    ECPointJacobian result_jac;
-    jacobian_scalar_mult(&result_jac, PRIV_KEY, &G_jac);
-    print_u64_4_words("scalar_mult result_jac.X (mont)", result_jac.X);
-    print_u64_4_words("scalar_mult result_jac.Y (mont)", result_jac.Y);
-    print_u64_4_words("scalar_mult result_jac.Z (mont)", result_jac.Z);
-
-    ECPoint result_aff;
-    jacobian_to_affine(&result_aff, &result_jac);
-    print_u64_4("result_aff.x (normal)", result_aff.x);
-    print_u64_4("result_aff.y (normal)", result_aff.y);
-
-    get_compressed_public_key(out_pubkey, &result_aff);
-    printf("Compressed Public Key (computed): ");
-    for (int i = 0; i < 33; ++i) printf("%02x", out_pubkey[i]);
-    printf("\n");
-
-    {
-        // valor esperado da chave pública para k=1 (hex string já no seu código)
-        const char *expected = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-        printf("Expected compressed pubkey (reference): %s\n", expected);
-    }
-
-    printf("=== fim do debug_print_traces ===\n");
-}
-
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
@@ -748,10 +590,5 @@ int main() {
 
     std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
 
-    unsigned char out_pubkey[33];
-
-    debug_print_traces(PRIV_KEY, out_pubkey);
-
     return 0;
-
 }
