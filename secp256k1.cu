@@ -12,31 +12,40 @@
 
 /* --- AINDA EM TESTES --- */
 
+#include "secp256k1.h"
 #include <cuda_runtime.h>
 #include <cuda.h>
 #include <iostream>
 #include <stdio.h>
 #include <stdint.h>
 
+#ifdef __CUDA_ARCH__
+__device__ __constant__ uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+__device__ __constant__ uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
+__device__ __constant__ uint64_t GX_CONST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
+__device__ __constant__ uint64_t GY_CONST[4] = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
+__device__ __constant__ uint64_t R2_MOD_P[4] = { 0x000007A2000E90A1, 0x0000000000000001, 0x0ULL, 0x0ULL };
+__device__ __constant__ uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
+__device__ __constant__ uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+__device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
+#else
 const uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint64_t GX_CONST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
 const uint64_t GY_CONST[4] = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
 const uint64_t R2_MOD_P[4] = { 0x000007A2000E90A1, 0x0000000000000001, 0x0ULL, 0x0ULL };
 const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-const uint64_t SEVEN_MONT[4] = { 0x0000007000001AB7, 0x0ULL, 0x0ULL, 0x0ULL };
 const uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint64_t MU_P = 0xD838091DD2253531ULL;
+#endif
 
-typedef struct {
-    uint64_t X[4];
-    uint64_t Y[4];
-    uint64_t Z[4];
-    int infinity;
-} ECPointJacobian;
+#ifdef __CUDA_ARCH__
+using uint128_t = unsigned __uint128_t;
+#else
+using uint128_t = unsigned __int128;
+#endif
 
-/*
-void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uint64_t *input_low) {
+__host__ __device__ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uint64_t *input_low) {
     uint64_t temp[8];
     for (int i = 0; i < 4; i++) {
         temp[i]     = input_low[i];
@@ -44,19 +53,19 @@ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uin
     }
 
     for (int i = 0; i < 4; i++) {
-        uint64_t ui = (uint64_t)((unsigned __int128)temp[i] * (unsigned __int128)MU_P);
-        unsigned __int128 carry = 0;
+        uint64_t ui = (uint64_t)((uint128_t)temp[i] * (uint128_t)MU_P);
+        uint128_t carry = 0;
         for (int j = 0; j < 4; j++) {
-            unsigned __int128 prod = (unsigned __int128)ui * (unsigned __int128)P_CONST[j]
-                                   + (unsigned __int128)temp[i + j] + carry;
+            uint128_t prod = (uint128_t)ui * (uint128_t)P_CONST[j]
+                                   + (uint128_t)temp[i + j] + carry;
             temp[i + j] = (uint64_t)prod;
             carry = prod >> 64;
         }
-        unsigned __int128 s = (unsigned __int128)temp[i + 4] + carry;
+        uint128_t s = (uint128_t)temp[i + 4] + carry;
         temp[i + 4] = (uint64_t)s;
         carry = s >> 64;
         for (int j = i + 5; j < 8; ++j) {
-            unsigned __int128 sum = (unsigned __int128)temp[j] + carry;
+            uint128_t sum = (uint128_t)temp[j] + carry;
             temp[j] = (uint64_t)sum;
             carry = sum >> 64;
         }
@@ -65,9 +74,9 @@ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uin
     for (int i = 0; i < 4; i++) result[i] = temp[i + 4];
 
     uint64_t diff[4];
-    unsigned __int128 borrow = 0;
+    uint128_t borrow = 0;
     for (int i = 0; i < 4; i++) {
-        unsigned __int128 sub = (unsigned __int128)result[i] - (unsigned __int128)P_CONST[i] - borrow;
+        uint128_t sub = (uint128_t)result[i] - (uint128_t)P_CONST[i] - borrow;
         diff[i] = (uint64_t)sub;
         borrow = (sub >> 127) & 1;
     }
@@ -76,86 +85,30 @@ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uin
         for (int i = 0; i < 4; i++) result[i] = diff[i];
     }
 }
-*/
 
-__host__ __device__ 
-void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uint64_t *input_low) {
-    uint64_t temp[8];
-    for (int i = 0; i < 4; i++) {
-        temp[i]     = input_low[i];
-        temp[i + 4] = input_high[i];
-    }
-
-    for (int i = 0; i < 4; i++) {
-        uint64_t hi;
-        uint64_t ui = __umul64hi(temp[i], MU_P) << 1;
-        hi = __umul64hi(temp[i], MU_P);
-
-        uint64_t carry = 0;
-        for (int j = 0; j < 4; j++) {
-            uint64_t lo = temp[i + j] * P_CONST[j];
-            uint64_t hi2 = __umul64hi(temp[i + j], P_CONST[j]);
-
-            uint64_t sum1 = lo + carry;
-            uint64_t carry1 = (sum1 < lo) ? 1 : 0;
-
-            uint64_t sum2 = sum1 + hi;
-            uint64_t carry2 = (sum2 < sum1) ? 1 : 0;
-
-            temp[i + j] = sum2;
-            carry = hi2 + carry1 + carry2;
-        }
-
-        uint64_t s = temp[i + 4] + carry;
-        carry = (s < temp[i + 4]) ? 1 : 0;
-        temp[i + 4] = s;
-
-        for (int j = i + 5; j < 8; ++j) {
-            uint64_t sum = temp[j] + carry;
-            carry = (sum < temp[j]) ? 1 : 0;
-            temp[j] = sum;
-        }
-    }
-
-    for (int i = 0; i < 4; i++) result[i] = temp[i + 4];
-
-    uint64_t diff[4];
-    uint64_t borrow = 0;
-    for (int i = 0; i < 4; i++) {
-        uint64_t sub = result[i] - P_CONST[i] - borrow;
-        borrow = (result[i] < P_CONST[i] + borrow) ? 1 : 0;
-        diff[i] = sub;
-    }
-
-    if (borrow == 0) {
-        for (int i = 0; i < 4; i++) result[i] = diff[i];
-    }
-}
-
-/*
-void to_montgomery_p(uint64_t *result, const uint64_t *a) {
+__host__ __device__ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t a_local[4];
     for (int i = 0; i < 4; i++) a_local[i] = a[i];
 
     uint64_t temp[8] = {0};
 
     for (int i = 0; i < 4; i++) {
-        unsigned __int128 carry = 0;
+        uint128_t carry = 0;
 
         for (int j = 0; j < 4; j++) {
-            unsigned __int128 prod = (unsigned __int128)a_local[i] * (unsigned __int128)R2_MOD_P[j]
-                                   + (unsigned __int128)temp[i + j]
+            uint128_t prod = (uint128_t)a_local[i] * (uint128_t)R2_MOD_P[j]
+                                   + (uint128_t)temp[i + j]
                                    + carry;
             temp[i + j] = (uint64_t)prod;
             carry = prod >> 64;
         }
 
-        unsigned __int128 sum = (unsigned __int128)temp[i + 4] + carry;
+        uint128_t sum = (uint128_t)temp[i + 4] + carry;
         temp[i + 4] = (uint64_t)sum;
         carry = sum >> 64;
 
         for (int k = i + 5; k < 8; k++) {
-            unsigned __int128 s = (unsigned __int128)temp[k] + carry;
+            uint128_t s = (uint128_t)temp[k] + carry;
             temp[k] = (uint64_t)s;
             carry = s >> 64;
         }
@@ -169,64 +122,17 @@ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
 
     montgomery_reduce_p(result, high, low);
 }
-*/
 
-__host__ __device__
-void to_montgomery_p(uint64_t *result, const uint64_t *a) {
-    uint64_t a_local[4];
-    for (int i = 0; i < 4; i++) a_local[i] = a[i];
-
-    uint64_t temp[8] = {0};
-
-    for (int i = 0; i < 4; i++) {
-        uint64_t carry = 0;
-
-        for (int j = 0; j < 4; j++) {
-            uint64_t lo = a_local[i] * R2_MOD_P[j];
-            uint64_t hi = __umul64hi(a_local[i], R2_MOD_P[j]);
-
-            uint64_t sum1 = temp[i + j] + lo;
-            uint64_t carry1 = (sum1 < lo) ? 1 : 0;
-
-            uint64_t sum2 = sum1 + carry;
-            uint64_t carry2 = (sum2 < sum1) ? 1 : 0;
-
-            temp[i + j] = sum2;
-            carry = hi + carry1 + carry2;
-        }
-
-        uint64_t s = temp[i + 4] + carry;
-        carry = (s < temp[i + 4]) ? 1 : 0;
-        temp[i + 4] = s;
-
-        for (int k = i + 5; k < 8; k++) {
-            uint64_t sum = temp[k] + carry;
-            carry = (sum < temp[k]) ? 1 : 0;
-            temp[k] = sum;
-        }
-    }
-
-    uint64_t low[4], high[4];
-    for (int i = 0; i < 4; i++) {
-        low[i] = temp[i];
-        high[i] = temp[i + 4];
-    }
-
-    montgomery_reduce_p(result, high, low);
-}
-
-__host__ __device__
-void from_montgomery_p(uint64_t *result, const uint64_t *a) {
+__host__ __device__ void from_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t zero[4] = {0, 0, 0, 0};
     montgomery_reduce_p(result, zero, a);
 }
 
-/*
-void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+__host__ __device__ void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t temp[4];
-    unsigned __int128 carry = 0;
+    uint128_t carry = 0;
     for (int i = 0; i < 4; ++i) {
-        unsigned __int128 s = (unsigned __int128)a[i] + (unsigned __int128)b[i] + carry;
+        uint128_t s = (uint128_t)a[i] + (uint128_t)b[i] + carry;
         temp[i] = (uint64_t)s;
         carry = s >> 64;
     }
@@ -242,61 +148,28 @@ void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     if (ge) {
         uint64_t borrow = 0;
         for (int i = 0; i < 4; ++i) {
-            unsigned __int128 sub = (unsigned __int128)temp[i] - (unsigned __int128)P_CONST[i] - borrow;
+            uint128_t sub = (uint128_t)temp[i] - (uint128_t)P_CONST[i] - borrow;
             result[i] = (uint64_t)sub;
-            borrow = ((unsigned __int128)temp[i] < (unsigned __int128)P_CONST[i] + borrow) ? 1 : 0;
-        }
-    } else {
-        for (int i = 0; i < 4; ++i) result[i] = temp[i];
-    }
-}
-*/
-
-__host__ __device__
-void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
-    uint64_t temp[4];
-    uint64_t carry = 0;
-
-    for (int i = 0; i < 4; ++i) {
-        uint64_t sum = a[i] + b[i] + carry;
-        carry = (sum < a[i] || (carry && sum == a[i])) ? 1 : 0;
-        temp[i] = sum;
-    }
-
-    bool ge = (carry != 0);
-    if (!ge) {
-        for (int i = 3; i >= 0; --i) {
-            if (temp[i] > P_CONST[i]) { ge = true; break; }
-            if (temp[i] < P_CONST[i]) { ge = false; break; }
-        }
-    }
-
-    if (ge) {
-        uint64_t borrow = 0;
-        for (int i = 0; i < 4; ++i) {
-            uint64_t sub = temp[i] - P_CONST[i] - borrow;
-            borrow = (temp[i] < P_CONST[i] + borrow) ? 1 : 0;
-            result[i] = sub;
+            borrow = ((uint128_t)temp[i] < (uint128_t)P_CONST[i] + borrow) ? 1 : 0;
         }
     } else {
         for (int i = 0; i < 4; ++i) result[i] = temp[i];
     }
 }
 
-/*
-void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+__host__ __device__ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t temp[4];
     uint64_t borrow = 0;
     for (int i = 0; i < 4; ++i) {
-        unsigned __int128 sub = (unsigned __int128)a[i] - (unsigned __int128)b[i] - borrow;
+        uint128_t sub = (uint128_t)a[i] - (uint128_t)b[i] - borrow;
         temp[i] = (uint64_t)sub;
-        borrow = ((unsigned __int128)a[i] < (unsigned __int128)b[i] + borrow) ? 1 : 0;
+        borrow = ((uint128_t)a[i] < (uint128_t)b[i] + borrow) ? 1 : 0;
     }
 
     if (borrow) {
-        unsigned __int128 carry = 0;
+        uint128_t carry = 0;
         for (int i = 0; i < 4; ++i) {
-            unsigned __int128 s = (unsigned __int128)temp[i] + (unsigned __int128)P_CONST[i] + carry;
+            uint128_t s = (uint128_t)temp[i] + (uint128_t)P_CONST[i] + carry;
             result[i] = (uint64_t)s;
             carry = s >> 64;
         }
@@ -304,40 +177,15 @@ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         for (int i = 0; i < 4; ++i) result[i] = temp[i];
     }
 }
-*/
 
-__host__ __device__
-void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
-    uint64_t temp[4];
-    uint64_t borrow = 0;
-
-    for (int i = 0; i < 4; ++i) {
-        uint64_t sub = a[i] - b[i] - borrow;
-        borrow = (a[i] < b[i] + borrow) ? 1 : 0;
-        temp[i] = sub;
-    }
-
-    if (borrow) {
-        uint64_t carry = 0;
-        for (int i = 0; i < 4; ++i) {
-            uint64_t sum = temp[i] + P_CONST[i] + carry;
-            carry = (sum < temp[i] || (carry && sum == temp[i])) ? 1 : 0;
-            result[i] = sum;
-        }
-    } else {
-        for (int i = 0; i < 4; ++i) result[i] = temp[i];
-    }
-}
-
-/*
-void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+__host__ __device__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t high[4], low[4];
 
     uint64_t temp[8] = {0};
     for (int i = 0; i < 4; i++) {
         uint64_t carry = 0ULL;
         for (int j = 0; j < 4; j++) {
-            unsigned __int128 prod = (unsigned __int128)a[i] * (unsigned __int128)b[j] + (unsigned __int128)temp[i + j] + (unsigned __int128)carry;
+            uint128_t prod = (uint128_t)a[i] * (uint128_t)b[j] + (uint128_t)temp[i + j] + (uint128_t)carry;
             temp[i + j] = (uint64_t)prod;
             carry = (uint64_t)(prod >> 64);
         }
@@ -351,46 +199,12 @@ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
 
     montgomery_reduce_p(result, high, low);
 }
-*/
 
-__host__ __device__
-void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
-    uint64_t high[4], low[4];
-    uint64_t temp[8] = {0};
-
-    for (int i = 0; i < 4; i++) {
-        uint64_t carry = 0;
-        for (int j = 0; j < 4; j++) {
-            uint64_t lo = a[i] * b[j];
-            uint64_t hi = __umul64hi(a[i], b[j]);
-
-            uint64_t sum1 = temp[i + j] + lo;
-            uint64_t carry1 = (sum1 < lo) ? 1 : 0;
-
-            uint64_t sum2 = sum1 + carry;
-            uint64_t carry2 = (sum2 < sum1) ? 1 : 0;
-
-            temp[i + j] = sum2;
-            carry = hi + carry1 + carry2;
-        }
-        temp[i + 4] = carry;
-    }
-
-    for (int i = 0; i < 4; i++) {
-        low[i] = temp[i];
-        high[i] = temp[i + 4];
-    }
-
-    montgomery_reduce_p(result, high, low);
-}
-
-__host__ __device__
-void mod_sqr_mont_p(uint64_t *out, const uint64_t *in) {
+__host__ __device__ void mod_sqr_mont_p(uint64_t *out, const uint64_t *in) {
     mod_mul_mont_p(out, in, in);
 }
 
-__host__ __device__
-void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
+__host__ __device__ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     bool ge = false;
     for (int i = 3; i >= 0; i--) {
         if (k[i] > N_CONST[i]) { ge = true; break; }
@@ -411,8 +225,7 @@ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     }
 }
 
-__host__ __device__
-void jacobian_init(ECPointJacobian *point) {
+__host__ __device__ void jacobian_init(ECPointJacobian *point) {
     for (int i = 0; i < 4; i++) {
         point->X[i] = 0;
         point->Y[i] = 0;
@@ -421,8 +234,7 @@ void jacobian_init(ECPointJacobian *point) {
     point->infinity = 0;
 }
 
-__host__ __device__
-void jacobian_set_infinity(ECPointJacobian *point) {
+__host__ __device__ void jacobian_set_infinity(ECPointJacobian *point) {
     for (int i = 0; i < 4; i++) {
         point->X[i] = ONE_MONT[i];
         point->Y[i] = ONE_MONT[i];
@@ -431,8 +243,7 @@ void jacobian_set_infinity(ECPointJacobian *point) {
     point->infinity = 1;
 }
 
-__host__ __device__
-int jacobian_is_infinity(const ECPointJacobian *point) {
+__host__ __device__ int jacobian_is_infinity(const ECPointJacobian *point) {
     uint64_t z_zero = 0;
     for (int i = 0; i < 4; i++) {
         z_zero |= point->Z[i];
@@ -440,8 +251,7 @@ int jacobian_is_infinity(const ECPointJacobian *point) {
     return point->infinity || (z_zero == 0);
 }
 
-__host__ __device__
-void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
+__host__ __device__ void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
     if (aff->infinity) {
         jacobian_set_infinity(jac);
         return;
@@ -454,8 +264,7 @@ void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
     jac->infinity = 0;
 }
 
-__host__ __device__
-void mod_exp_mont_p(uint64_t *res, const uint64_t *base, const uint64_t *exp) {
+__host__ __device__ void mod_exp_mont_p(uint64_t *res, const uint64_t *base, const uint64_t *exp) {
     uint64_t one[4] = {0};
     one[0] = 1ULL;
     to_montgomery_p(res, one);
@@ -474,8 +283,7 @@ void mod_exp_mont_p(uint64_t *res, const uint64_t *base, const uint64_t *exp) {
     }
 }
 
-__host__ __device__
-void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
+__host__ __device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     if (jacobian_is_infinity(jac)) {
         for (int i = 0; i < 4; i++) aff->x[i] = aff->y[i] = 0;
         aff->infinity = 1;
@@ -495,8 +303,7 @@ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     aff->infinity = 0;
 }
 
-__host__ __device__
-void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
+__host__ __device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
     uint64_t y_zero = 0;
     for (int i = 0; i < 4; i++) {
         y_zero |= point->Y[i];
@@ -530,8 +337,7 @@ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
     result->infinity = 0;
 }
 
-__host__ __device__
-void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
+__host__ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
     int P_infinity = jacobian_is_infinity(P);
     int Q_infinity = jacobian_is_infinity(Q);
 
@@ -609,8 +415,7 @@ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, const ECPoi
     result->infinity = 0;
 }
 
-__host__ __device__
-void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, const ECPointJacobian *point) {
+__host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, const ECPointJacobian *point) {
     if (jacobian_is_infinity(point)) {
         jacobian_set_infinity(result);
         return;
@@ -665,8 +470,7 @@ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, const
     *result = R0;
 }
 
-__host__ __device__
-void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
+__host__ __device__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
     if (point_mont->infinity) {
         result->infinity = 1;
         for (int i = 0; i < 4; i++) {
@@ -680,8 +484,7 @@ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
     result->infinity = 0;
 }
 
-__host__ __device__
-void point_init(ECPoint *point) {
+__host__ __device__ void point_init(ECPoint *point) {
     for (int i = 0; i < 4; i++) {
         point->x[i] = 0;
         point->y[i] = 0;
@@ -689,8 +492,7 @@ void point_init(ECPoint *point) {
     point->infinity = 0;
 }
 
-__host__ __device__
-void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
+__host__ __device__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
     ECPointJacobian P_jac, Q_jac, R_jac;
     affine_to_jacobian(&P_jac, P);
     affine_to_jacobian(&Q_jac, Q);
@@ -698,24 +500,21 @@ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
     jacobian_to_affine(R, &R_jac);
 }
 
-__host__ __device__
-void point_double(ECPoint *R, const ECPoint *P) {
+__host__ __device__ void point_double(ECPoint *R, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
     affine_to_jacobian(&P_jac, P);
     jacobian_double(&R_jac, &P_jac);
     jacobian_to_affine(R, &R_jac);
 }
 
-__host__ __device__
-void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
+__host__ __device__ void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
     affine_to_jacobian(&P_jac, P);
     jacobian_scalar_mult(&R_jac, k, &P_jac);
     jacobian_to_affine(R, &R_jac);
 }
 
-__host__ __device__
-void get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
+__host__ __device__ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
     unsigned char prefix = (public_key->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
 
@@ -732,8 +531,7 @@ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
     }
 }
 
-__host__ __device__
-void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
+__host__ __device__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     ECPoint pub;
     ECPoint G;
     ECPointJacobian G_jac, pub_jac;
