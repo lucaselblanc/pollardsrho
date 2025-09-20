@@ -40,9 +40,5 @@ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q);
 void point_double(ECPoint *R, const ECPoint *P);
 void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P);
 void get_compressed_public_key(unsigned char *out, const ECPoint *public_key);
-BigInt recip2(BigInt g, BigInt f);
-
-//test
-BigInt test_mod_inverse(const BigInt &g, const BigInt &f);
 
 #endif /* EC_SECP256K1_H */
