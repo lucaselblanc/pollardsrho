@@ -25,6 +25,13 @@ typedef struct {
     int infinity;
 } ECPoint;
 
+typedef struct {
+    uint64_t X[4];
+    uint64_t Y[4];
+    uint64_t Z[4];
+    int infinity;
+} ECPointJacobian;
+
 __host__ __device__ void point_init(ECPoint *point);
 __host__ __device__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q);
 __host__ __device__ void point_double(ECPoint *R, const ECPoint *P);
