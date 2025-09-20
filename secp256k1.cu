@@ -34,6 +34,7 @@ typedef struct {
     int infinity;
 } ECPointJacobian;
 
+/*
 void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uint64_t *input_low) {
     uint64_t temp[8];
     for (int i = 0; i < 4; i++) {
@@ -74,7 +75,62 @@ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uin
         for (int i = 0; i < 4; i++) result[i] = diff[i];
     }
 }
+*/
 
+void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uint64_t *input_low) {
+    uint64_t temp[8];
+    for (int i = 0; i < 4; i++) {
+        temp[i]     = input_low[i];
+        temp[i + 4] = input_high[i];
+    }
+
+    for (int i = 0; i < 4; i++) {
+        uint64_t hi;
+        uint64_t ui = __umul64hi(temp[i], MU_P) << 1;
+        hi = __umul64hi(temp[i], MU_P);
+
+        uint64_t carry = 0;
+        for (int j = 0; j < 4; j++) {
+            uint64_t lo = temp[i + j] * P_CONST[j];
+            uint64_t hi2 = __umul64hi(temp[i + j], P_CONST[j]);
+
+            uint64_t sum1 = lo + carry;
+            uint64_t carry1 = (sum1 < lo) ? 1 : 0;
+
+            uint64_t sum2 = sum1 + hi;
+            uint64_t carry2 = (sum2 < sum1) ? 1 : 0;
+
+            temp[i + j] = sum2;
+            carry = hi2 + carry1 + carry2;
+        }
+
+        uint64_t s = temp[i + 4] + carry;
+        carry = (s < temp[i + 4]) ? 1 : 0;
+        temp[i + 4] = s;
+
+        for (int j = i + 5; j < 8; ++j) {
+            uint64_t sum = temp[j] + carry;
+            carry = (sum < temp[j]) ? 1 : 0;
+            temp[j] = sum;
+        }
+    }
+
+    for (int i = 0; i < 4; i++) result[i] = temp[i + 4];
+
+    uint64_t diff[4];
+    uint64_t borrow = 0;
+    for (int i = 0; i < 4; i++) {
+        uint64_t sub = result[i] - P_CONST[i] - borrow;
+        borrow = (result[i] < P_CONST[i] + borrow) ? 1 : 0;
+        diff[i] = sub;
+    }
+
+    if (borrow == 0) {
+        for (int i = 0; i < 4; i++) result[i] = diff[i];
+    }
+}
+
+/*
 void to_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t a_local[4];
     for (int i = 0; i < 4; i++) a_local[i] = a[i];
@@ -111,12 +167,57 @@ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
 
     montgomery_reduce_p(result, high, low);
 }
+*/
+
+void to_montgomery_p(uint64_t *result, const uint64_t *a) {
+    uint64_t a_local[4];
+    for (int i = 0; i < 4; i++) a_local[i] = a[i];
+
+    uint64_t temp[8] = {0};
+
+    for (int i = 0; i < 4; i++) {
+        uint64_t carry = 0;
+
+        for (int j = 0; j < 4; j++) {
+            uint64_t lo = a_local[i] * R2_MOD_P[j];
+            uint64_t hi = __umul64hi(a_local[i], R2_MOD_P[j]);
+
+            uint64_t sum1 = temp[i + j] + lo;
+            uint64_t carry1 = (sum1 < lo) ? 1 : 0;
+
+            uint64_t sum2 = sum1 + carry;
+            uint64_t carry2 = (sum2 < sum1) ? 1 : 0;
+
+            temp[i + j] = sum2;
+            carry = hi + carry1 + carry2;
+        }
+
+        uint64_t s = temp[i + 4] + carry;
+        carry = (s < temp[i + 4]) ? 1 : 0;
+        temp[i + 4] = s;
+
+        for (int k = i + 5; k < 8; k++) {
+            uint64_t sum = temp[k] + carry;
+            carry = (sum < temp[k]) ? 1 : 0;
+            temp[k] = sum;
+        }
+    }
+
+    uint64_t low[4], high[4];
+    for (int i = 0; i < 4; i++) {
+        low[i] = temp[i];
+        high[i] = temp[i + 4];
+    }
+
+    montgomery_reduce_p(result, high, low);
+}
 
 void from_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t zero[4] = {0, 0, 0, 0};
     montgomery_reduce_p(result, zero, a);
 }
 
+/*
 void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t temp[4];
     unsigned __int128 carry = 0;
@@ -145,7 +246,39 @@ void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         for (int i = 0; i < 4; ++i) result[i] = temp[i];
     }
 }
+*/
 
+void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+    uint64_t temp[4];
+    uint64_t carry = 0;
+
+    for (int i = 0; i < 4; ++i) {
+        uint64_t sum = a[i] + b[i] + carry;
+        carry = (sum < a[i] || (carry && sum == a[i])) ? 1 : 0;
+        temp[i] = sum;
+    }
+
+    bool ge = (carry != 0);
+    if (!ge) {
+        for (int i = 3; i >= 0; --i) {
+            if (temp[i] > P_CONST[i]) { ge = true; break; }
+            if (temp[i] < P_CONST[i]) { ge = false; break; }
+        }
+    }
+
+    if (ge) {
+        uint64_t borrow = 0;
+        for (int i = 0; i < 4; ++i) {
+            uint64_t sub = temp[i] - P_CONST[i] - borrow;
+            borrow = (temp[i] < P_CONST[i] + borrow) ? 1 : 0;
+            result[i] = sub;
+        }
+    } else {
+        for (int i = 0; i < 4; ++i) result[i] = temp[i];
+    }
+}
+
+/*
 void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t temp[4];
     uint64_t borrow = 0;
@@ -166,7 +299,31 @@ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         for (int i = 0; i < 4; ++i) result[i] = temp[i];
     }
 }
+*/
 
+void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+    uint64_t temp[4];
+    uint64_t borrow = 0;
+
+    for (int i = 0; i < 4; ++i) {
+        uint64_t sub = a[i] - b[i] - borrow;
+        borrow = (a[i] < b[i] + borrow) ? 1 : 0;
+        temp[i] = sub;
+    }
+
+    if (borrow) {
+        uint64_t carry = 0;
+        for (int i = 0; i < 4; ++i) {
+            uint64_t sum = temp[i] + P_CONST[i] + carry;
+            carry = (sum < temp[i] || (carry && sum == temp[i])) ? 1 : 0;
+            result[i] = sum;
+        }
+    } else {
+        for (int i = 0; i < 4; ++i) result[i] = temp[i];
+    }
+}
+
+/*
 void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t high[4], low[4];
 
@@ -177,6 +334,37 @@ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
             unsigned __int128 prod = (unsigned __int128)a[i] * (unsigned __int128)b[j] + (unsigned __int128)temp[i + j] + (unsigned __int128)carry;
             temp[i + j] = (uint64_t)prod;
             carry = (uint64_t)(prod >> 64);
+        }
+        temp[i + 4] = carry;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        low[i] = temp[i];
+        high[i] = temp[i + 4];
+    }
+
+    montgomery_reduce_p(result, high, low);
+}
+*/
+
+void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+    uint64_t high[4], low[4];
+    uint64_t temp[8] = {0};
+
+    for (int i = 0; i < 4; i++) {
+        uint64_t carry = 0;
+        for (int j = 0; j < 4; j++) {
+            uint64_t lo = a[i] * b[j];
+            uint64_t hi = __umul64hi(a[i], b[j]);
+
+            uint64_t sum1 = temp[i + j] + lo;
+            uint64_t carry1 = (sum1 < lo) ? 1 : 0;
+
+            uint64_t sum2 = sum1 + carry;
+            uint64_t carry2 = (sum2 < sum1) ? 1 : 0;
+
+            temp[i + j] = sum2;
+            carry = hi + carry1 + carry2;
         }
         temp[i + 4] = carry;
     }
