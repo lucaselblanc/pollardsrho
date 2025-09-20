@@ -15,19 +15,9 @@
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
-#define BOOST_MP_USE_CONSTEXPR 0
-#define BOOST_MP_USE_LITERALS 0
-#define BOOST_STATIC_CONSTEXPR static const
-
-#ifndef BOOST_MP_NO_SERIALIZATION
-#define BOOST_MP_NO_SERIALIZATION
-#endif
-
-#include <boost/multiprecision/cpp_int.hpp>
+#include <cuda.h>
+#include <cuda_runtime.h>
 #include <stdint.h>
-
-using boost::multiprecision::cpp_int;
-using BigInt = cpp_int;
 
 typedef struct {
     uint64_t x[4];
@@ -35,10 +25,10 @@ typedef struct {
     int infinity;
 } ECPoint;
 
-void point_init(ECPoint *point);
-void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q);
-void point_double(ECPoint *R, const ECPoint *P);
-void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P);
-void get_compressed_public_key(unsigned char *out, const ECPoint *public_key);
+__host__ __device__ void point_init(ECPoint *point);
+__host__ __device__ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q);
+__host__ __device__ void point_double(ECPoint *R, const ECPoint *P);
+__host__ __device__ void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P);
+__host__ __device__ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key);
 
 #endif /* EC_SECP256K1_H */
