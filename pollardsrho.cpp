@@ -11,8 +11,7 @@
 ******************************************/
 
 /* --- AINDA EM TESTES --- */
-
-/*
+
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -48,18 +47,14 @@ const uint256_t GX = {
 const uint256_t GY = {
     0xFB10D4B8, 0x9C47D08F, 0xA6855419, 0xFD17B448,
     0x0E1108A8, 0x5DA4FBFC, 0x26A3C465, 0x483ADA77
-};
-*/
-
-/*
+};
+
 void uint256_to_uint32_array(unsigned int* out, const uint256_t& value) {
     for (int i = 0; i < 8; i++) {
         out[i] = value.limbs[i];
     }
-}
-*/
-
-/*
+}
+
 void init_secp256k1() {
 
     uint256_to_uint32_array(G.x, GX);
@@ -76,9 +71,7 @@ void init_secp256k1() {
     
     cudaFree(d_G);
 }
-*/
-
-/*
+
 class PKG {
     std::mt19937_64 gen;
     uint64_t min_low, max_low;
@@ -148,10 +141,8 @@ uint256_t mask_for_bits(int bits) {
     for(int i = 7; i > 7 - full_limbs; i--) mask.limbs[i] = 0xFFFFFFFF;
     if(full_limbs < 8 && rem_bits > 0) mask.limbs[7 - full_limbs] = (1U << rem_bits) - 1;
     return mask;
-}
-*/
-
-/*
+}
+
 void precompute_jumps(int key_range) {
     std::mt19937_64 rng(std::random_device{}());
     precomputed_jumps.resize(NUM_JUMPS);
@@ -193,10 +184,8 @@ void precompute_jumps(int key_range) {
     }
 
     precomputed_done = true;
-}
-*/
-
-/*
+}
+
 uint256_t sub_uint256(const uint256_t& a, const uint256_t& b) {
     uint256_t result{};
     uint64_t borrow = 0;
@@ -211,29 +200,23 @@ uint256_t sub_uint256(const uint256_t& a, const uint256_t& b) {
     }
 
     return result;
-}
-*/
-
-/*
+}
+
 int compare_uint256(const uint256_t& a, const uint256_t& b) {
     for (int i = 7; i >= 0; i--) {
         if (a.limbs[i] > b.limbs[i]) return 1;
         if (a.limbs[i] < b.limbs[i]) return -1;
     }
     return 0;
-}
-*/
-
-/*
+}
+
 uint256_t uint256_from_uint32(uint32_t value) {
     uint256_t r{};
     r.limbs[0] = value;
     for(int i=1;i<8;i++) r.limbs[i] = 0;
     return r;
-}
-*/
-
-/*
+}
+
 uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
     uint256_t result{};
     uint64_t carry = 0;
@@ -244,9 +227,7 @@ uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
     }
     return result;
 }
-*/
-
-/*
+
 uint256_t left_shift_uint256(const uint256_t& a, int shift) {
     uint256_t result{};
     if(shift == 0) return a;
@@ -264,9 +245,7 @@ uint256_t left_shift_uint256(const uint256_t& a, int shift) {
     }
     return result;
 }
-*/
-
-/*
+
 uint256_t f(ECPoint& R, uint256_t k, int key_range) {
     const uint256_t mask = mask_for_bits(key_range);
 
@@ -313,9 +292,7 @@ uint256_t f(ECPoint& R, uint256_t k, int key_range) {
 
     return k;
 }
-*/
 
-/*
 uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool test_mode) {
 
     auto uint_256_to_hex = [](const uint256_t& value) -> std::string {
@@ -547,8 +524,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
                             //Verificar se: (d * G ≡ 0), caso verdadeiro: found_key = (k2 + d) % n;
 
-/*
-
                         uint256_t tortoise_key = hare.k2;
                         uint256_t hare_key = hare.k1;
                         uint256_t d = (compare_uint256(hare_key, tortoise_key) >= 0) ? 
@@ -666,9 +641,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
     return found_key;
 }
-*/
 
-/*
 int main(int argc, char* argv[]) {
 
     if (argc < 3 || argc > 4) {
@@ -712,4 +685,3 @@ int main(int argc, char* argv[]) {
     return 0;
 
 }
-*/
