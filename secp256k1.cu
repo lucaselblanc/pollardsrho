@@ -77,6 +77,7 @@ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uin
 }
 */
 
+__host__ __device__ 
 void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uint64_t *input_low) {
     uint64_t temp[8];
     for (int i = 0; i < 4; i++) {
@@ -169,6 +170,7 @@ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
 }
 */
 
+__host__ __device__
 void to_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t a_local[4];
     for (int i = 0; i < 4; i++) a_local[i] = a[i];
@@ -212,6 +214,7 @@ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
     montgomery_reduce_p(result, high, low);
 }
 
+__host__ __device__
 void from_montgomery_p(uint64_t *result, const uint64_t *a) {
     uint64_t zero[4] = {0, 0, 0, 0};
     montgomery_reduce_p(result, zero, a);
@@ -248,6 +251,7 @@ void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
 }
 */
 
+__host__ __device__
 void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t temp[4];
     uint64_t carry = 0;
@@ -301,6 +305,7 @@ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
 }
 */
 
+__host__ __device__
 void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t temp[4];
     uint64_t borrow = 0;
@@ -347,6 +352,7 @@ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
 }
 */
 
+__host__ __device__
 void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t high[4], low[4];
     uint64_t temp[8] = {0};
@@ -377,10 +383,12 @@ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     montgomery_reduce_p(result, high, low);
 }
 
+__host__ __device__
 void mod_sqr_mont_p(uint64_t *out, const uint64_t *in) {
     mod_mul_mont_p(out, in, in);
 }
 
+__host__ __device__
 void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     bool ge = false;
     for (int i = 3; i >= 0; i--) {
@@ -402,6 +410,7 @@ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     }
 }
 
+__host__ __device__
 void jacobian_init(ECPointJacobian *point) {
     for (int i = 0; i < 4; i++) {
         point->X[i] = 0;
@@ -411,6 +420,7 @@ void jacobian_init(ECPointJacobian *point) {
     point->infinity = 0;
 }
 
+__host__ __device__
 void jacobian_set_infinity(ECPointJacobian *point) {
     for (int i = 0; i < 4; i++) {
         point->X[i] = ONE_MONT[i];
@@ -420,6 +430,7 @@ void jacobian_set_infinity(ECPointJacobian *point) {
     point->infinity = 1;
 }
 
+__host__ __device__
 int jacobian_is_infinity(const ECPointJacobian *point) {
     uint64_t z_zero = 0;
     for (int i = 0; i < 4; i++) {
@@ -428,6 +439,7 @@ int jacobian_is_infinity(const ECPointJacobian *point) {
     return point->infinity || (z_zero == 0);
 }
 
+__host__ __device__
 void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
     if (aff->infinity) {
         jacobian_set_infinity(jac);
@@ -441,6 +453,7 @@ void affine_to_jacobian(ECPointJacobian *jac, const ECPoint *aff) {
     jac->infinity = 0;
 }
 
+__host__ __device__
 void mod_exp_mont_p(uint64_t *res, const uint64_t *base, const uint64_t *exp) {
     uint64_t one[4] = {0};
     one[0] = 1ULL;
@@ -460,6 +473,7 @@ void mod_exp_mont_p(uint64_t *res, const uint64_t *base, const uint64_t *exp) {
     }
 }
 
+__host__ __device__
 void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     if (jacobian_is_infinity(jac)) {
         for (int i = 0; i < 4; i++) aff->x[i] = aff->y[i] = 0;
@@ -480,6 +494,7 @@ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     aff->infinity = 0;
 }
 
+__host__ __device__
 void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
     uint64_t y_zero = 0;
     for (int i = 0; i < 4; i++) {
@@ -514,6 +529,7 @@ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
     result->infinity = 0;
 }
 
+__host__ __device__
 void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
     int P_infinity = jacobian_is_infinity(P);
     int Q_infinity = jacobian_is_infinity(Q);
@@ -592,6 +608,7 @@ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, const ECPoi
     result->infinity = 0;
 }
 
+__host__ __device__
 void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, const ECPointJacobian *point) {
     if (jacobian_is_infinity(point)) {
         jacobian_set_infinity(result);
@@ -647,6 +664,7 @@ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, const
     *result = R0;
 }
 
+__host__ __device__
 void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
     if (point_mont->infinity) {
         result->infinity = 1;
@@ -661,6 +679,7 @@ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
     result->infinity = 0;
 }
 
+__host__ __device__
 void point_init(ECPoint *point) {
     for (int i = 0; i < 4; i++) {
         point->x[i] = 0;
@@ -669,6 +688,7 @@ void point_init(ECPoint *point) {
     point->infinity = 0;
 }
 
+__host__ __device__
 void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
     ECPointJacobian P_jac, Q_jac, R_jac;
     affine_to_jacobian(&P_jac, P);
@@ -677,6 +697,7 @@ void point_add(ECPoint *R, const ECPoint *P, const ECPoint *Q) {
     jacobian_to_affine(R, &R_jac);
 }
 
+__host__ __device__
 void point_double(ECPoint *R, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
     affine_to_jacobian(&P_jac, P);
@@ -684,6 +705,7 @@ void point_double(ECPoint *R, const ECPoint *P) {
     jacobian_to_affine(R, &R_jac);
 }
 
+__host__ __device__
 void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
     affine_to_jacobian(&P_jac, P);
@@ -691,6 +713,7 @@ void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
     jacobian_to_affine(R, &R_jac);
 }
 
+__host__ __device__
 void get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
     unsigned char prefix = (public_key->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
@@ -708,6 +731,7 @@ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
     }
 }
 
+__host__ __device__
 void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     ECPoint pub;
     ECPoint G;
