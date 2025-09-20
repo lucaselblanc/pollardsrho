@@ -40,7 +40,124 @@ const uint64_t MU_P = 0xD838091DD2253531ULL;
 #endif
 
 #ifdef __CUDA_ARCH__
-using uint128_t = unsigned long long;
+struct uint128_t {
+    uint64_t lo;
+    uint64_t hi;
+
+    __host__ __device__
+    uint128_t(uint64_t x = 0) : lo(x), hi(0) {}
+
+    __host__ __device__
+    uint128_t operator*(const uint128_t& other) const {
+        uint128_t res;
+        res.lo = lo * other.lo;
+        res.hi = __umul64hi(lo, other.lo);
+        return res;
+    }
+
+    __host__ __device__
+    uint128_t operator+(const uint128_t& other) const {
+        uint128_t res;
+        res.lo = lo + other.lo;
+        res.hi = hi + other.hi + (res.lo < lo ? 1 : 0);
+        return res;
+    }
+
+    __host__ __device__
+    uint128_t& operator+=(const uint128_t& other) {
+        uint64_t old_lo = lo;
+        lo += other.lo;
+        hi += other.hi + (lo < old_lo ? 1 : 0);
+        return *this;
+    }
+
+    __host__ __device__
+    uint128_t operator-(const uint128_t& other) const {
+        uint128_t res;
+        res.lo = lo - other.lo;
+        res.hi = hi - other.hi - (lo < other.lo ? 1 : 0);
+        return res;
+    }
+
+    __host__ __device__
+    uint128_t& operator-=(const uint128_t& other) {
+        uint64_t old_lo = lo;
+        lo -= other.lo;
+        hi -= other.hi + (old_lo < other.lo ? 1 : 0);
+        return *this;
+    }
+
+    __host__ __device__
+    uint128_t operator>>(const unsigned int n) const {
+        uint128_t res;
+        if (n == 0) return *this;
+        else if (n < 64) {
+            res.lo = (lo >> n) | (hi << (64 - n));
+            res.hi = hi >> n;
+        } else if (n < 128) {
+            res.lo = hi >> (n - 64);
+            res.hi = 0;
+        } else {
+            res.lo = 0;
+            res.hi = 0;
+        }
+        return res;
+    }
+
+    __host__ __device__
+    uint128_t& operator>>=(const unsigned int n) {
+        *this = *this >> n;
+        return *this;
+    }
+
+    __host__ __device__
+    uint128_t operator<<(const unsigned int n) const {
+        uint128_t res;
+        if (n == 0) return *this;
+        else if (n < 64) {
+            res.hi = (hi << n) | (lo >> (64 - n));
+            res.lo = lo << n;
+        } else if (n < 128) {
+            res.hi = lo << (n - 64);
+            res.lo = 0;
+        } else {
+            res.lo = 0;
+            res.hi = 0;
+        }
+        return res;
+    }
+
+    __host__ __device__
+    uint128_t& operator<<=(const unsigned int n) {
+        *this = *this << n;
+        return *this;
+    }
+
+    __host__ __device__
+    operator uint64_t() const {
+        return lo;
+    }
+
+    __host__ __device__
+    bool operator<(const uint128_t& other) const {
+        return (hi < other.hi) || (hi == other.hi && lo < other.lo);
+    }
+
+    __host__ __device__
+    bool operator<=(const uint128_t& other) const {
+        return (hi < other.hi) || (hi == other.hi && lo <= other.lo);
+    }
+
+    __host__ __device__
+    bool operator==(const uint128_t& other) const {
+        return hi == other.hi && lo == other.lo;
+    }
+
+    __host__ __device__
+    bool operator!=(const uint128_t& other) const {
+        return !(*this == other);
+    }
+};
 #else
 using uint128_t = unsigned __int128;
 #endif
