@@ -56,6 +56,23 @@ struct uint128_t {
     }
 
     __host__ __device__
+    uint128_t operator*(uint64_t other) const {
+        return *this * uint128_t(other);
+    }
+
+    __host__ __device__
+    uint128_t& operator*=(const uint128_t& other) {
+        *this = *this * other;
+        return *this;
+    }
+
+    __host__ __device__
+    uint128_t& operator*=(uint64_t other) {
+        *this = *this * other;
+        return *this;
+    }
+
+    __host__ __device__
     uint128_t operator+(const uint128_t& other) const {
         uint128_t res;
         res.lo = lo + other.lo;
@@ -64,10 +81,21 @@ struct uint128_t {
     }
 
     __host__ __device__
+    uint128_t operator+(uint64_t other) const {
+        return *this + uint128_t(other);
+    }
+
+    __host__ __device__
     uint128_t& operator+=(const uint128_t& other) {
         uint64_t old_lo = lo;
         lo += other.lo;
         hi += other.hi + (lo < old_lo ? 1 : 0);
+        return *this;
+    }
+
+    __host__ __device__
+    uint128_t& operator+=(uint64_t other) {
+        *this += uint128_t(other);
         return *this;
     }
 
@@ -80,10 +108,21 @@ struct uint128_t {
     }
 
     __host__ __device__
+    uint128_t operator-(uint64_t other) const {
+        return *this - uint128_t(other);
+    }
+
+    __host__ __device__
     uint128_t& operator-=(const uint128_t& other) {
         uint64_t old_lo = lo;
         lo -= other.lo;
         hi -= other.hi + (old_lo < other.lo ? 1 : 0);
+        return *this;
+    }
+
+    __host__ __device__
+    uint128_t& operator-=(uint64_t other) {
+        *this -= uint128_t(other);
         return *this;
     }
 
@@ -157,6 +196,18 @@ struct uint128_t {
     bool operator!=(const uint128_t& other) const {
         return !(*this == other);
     }
+
+    __host__ __device__
+    bool operator<(uint64_t other) const { return *this < uint128_t(other); }
+
+    __host__ __device__
+    bool operator<=(uint64_t other) const { return *this <= uint128_t(other); }
+
+    __host__ __device__
+    bool operator==(uint64_t other) const { return *this == uint128_t(other); }
+
+    __host__ __device__
+    bool operator!=(uint64_t other) const { return *this != uint128_t(other); }
 };
 #else
 using uint128_t = unsigned __int128;
