@@ -12,7 +12,8 @@
 
 /* --- AINDA EM TESTES --- */
 
-#include "secp256k1.h"
+#include <cuda_runtime.h>
+#include <cuda.h>
 #include <iostream>
 #include <stdio.h>
 #include <stdint.h>
