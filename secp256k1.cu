@@ -40,7 +40,7 @@ const uint64_t MU_P = 0xD838091DD2253531ULL;
 #endif
 
 #ifdef __CUDA_ARCH__
-using uint128_t = unsigned __uint128_t;
+using uint128_t = unsigned long long;
 #else
 using uint128_t = unsigned __int128;
 #endif
