@@ -742,6 +742,7 @@ int main() {
 
 #include <cmath>
 #include <thread>
+#include <chrono>
 
 __global__ void keygen_kernel(const uint64_t* priv_keys, unsigned long long* counter, const int ITER_PER_THREAD) {
     unsigned char local_pubkey[33];
