@@ -742,64 +742,62 @@ int main() {
 
 #include <chrono>
 
-__global__ void keygen_kernel(const uint64_t* priv_keys, unsigned char* pubkeys,
-                              unsigned long long* counter, long long max_cycles) {
+__global__ void keygen_kernel(const uint64_t* priv_keys,
+                              unsigned long long* counter) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     unsigned char local_pubkey[33];
     uint64_t local_priv[4];
     for (int i = 0; i < 4; i++) local_priv[i] = priv_keys[i];
 
-    long long start = clock64();
-    while (1) {
+    for (int i = 0; i < BATCH; i++) {
         generate_public_key(local_pubkey, local_priv);
-
         atomicAdd(counter, 1ULL);
-
-        long long now = clock64();
-        if ((now - start) > max_cycles) break;
-    }
-
-    for (int i = 0; i < 33; i++) {
-        pubkeys[idx * 33 + i] = local_pubkey[i];
     }
 }
 
 int main() {
-    const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+    const std::string expected_pubkey =
+        "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
     uint64_t h_priv_keys[4] = {1, 0, 0, 0};
     unsigned long long h_counter = 0ULL;
 
     uint64_t* d_priv_keys;
-    unsigned char* d_pubkeys;
     unsigned long long* d_counter;
 
     cudaMalloc((void**)&d_priv_keys, 4 * sizeof(uint64_t));
-    cudaMalloc((void**)&d_pubkeys, 33 * 256);
     cudaMalloc((void**)&d_counter, sizeof(unsigned long long));
 
     cudaMemcpy(d_priv_keys, h_priv_keys, 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
     cudaMemcpy(d_counter, &h_counter, sizeof(unsigned long long), cudaMemcpyHostToDevice);
 
-    int threads = 256;
-    int blocks = 1;
-
     cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, 0);
-    long long clockRate = prop.clockRate; // kHz
-    long long max_cycles = (long long)10 * clockRate * 1000;
+cudaGetDeviceProperties(&prop, 0);
 
-    keygen_kernel<<<blocks, threads>>>(d_priv_keys, d_pubkeys, d_counter, max_cycles);
-    cudaDeviceSynchronize();
+    int threads= prop.maxThreadsPerBlock / 2
+    int blocks = 32;
 
-    cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
+    auto start = std::chrono::high_resolution_clock::now();
+    auto last_report = start;
 
-    std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
-    std::cout << "Total de chaves geradas em 10s: " << h_counter << std::endl;
+    while (true) {
+        keygen_kernel<<<blocks, threads>>>(d_priv_keys, d_counter);
+        cudaDeviceSynchronize();
+
+        auto now = std::chrono::high_resolution_clock::now();
+        double total_elapsed = std::chrono::duration<double>(now - start).count();
+        double since_last = std::chrono::duration<double>(now - last_report).count();
+
+        if (since_last >= 10.0) {
+            cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long),
+                       cudaMemcpyDeviceToHost);
+            std::cout << "Tempo: " << (int)total_elapsed
+                      << "s, total de chaves geradas = " << h_counter << std::endl;
+            last_report = now;
+        }
+    }
 
     cudaFree(d_priv_keys);
-    cudaFree(d_pubkeys);
     cudaFree(d_counter);
-
     return 0;
 }
