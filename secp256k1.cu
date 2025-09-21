@@ -781,16 +781,15 @@ int main() {
     const int THREADS = prop.maxThreadsPerBlock;
     const int BLOCKS = 32;
     const int TARGET_NUM_KERNELS = 32;
-    int ITER_PER_KERNEL = (TOTAL_ITER + TARGET_NUM_KERNELS - 1) / TARGET_NUM_KERNELS;
-
+    
     int total_threads = THREADS * BLOCKS;
-
     // Distribuir TOTAL_ITER em alguns kernels, mas garantindo trabalho mínimo por thread
     int ITER_PER_THREAD = (TOTAL_ITER + total_threads - 1) / total_threads; // ceil
     int ITER_PER_KERNEL = ITER_PER_THREAD * total_threads;
     int num_kernels = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
     
     /*
+    int ITER_PER_KERNEL = (TOTAL_ITER + TARGET_NUM_KERNELS - 1) / TARGET_NUM_KERNELS;
     int num_kernels = (TOTAL_ITER + ITER_PER_THREAD*total_threads - 1) / (ITER_PER_THREAD*total_threads);
     */
 
