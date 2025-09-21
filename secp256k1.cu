@@ -780,7 +780,7 @@ int main() {
     const int TOTAL_ITER = 10000000;
     const int THREADS = prop.maxThreadsPerBlock;
     const int BLOCKS = 32;
-    const int TARGET_NUM_KERNELS = 32;
+    const int TARGET_NUM_KERNELS = 4;
     
     int total_threads = THREADS * BLOCKS;
     int ITER_PER_KERNEL = (TOTAL_ITER + TARGET_NUM_KERNELS - 1) / TARGET_NUM_KERNELS;
