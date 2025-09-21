@@ -796,18 +796,13 @@ int main() {
         keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
     }
 
-    for(int i = 0; i < TOTAL_ITER; i++)
-    {
-        auto now = std::chrono::high_resolution_clock::now();
-        double total_elapsed = std::chrono::duration<double>(now - start).count();
-        double since_last = std::chrono::duration<double>(now - last_report).count();
-
-        if (since_last >= 10.0) {
-            cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
-            std::cout << "Tempo: " << (int)total_elapsed << "s, total de chaves geradas = " << h_counter << std::endl;
-            last_report = now;
-            cudaDeviceSynchronize();
-         }
+    for (uint128_t i = 0; i <= (uint128_t)(-1); i++) {
+        std::this_thread::sleep_for
+(std::chrono::seconds(10));
+        cudaDeviceSynchronize();
+        cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
+        std::cout << "Total de chaves geradas = " << h_counter << std::endl;
+        if (h_counter >= TOTAL_ITER) break;
     }
 
     cudaFree(d_priv_keys);
