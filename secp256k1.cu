@@ -783,9 +783,8 @@ int main() {
     const int TARGET_NUM_KERNELS = 32;
     
     int total_threads = THREADS * BLOCKS;
-    // Distribuir TOTAL_ITER em alguns kernels, mas garantindo trabalho mínimo por thread
-    int ITER_PER_THREAD = (ITER_PER_KERNEL + total_threads - 1) / total_threads; // ceil
     int ITER_PER_KERNEL = (TOTAL_ITER + TARGET_NUM_KERNELS - 1) / TARGET_NUM_KERNELS;
+    int ITER_PER_THREAD = (ITER_PER_KERNEL + total_threads - 1) / total_threads; // ceil    
     int num_kernels = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
     
     /*
