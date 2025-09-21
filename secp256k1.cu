@@ -743,13 +743,16 @@ int main() {
 #include <chrono>
 
 __global__ void keygen_kernel(const uint64_t* priv_keys,
-                              unsigned long long* counter) {
+                              unsigned long long* counter, const int ITER_PER_THREAD) {
     unsigned char local_pubkey[33];
     uint64_t local_priv[4];
     for (int i = 0; i < 4; i++) local_priv[i] = priv_keys[i];
 
-    generate_public_key(local_pubkey, local_priv);
-    atomicAdd(counter, 1ULL);
+    for(int i = 0; i < ITER_PER_THREAD; i++) {
+
+       generate_public_key(local_pubkey, local_priv);
+       atomicAdd(counter, 1ULL);
+    }
 }
 
 int main() {
@@ -770,15 +773,25 @@ int main() {
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, 0);
 
-    int threads = prop.maxThreadsPerBlock / 2;
-    int blocks = 32;
+    const int TOTAL_ITER = 500000000;
+    const int THREADS = prop.maxThreadsPerBlock / 2;
+    const int BLOCKS = 32;
+    const int ITER_PER_THREAD = 10000;
+    const int ITER_PER_KERNEL = THREADS * BLOCKS * ITER_PER_THREAD;
+    const int NUM_KERNELS = TOTAL_ITER / ITER_PER_KERNEL;
+    if (TOTAL_ITER % ITER_PER_KERNEL != 0) {
+       NUM_KERNELS += 1;
+    }
 
     auto start = std::chrono::high_resolution_clock::now();
     auto last_report = start;
 
-    for(int i = 0; i < 500000000; i++) {
+    for(int k = 0; k < NUM_KERNELS; k++)
+    { 
+        keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
+    }
 
-        keygen_kernel<<<blocks, threads>>>(d_priv_keys, d_counter);
+    for(int i = 0; i < TOTAL_ITER; i++) {
         cudaDeviceSynchronize();
 
         auto now = std::chrono::high_resolution_clock::now();
