@@ -778,7 +778,7 @@ int main() {
     cudaGetDeviceProperties(&prop, 0);
 
     const int TOTAL_ITER = 10000000;
-    const int THREADS = 256;
+    const int THREADS = 8;
     //const int THREADS = prop.maxThreadsPerBlock;
     const int BLOCKS = 32;
     const int TARGET_NUM_KERNELS = 4;
