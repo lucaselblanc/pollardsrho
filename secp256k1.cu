@@ -740,6 +740,7 @@ int main() {
 }
 */
 
+#include <thread>
 #include <chrono>
 
 __global__ void keygen_kernel(const uint64_t* priv_keys, unsigned long long* counter, const int ITER_PER_THREAD) {
