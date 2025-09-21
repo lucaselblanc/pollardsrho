@@ -789,8 +789,6 @@ int main() {
     std::cout << "ITER_PER_KERNEL: " << ITER_PER_KERNEL << std::endl;
     std::cout << "Used kernels: " << num_kernels << std::endl;
 
-    auto start = std::chrono::high_resolution_clock::now();
-
     for(int k = 0; k < num_kernels; k++)
     {
         int remaining = TOTAL_ITER - k * ITER_PER_KERNEL;
