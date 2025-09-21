@@ -789,6 +789,8 @@ int main() {
     for(int k = 0; k < num_kernels; k++)
     {
        keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
+
+       cudaDeviceSynchronize();
     }
 
     for(int i = 0; i < TOTAL_ITER; i++)
@@ -802,8 +804,6 @@ int main() {
             std::cout << "Tempo: " << (int)total_elapsed << "s, total de chaves geradas = " << h_counter << std::endl;
             last_report = now;
          }
-
-         cudaDeviceSynchronize();
     }
 
     cudaFree(d_priv_keys);
