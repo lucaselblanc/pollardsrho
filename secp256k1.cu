@@ -786,10 +786,6 @@ int main() {
     int ITER_PER_KERNEL = (TOTAL_ITER + TARGET_NUM_KERNELS - 1) / TARGET_NUM_KERNELS;
     int ITER_PER_THREAD = (ITER_PER_KERNEL + total_threads - 1) / total_threads; // ceil    
     int num_kernels = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
-    
-    /*
-    int num_kernels = (TOTAL_ITER + ITER_PER_THREAD*total_threads - 1) / (ITER_PER_THREAD*total_threads);
-    */
 
     std::cout << "Threads: " << THREADS << ", Blocks: " << BLOCKS << std::endl;
     std::cout << "ITER_PER_THREAD: " << ITER_PER_THREAD << std::endl;
