@@ -789,8 +789,6 @@ int main() {
     for(int k = 0; k < num_kernels; k++)
     {
        keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
-
-       cudaDeviceSynchronize();
     }
 
     for(int i = 0; i < TOTAL_ITER; i++)
@@ -803,6 +801,7 @@ int main() {
             cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
             std::cout << "Tempo: " << (int)total_elapsed << "s, total de chaves geradas = " << h_counter << std::endl;
             last_report = now;
+            cudaDeviceSynchronize();
          }
     }
 
