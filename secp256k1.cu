@@ -721,7 +721,9 @@ __host__ __device__ void generate_public_key(unsigned char *out, const uint64_t 
     get_compressed_public_key(out, &pub);
 }
 
-/*
+#include <thread>
+#include <chrono>
+
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
@@ -736,78 +738,5 @@ int main() {
     std::cout << std::endl;
     std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
 
-    return 0;
-}
-*/
-
-#include <cmath>
-#include <thread>
-#include <chrono>
-
-__global__ void keygen_kernel(const uint64_t* priv_keys, unsigned long long* counter, const int ITER_PER_THREAD) {
-    unsigned char local_pubkey[33];
-    uint64_t local_priv[4];
-    for (int i = 0; i < 4; i++) local_priv[i] = priv_keys[i];
-
-    unsigned long long local_count = 0;
-
-    for (int i = 0; i < ITER_PER_THREAD; i++) {
-        generate_public_key(local_pubkey, local_priv);
-        local_count++;
-    }
-
-    atomicAdd(counter, local_count);
-}
-
-int main() {
-    const std::string expected_pubkey =
-        "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t h_priv_keys[4] = {1, 0, 0, 0};
-    unsigned long long h_counter = 0ULL;
-
-    uint64_t* d_priv_keys;
-    unsigned long long* d_counter;
-
-    cudaMalloc((void**)&d_priv_keys, 4 * sizeof(uint64_t));
-    cudaMalloc((void**)&d_counter, sizeof(unsigned long long));
-
-    cudaMemcpy(d_priv_keys, h_priv_keys, 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_counter, &h_counter, sizeof(unsigned long long), cudaMemcpyHostToDevice);
-
-    const int TOTAL_ITER = 10000000;
-    const int THREADS = 8;
-    const int BLOCKS = 32;
-    const int TARGET_NUM_KERNELS = 4;
-    
-    int total_threads = THREADS * BLOCKS;
-    int ITER_PER_KERNEL = (TOTAL_ITER + TARGET_NUM_KERNELS - 1) / TARGET_NUM_KERNELS;
-    int ITER_PER_THREAD = (ITER_PER_KERNEL + total_threads - 1) / total_threads; // ceil    
-    int num_kernels = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
-
-    std::cout << "Threads: " << THREADS << ", Blocks: " << BLOCKS << std::endl;
-    std::cout << "ITER_PER_THREAD: " << ITER_PER_THREAD << std::endl;
-    std::cout << "ITER_PER_KERNEL: " << ITER_PER_KERNEL << std::endl;
-    std::cout << "Used kernels: " << num_kernels << std::endl;
-
-    for(int k = 0; k < num_kernels; k++)
-    {
-        int remaining = TOTAL_ITER - k * ITER_PER_KERNEL;
-        int iter_this_kernel = std::min(ITER_PER_KERNEL, remaining);
-        int iter_per_thread = (iter_this_kernel + total_threads - 1) / total_threads;
-
-        keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
-    }
-
-    while(true)
-    { 
-        std::this_thread::sleep_for(std::chrono::seconds(10));
-    
-        cudaDeviceSynchronize();
-        cudaMemcpy(&h_counter, d_counter,sizeof(unsigned long long),cudaMemcpyDeviceToHost);
-        std::cout << "Progresso parcial: " << h_counter << std::flush;
-    }
-
-    cudaFree(d_priv_keys);
-    cudaFree(d_counter);
     return 0;
 }
