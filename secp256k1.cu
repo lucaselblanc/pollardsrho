@@ -799,7 +799,7 @@ int main() {
         keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
     }
 
-    for (uint128_t i = 0; i <= (uint128_t)(-1); i++) {
+    while(true) {
         std::this_thread::sleep_for
 (std::chrono::seconds(10));
         cudaDeviceSynchronize();
