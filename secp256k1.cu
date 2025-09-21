@@ -721,6 +721,7 @@ __host__ __device__ void generate_public_key(unsigned char *out, const uint64_t 
     get_compressed_public_key(out, &pub);
 }
 
+/*
 #include <thread>
 #include <chrono>
 
@@ -737,6 +738,34 @@ int main() {
     }
     std::cout << std::endl;
     std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
+
+    return 0;
+}
+*/
+
+#include <iostream>
+#include <chrono>
+#include <cstdint>
+
+int main() {
+    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
+    unsigned char pubkey_compressed[33];
+
+    const size_t TOTAL_ITER = 10000000;
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for (size_t i = 0; i < TOTAL_ITER; ++i) {
+        generate_public_key(pubkey_compressed, PRIV_KEY);
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+
+    double keys_per_sec = TOTAL_ITER / elapsed.count();
+    std::cout << "Chaves geradas: " << TOTAL_ITER << "\n";
+    std::cout << "Tempo (s): " << elapsed.count() << "\n";
+    std::cout << "Keys/s: " << keys_per_sec << std::endl;
 
     return 0;
 }
