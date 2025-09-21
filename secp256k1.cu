@@ -778,13 +778,13 @@ int main() {
 
     const int TOTAL_ITER = 10000000;
     const int THREADS = 8;
-    //const int THREADS = prop.maxThreadsPerBlock;
+    // const int THREADS = prop.maxThreadsPerBlock;
     const int BLOCKS = 32;
     const int TARGET_NUM_KERNELS = 4;
 
     int total_threads = THREADS * BLOCKS;
     int ITER_PER_KERNEL = (TOTAL_ITER + TARGET_NUM_KERNELS - 1) / TARGET_NUM_KERNELS;
-    int ITER_PER_THREAD = (ITER_PER_KERNEL + total_threads - 1) / total_threads; // ceil    
+    int ITER_PER_THREAD = (ITER_PER_KERNEL + total_threads - 1) / total_threads; // ceil
     int num_kernels = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
 
     std::cout << "Threads: " << THREADS << ", Blocks: " << BLOCKS << std::endl;
@@ -798,30 +798,52 @@ int main() {
 
     cudaEventRecord(start);
 
-    for(int k = 0; k < num_kernels; k++)
-    {
+    for (int k = 0; k < num_kernels; k++) {
         int remaining = TOTAL_ITER - k * ITER_PER_KERNEL;
         int iter_this_kernel = std::min(ITER_PER_KERNEL, remaining);
         int iter_per_thread = (iter_this_kernel + total_threads - 1) / total_threads;
 
-        keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
+        cudaEvent_t k_stop;
+        cudaEventCreate(&k_stop);
+
+        keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
         cudaDeviceSynchronize();
+
+        cudaEventRecord(k_stop);
+        cudaEventSynchronize(k_stop);
+
+        float ms_partial = 0.0f;
+        cudaEventElapsedTime(&ms_partial, start, k_stop);
+
+        cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
+
+        double seconds_partial = ms_partial / 1000.0;
+        double keys_per_sec_partial = h_counter / seconds_partial;
+
+        std::cout << "Kernel " << (k + 1) << "/" << num_kernels
+                  << " | Progresso parcial: " << h_counter
+                  << " | Tempo: " << seconds_partial << " s"
+                  << " | Throughput: " << keys_per_sec_partial << " chaves/s"
+                  << std::endl;
+
+        cudaEventDestroy(k_stop);
     }
-    
+
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
 
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
-    cudaMemcpy(&h_counter, d_counter,sizeof(unsigned long long),cudaMemcpyDeviceToHost);
+    cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
 
     double seconds = milliseconds / 1000.0;
     double keys_per_sec = h_counter / seconds;
 
+    std::cout << "====================================" << std::endl;
     std::cout << "Tempo total: " << seconds << " s" << std::endl;
     std::cout << "Total de chaves geradas: " << h_counter << std::endl;
-    std::cout << "Throughput: " << keys_per_sec << " chaves/s" << std::endl;
+    std::cout << "Throughput médio: " << keys_per_sec << " chaves/s" << std::endl;
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
