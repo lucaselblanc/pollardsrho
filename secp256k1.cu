@@ -744,13 +744,11 @@ int main() {
 
 __global__ void keygen_kernel(const uint64_t* priv_keys,
                               unsigned long long* counter) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
     unsigned char local_pubkey[33];
     uint64_t local_priv[4];
     for (int i = 0; i < 4; i++) local_priv[i] = priv_keys[i];
 
-    for (int i = 0; i < BATCH; i++) {
+    while (true) {
         generate_public_key(local_pubkey, local_priv);
         atomicAdd(counter, 1ULL);
     }
@@ -772,16 +770,17 @@ int main() {
     cudaMemcpy(d_counter, &h_counter, sizeof(unsigned long long), cudaMemcpyHostToDevice);
 
     cudaDeviceProp prop;
-cudaGetDeviceProperties(&prop, 0);
+    cudaGetDeviceProperties(&prop, 0);
 
-    int threads= prop.maxThreadsPerBlock / 2
+    int threads = prop.maxThreadsPerBlock / 2;
     int blocks = 32;
+
+    keygen_kernel<<<blocks, threads>>>(d_priv_keys, d_counter);
 
     auto start = std::chrono::high_resolution_clock::now();
     auto last_report = start;
 
     while (true) {
-        keygen_kernel<<<blocks, threads>>>(d_priv_keys, d_counter);
         cudaDeviceSynchronize();
 
         auto now = std::chrono::high_resolution_clock::now();
