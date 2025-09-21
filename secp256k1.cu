@@ -783,6 +783,8 @@ int main() {
        num_kernels += 1;
     }
 
+    std::cout << "Número de kernels a serem lançados: " << num_kernels << std::endl;
+
     auto start = std::chrono::high_resolution_clock::now();
     auto last_report = start;
 
