@@ -780,7 +780,7 @@ int main() {
     auto start = std::chrono::high_resolution_clock::now();
     auto last_report = start;
 
-    while (true) {
+    for(int i = 0; i < 500000000; i++) {
         cudaDeviceSynchronize();
 
         auto now = std::chrono::high_resolution_clock::now();
