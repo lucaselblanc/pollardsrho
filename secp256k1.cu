@@ -776,7 +776,7 @@ int main() {
     const int TOTAL_ITER = 10000000;
     const int THREADS = prop.maxThreadsPerBlock / 2;
     const int BLOCKS = 32;
-    const int ITER_PER_THREAD = 10000;
+    const int ITER_PER_THREAD = (TOTAL_ITER + THREADS * BLOCKS - 1) / (THREADS * BLOCKS);
     const int ITER_PER_KERNEL = THREADS * BLOCKS * ITER_PER_THREAD;
 
     int num_kernels = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
