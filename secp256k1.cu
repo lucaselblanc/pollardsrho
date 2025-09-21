@@ -778,15 +778,15 @@ int main() {
     const int BLOCKS = 32;
     const int ITER_PER_THREAD = 10000;
     const int ITER_PER_KERNEL = THREADS * BLOCKS * ITER_PER_THREAD;
-    const int NUM_KERNELS = TOTAL_ITER / ITER_PER_KERNEL;
+    int num_kernels = TOTAL_ITER / ITER_PER_KERNEL;
     if (TOTAL_ITER % ITER_PER_KERNEL != 0) {
-       NUM_KERNELS += 1;
+       num_kernels += 1;
     }
 
     auto start = std::chrono::high_resolution_clock::now();
     auto last_report = start;
 
-    for(int k = 0; k < NUM_KERNELS; k++)
+    for(int k = 0; k < num_kernels; k++)
     { 
         keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
     }
