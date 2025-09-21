@@ -781,8 +781,8 @@ int main() {
     const int THREADS = prop.maxThreadsPerBlock;
     const int BLOCKS = 32;
     int ITER_PER_THREAD = ceil(TOTAL_ITER + THREADS*BLOCKS - 1) / (THREADS*BLOCKS);
-    int ITER_PER_KERNEL = 36000;
-    int num_kernels = 5;
+    int ITER_PER_KERNEL = THREADS * BLOCKS * ITER_PER_THREAD;
+    int num_kernels = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
 
     std::cout << "Threads: " << THREADS << ", Blocks: " << BLOCKS << std::endl;
     std::cout << "ITER_PER_THREAD: " << ITER_PER_THREAD << std::endl;
@@ -795,17 +795,11 @@ int main() {
     {
         int remaining = TOTAL_ITER - k * ITER_PER_KERNEL;
         int iter_this_kernel = std::min(ITER_PER_KERNEL, remaining);
-        int iter_per_thread = (iter_this_kernel + THREADS*BLOCKS - 1) / (THREADS*BLOCKS);
-        keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
-    }
+        int iter_per_thread = (iter_this_kernel + THREADS*BLOCKS - 1) / (THREADS*BLOCKS);    keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
 
-    while(true) {
-        std::this_thread::sleep_for
-(std::chrono::seconds(10));
         cudaDeviceSynchronize();
         cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
-        std::cout << "Total de chaves geradas = " << h_counter << std::endl;
-        if (h_counter >= TOTAL_ITER) break;
+        std::cout << "Progresso parcial: " << h_counter << std::endl;
     }
 
     cudaFree(d_priv_keys);
