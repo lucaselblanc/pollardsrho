@@ -773,7 +773,7 @@ int main() {
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, 0);
 
-    const int TOTAL_ITER = 500000000;
+    const int TOTAL_ITER = 10000000;
     const int THREADS = prop.maxThreadsPerBlock / 2;
     const int BLOCKS = 32;
     const int ITER_PER_THREAD = 10000;
@@ -788,8 +788,7 @@ int main() {
 
     for (int k = 0; k < num_kernels; k++) {
        keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
-       cudaDeviceSynchronize();
-
+       
        auto now = std::chrono::high_resolution_clock::now();
        double total_elapsed = std::chrono::duration<double>(now - start).count();
        double since_last = std::chrono::duration<double>(now - last_report).count();
@@ -799,6 +798,8 @@ int main() {
             std::cout << "Tempo: " << (int)total_elapsed << "s, total de chaves geradas = " << h_counter << std::endl;
             last_report = now;
         }
+
+        cudaDeviceSynchronize();
     }
 
     cudaFree(d_priv_keys);
