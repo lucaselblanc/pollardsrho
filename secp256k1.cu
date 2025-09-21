@@ -776,11 +776,13 @@ int main() {
     const int TOTAL_ITER = 10000000;
     const int THREADS = prop.maxThreadsPerBlock / 2;
     const int BLOCKS = 32;
-    const int ITER_PER_THREAD = (TOTAL_ITER + THREADS * BLOCKS - 1) / (THREADS * BLOCKS);
-    const int ITER_PER_KERNEL = THREADS * BLOCKS * ITER_PER_THREAD;
-
+    int ITER_PER_THREAD = (TOTAL_ITER + THREADS*BLOCKS - 1) / (THREADS*BLOCKS);
+    int ITER_PER_KERNEL = THREADS * BLOCKS * ITER_PER_THREAD;
     int num_kernels = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
 
+    std::cout << "Threads: " << THREADS << ", Blocks: " << BLOCKS << std::endl;
+    std::cout << "ITER_PER_THREAD: " << ITER_PER_THREAD << std::endl;
+    std::cout << "ITER_PER_KERNEL: " << ITER_PER_KERNEL << std::endl;
     std::cout << "Used kernels: " << num_kernels << std::endl;
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -788,7 +790,10 @@ int main() {
 
     for(int k = 0; k < num_kernels; k++)
     {
-       keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
+        int remaining = TOTAL_ITER - k * ITER_PER_KERNEL;
+        int iter_this_kernel = std::min(ITER_PER_KERNEL, remaining);
+        int iter_per_thread = (iter_this_kernel + THREADS*BLOCKS - 1) / (THREADS*BLOCKS);
+        keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
     }
 
     for(int i = 0; i < TOTAL_ITER; i++)
