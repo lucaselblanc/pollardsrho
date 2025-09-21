@@ -805,9 +805,9 @@ int main() {
         int iter_per_thread = (iter_this_kernel + total_threads - 1) / total_threads;
 
         keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
+        cudaDeviceSynchronize();
     }
     
-    cudaDeviceSynchronize();
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
 
