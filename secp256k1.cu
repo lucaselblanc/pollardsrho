@@ -748,7 +748,7 @@ __global__ void keygen_kernel(const uint64_t* priv_keys,
     uint64_t local_priv[4];
     for (int i = 0; i < 4; i++) local_priv[i] = priv_keys[i];
 
-    while (true) {
+    for(int i = 0; i < 500000000; i++) {
         generate_public_key(local_pubkey, local_priv);
         atomicAdd(counter, 1ULL);
     }
