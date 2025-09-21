@@ -742,17 +742,19 @@ int main() {
 
 #include <chrono>
 
-__global__ void keygen_kernel(const uint64_t* priv_keys,
-                              unsigned long long* counter, const int ITER_PER_THREAD) {
+__global__ void keygen_kernel(const uint64_t* priv_keys, unsigned long long* counter, const int ITER_PER_THREAD) {
     unsigned char local_pubkey[33];
     uint64_t local_priv[4];
     for (int i = 0; i < 4; i++) local_priv[i] = priv_keys[i];
 
-    for(int i = 0; i < ITER_PER_THREAD; i++) {
+    unsigned long long local_count = 0;
 
-       generate_public_key(local_pubkey, local_priv);
-       atomicAdd(counter, 1ULL);
+    for (int i = 0; i < ITER_PER_THREAD; i++) {
+        generate_public_key(local_pubkey, local_priv);
+        local_count++;
     }
+
+    atomicAdd(counter, local_count);
 }
 
 int main() {
