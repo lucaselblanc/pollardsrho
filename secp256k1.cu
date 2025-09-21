@@ -799,7 +799,7 @@ int main() {
         keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
         cudaDeviceSynchronize();
         cudaMemcpy(&h_counter, d_counter,sizeof(unsigned long long),cudaMemcpyDeviceToHost);
-        std::cout << "Progresso parcial: " << h_counter << std::endl;
+        std::cout << "Progresso parcial: " << h_counter << std::flush;
     }
 
     cudaFree(d_priv_keys);
