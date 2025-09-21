@@ -786,26 +786,22 @@ int main() {
     auto start = std::chrono::high_resolution_clock::now();
     auto last_report = start;
 
-    for(int k = 0; k < num_kernels; k++)
-    { 
-        keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
+    for (int k = 0; k < NUM_KERNELS; k++) {
+    keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
+    cudaDeviceSynchronize();
+
+    auto now = std::chrono::high_resolution_clock::now();
+    double total_elapsed = std::chrono::duration<double>(now - start).count();
+    double since_last = std::chrono::duration<double>(now - last_report).count();
+
+    if (since_last >= 10.0) {
+        cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long),
+                   cudaMemcpyDeviceToHost);
+        std::cout << "Tempo: " << (int)total_elapsed
+                  << "s, total de chaves geradas = " << h_counter << std::endl;
+        last_report = now;
     }
-
-    for(int i = 0; i < TOTAL_ITER; i++) {
-        cudaDeviceSynchronize();
-
-        auto now = std::chrono::high_resolution_clock::now();
-        double total_elapsed = std::chrono::duration<double>(now - start).count();
-        double since_last = std::chrono::duration<double>(now - last_report).count();
-
-        if (since_last >= 10.0) {
-            cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long),
-                       cudaMemcpyDeviceToHost);
-            std::cout << "Tempo: " << (int)total_elapsed
-                      << "s, total de chaves geradas = " << h_counter << std::endl;
-            last_report = now;
-        }
-    }
+}
 
     cudaFree(d_priv_keys);
     cudaFree(d_counter);
