@@ -776,33 +776,29 @@ int main() {
     const int TOTAL_ITER = 10000000;
     const int THREADS = prop.maxThreadsPerBlock / 2;
     const int BLOCKS = 32;
-    const int ITER_PER_THREAD = 1000000;
+    const int ITER_PER_THREAD = 10000;
     const int ITER_PER_KERNEL = THREADS * BLOCKS * ITER_PER_THREAD;
-    int num_kernels = TOTAL_ITER / ITER_PER_KERNEL;
-    if (TOTAL_ITER % ITER_PER_KERNEL != 0) {
-       num_kernels += 1;
-    }
 
-    std::cout << "Número de kernels a serem lançados: " << num_kernels << std::endl;
+    int num_kernels = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
+
+    std::cout << "Used kernels: " << num_kernels << std::endl;
 
     auto start = std::chrono::high_resolution_clock::now();
     auto last_report = start;
 
-    for (int k = 0; k < num_kernels; k++) {
-       keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
+    keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
        
-       auto now = std::chrono::high_resolution_clock::now();
-       double total_elapsed = std::chrono::duration<double>(now - start).count();
-       double since_last = std::chrono::duration<double>(now - last_report).count();
+    auto now = std::chrono::high_resolution_clock::now();
+    double total_elapsed = std::chrono::duration<double>(now - start).count();
+    double since_last = std::chrono::duration<double>(now - last_report).count();
 
-       if (since_last >= 10.0) {
-            cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
-            std::cout << "Tempo: " << (int)total_elapsed << "s, total de chaves geradas = " << h_counter << std::endl;
-            last_report = now;
-        }
+    if (since_last >= 10.0) {
+         cudaMemcpy(&h_counter, d_counter, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
+         std::cout << "Tempo: " << (int)total_elapsed << "s, total de chaves geradas = " << h_counter << std::endl;
+         last_report = now;
+     }
 
-        cudaDeviceSynchronize();
-    }
+    cudaDeviceSynchronize();
 
     cudaFree(d_priv_keys);
     cudaFree(d_counter);
