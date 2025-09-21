@@ -786,7 +786,7 @@ int main() {
     auto start = std::chrono::high_resolution_clock::now();
     auto last_report = start;
 
-    for (int k = 0; k < NUM_KERNELS; k++) {
+    for (int k = 0; k < num_kernels; k++) {
     keygen_kernel<<<BLOCKS, THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
     cudaDeviceSynchronize();
 
