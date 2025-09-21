@@ -781,7 +781,7 @@ int main() {
     const int THREADS = prop.maxThreadsPerBlock;
     const int BLOCKS = 32;
     int ITER_PER_THREAD = ceil(TOTAL_ITER + THREADS*BLOCKS - 1) / (THREADS*BLOCKS);
-    int ITER_PER_KERNEL = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
+    int ITER_PER_KERNEL = 0;
     int num_kernels = THREADS * BLOCKS / ITER_PER_THREAD;
 
     std::cout << "Threads: " << THREADS << ", Blocks: " << BLOCKS << std::endl;
