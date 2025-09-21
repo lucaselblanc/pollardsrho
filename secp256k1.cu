@@ -778,7 +778,7 @@ int main() {
     cudaGetDeviceProperties(&prop, 0);
 
     const int TOTAL_ITER = 10000000;
-    const int THREADS = prop.maxThreadsPerBlock / 2;
+    const int THREADS = prop.maxThreadsPerBlock;
     const int BLOCKS = 32;
     int ITER_PER_THREAD = ceil(TOTAL_ITER + THREADS*BLOCKS - 1) / (THREADS*BLOCKS);
     int ITER_PER_KERNEL = (TOTAL_ITER + ITER_PER_KERNEL - 1) / ITER_PER_KERNEL;
