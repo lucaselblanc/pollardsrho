@@ -773,9 +773,6 @@ int main() {
     cudaMemcpy(d_priv_keys, h_priv_keys, 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
     cudaMemcpy(d_counter, &h_counter, sizeof(unsigned long long), cudaMemcpyHostToDevice);
 
-    cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, 0);
-
     const int TOTAL_ITER = 10000000;
     const int THREADS = 8;
     const int BLOCKS = 32;
