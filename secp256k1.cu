@@ -793,11 +793,9 @@ int main() {
 
     for(int k = 0; k < num_kernels; k++)
     {
-        /*
         int remaining = TOTAL_ITER - k * ITER_PER_KERNEL;
         int iter_this_kernel = std::min(ITER_PER_KERNEL, remaining);
         int iter_per_thread = (iter_this_kernel + THREADS*BLOCKS - 1) / (THREADS*BLOCKS);
-        */
         keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, ITER_PER_THREAD);
     }
 
