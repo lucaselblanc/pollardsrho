@@ -797,6 +797,12 @@ int main() {
         int iter_per_thread = (iter_this_kernel + total_threads - 1) / total_threads;
 
         keygen_kernel<<<BLOCKS,THREADS>>>(d_priv_keys, d_counter, iter_per_thread);
+    }
+
+    while(true)
+    { 
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+    
         cudaDeviceSynchronize();
         cudaMemcpy(&h_counter, d_counter,sizeof(unsigned long long),cudaMemcpyDeviceToHost);
         std::cout << "Progresso parcial: " << h_counter << std::flush;
