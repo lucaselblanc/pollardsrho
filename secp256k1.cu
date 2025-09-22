@@ -743,29 +743,29 @@ int main() {
 }
 */
 
-#include <iostream>
+#include <thread>
 #include <chrono>
-#include <cstdint>
 
 int main() {
+    const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
     unsigned char pubkey_compressed[33];
 
-    const size_t TOTAL_ITER = 10000000;
-
-    auto start = std::chrono::high_resolution_clock::now();
-
-    for (size_t i = 0; i < TOTAL_ITER; ++i) {
+    for (int i = 0; i < 1000000; i++) {
         generate_public_key(pubkey_compressed, PRIV_KEY);
+
+        if (i % 100000 == 0) {
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+            std::cout << "Chaves geradas = " << i << std::endl;
+        }
     }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-
-    double keys_per_sec = TOTAL_ITER / elapsed.count();
-    std::cout << "Chaves geradas: " << TOTAL_ITER << "\n";
-    std::cout << "Tempo (s): " << elapsed.count() << "\n";
-    std::cout << "Keys/s: " << keys_per_sec << std::endl;
+             
+    std::cout << "Compressed Public Key: ";
+    for (int i = 0; i < 33; ++i) {
+        printf("%02x", pubkey_compressed[i]);
+    }
+    std::cout << std::endl;
+    std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
 
     return 0;
 }
