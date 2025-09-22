@@ -751,12 +751,17 @@ int main() {
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
     unsigned char pubkey_compressed[33];
 
+    int count = 0;
+    auto start = std::chrono::steady_clock::now();
+
     for (int i = 0; i < 1000000; i++) {
         generate_public_key(pubkey_compressed, PRIV_KEY);
+        count++;
 
-        if (i % 100000 == 0) {
-            std::this_thread::sleep_for(std::chrono::seconds(10));
-            std::cout << "Chaves geradas = " << i << std::endl;
+        auto now = std::chrono::steady_clock::now();
+        if(std::chrono::duration_cast<std::chrono::seconds>(now - start).count() >= 10) {
+        std::cout << "Chaves geradas = " << count << std::endl;
+        start = now;
         }
     }
              
