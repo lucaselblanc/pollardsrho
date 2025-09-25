@@ -21,6 +21,8 @@
 #include <iostream>
 #include <stdio.h>
 #include <stdint.h>
+#include <thread>
+#include <chrono>
 
 #ifdef __CUDA_ARCH__
 __device__ __constant__ uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -31,19 +33,19 @@ __device__ __constant__ uint64_t R2_MOD_P[4] = { 0x000007A2000E90A1, 0x000000000
 __device__ __constant__ uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
 __device__ __constant__ uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 __device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
-__device__ ECPointJacobian precomp_G_fixed[MAX_PRECOMP];
-__device__ int GLOBAL_W = 4;
+__device__ ECPointJacobian precomp_g[MAX_PRECOMP];
+__device__ int window_size = 4;
 #else
-const uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-const uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
-const uint64_t GX_CONST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
-const uint64_t GY_CONST[4] = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
-const uint64_t R2_MOD_P[4] = { 0x000007A2000E90A1, 0x0000000000000001, 0x0ULL, 0x0ULL };
-const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-const uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-const uint64_t MU_P = 0xD838091DD2253531ULL;
-ECPointJacobian precomp_G_fixed[MAX_PRECOMP];
-int GLOBAL_W = 4;
+constexpr uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+constexpr uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
+constexpr uint64_t GX_CONST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
+constexpr uint64_t GY_CONST[4] = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
+constexpr uint64_t R2_MOD_P[4] = { 0x000007A2000E90A1, 0x0000000000000001, 0x0ULL, 0x0ULL };
+constexpr uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
+constexpr uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+constexpr uint64_t MU_P = 0xD838091DD2253531ULL;
+ECPointJacobian precomp_g[MAX_PRECOMP];
+int window_size = 4;
 #endif
 
 #ifdef __CUDA_ARCH__
@@ -590,8 +592,8 @@ __host__ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJaco
     result->infinity = 0;
 }
 
-__host__ __device__ void init_precomp_G() {
-    int tableSize = 1 << (GLOBAL_W - 1);
+__host__ __device__ void init_precomp_g() {
+    int tableSize = 1 << (window_size - 1);
 
     ECPointJacobian G;
     uint64_t GX_mont[4], GY_mont[4];
@@ -605,13 +607,13 @@ __host__ __device__ void init_precomp_G() {
     }
     G.infinity = 0;
 
-    precomp_G_fixed[0] = G;
+    precomp_g[0] = G;
 
     ECPointJacobian dbl;
     jacobian_double(&dbl, &G);
 
     for (int i = 1; i < tableSize; i++) {
-        jacobian_add(&precomp_G_fixed[i], &precomp_G_fixed[i-1], &dbl);
+        jacobian_add(&precomp_g[i], &precomp_g[i-1], &dbl);
     }
 }
 
@@ -619,16 +621,14 @@ __host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uin
     uint64_t k[4];
     scalar_reduce_n(k, scalar);
 
-    int W = GLOBAL_W;
-    int tableSize = 1 << (W - 1);
-    int mask = (1 << W) - 1;
+    int tableSize = 1 << (window_size - 1);
+    int mask = (1 << window_size) - 1;
 
     jacobian_set_infinity(result);
 
-    for (int bit = 256 - W; bit >= 0; bit -= W) {
-        if (bit != 256 - W) {
-            // Avança janela → faz W dobramentos
-            for (int i = 0; i < W; i++) {
+    for (int bit = 256 - window_size; bit >= 0; bit -= window_size) {
+        if (bit != 256 - window_size) {
+            for (int i = 0; i < window_size; i++) {
                 jacobian_double(result, result);
             }
         }
@@ -636,7 +636,7 @@ __host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uin
         int limb = bit / 64;
         int shift = bit % 64;
         uint64_t chunk = k[limb] >> shift;
-        if (shift > 64 - W && limb < 3) {
+        if (shift > 64 - window_size && limb < 3) {
             chunk |= k[limb + 1] << (64 - shift);
         }
 
@@ -644,7 +644,7 @@ __host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uin
         if (idx != 0) {
             int table_idx = (idx - 1) >> 1;
             if (table_idx >= tableSize) table_idx = tableSize - 1;
-            ECPointJacobian to_add = precomp_G_fixed[table_idx];
+            ECPointJacobian to_add = precomp_g[table_idx];
             ECPointJacobian tmp;
             jacobian_add(&tmp, result, &to_add);
             *result = tmp;
@@ -722,9 +722,7 @@ __host__ __device__ void generate_public_key(unsigned char *out, const uint64_t 
     get_compressed_public_key(out, &pub);
 }
 
-#include <thread>
-#include <chrono>
-
+/*
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
@@ -739,12 +737,12 @@ int main() {
             w++;
         }
         if (w > MAX_W) w = MAX_W;
-        GLOBAL_W = w;
+        window_size = w;
     #else
-        GLOBAL_W = 16;
+        window_size = 16;
     #endif
 
-    init_precomp_G();
+    init_precomp_g();
 
     generate_public_key(pubkey_compressed, PRIV_KEY);
 
@@ -757,10 +755,7 @@ int main() {
 
     return 0;
 }
-
-/*
-#include <thread>
-#include <chrono>
+*/
 
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -776,12 +771,12 @@ int main() {
             w++;
         }
         if (w > MAX_W) w = MAX_W;
-        GLOBAL_W = w;
+        window_size = w;
     #else
-        GLOBAL_W = 16;
+        window_size = 16;
     #endif
 
-    init_precomp_G();
+    init_precomp_g();
 
     int count = 0;
     auto start = std::chrono::steady_clock::now();
@@ -805,6 +800,4 @@ int main() {
     std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
 
     return 0;
-
 }
-*/
