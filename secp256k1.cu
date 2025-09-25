@@ -616,18 +616,15 @@ __host__ __device__ void init_precomp_G() {
 }
 
 __host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar) {
-    // 1. Reduz escalar
     uint64_t k[4];
     scalar_reduce_n(k, scalar);
 
     int W = GLOBAL_W;
-    int tableSize = 1 << (W - 1);  // tamanho real da tabela
-    int mask = (1 << W) - 1;       // máscara para extrair W bits
+    int tableSize = 1 << (W - 1);
+    int mask = (1 << W) - 1;
 
-    // 2. Inicializa resultado
     jacobian_set_infinity(result);
 
-    // 3. Loop pelos blocos de W bits
     for (int bit = 256 - W; bit >= 0; bit -= W) {
         if (bit != 256 - W) {
             // Avança janela → faz W dobramentos
@@ -636,7 +633,6 @@ __host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uin
             }
         }
 
-        // Extrai dígito da janela
         int limb = bit / 64;
         int shift = bit % 64;
         uint64_t chunk = k[limb] >> shift;
@@ -644,15 +640,11 @@ __host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uin
             chunk |= k[limb + 1] << (64 - shift);
         }
 
-        int idx = chunk & mask;  // idx entre 0 e 2^W - 1
+        int idx = chunk & mask;
         if (idx != 0) {
-            // Converte para índice na tabela precomp_G_fixed (0..tableSize-1)
             int table_idx = (idx - 1) >> 1;
-            if (table_idx >= tableSize) table_idx = tableSize - 1;  // segurança extra
-
+            if (table_idx >= tableSize) table_idx = tableSize - 1;
             ECPointJacobian to_add = precomp_G_fixed[table_idx];
-
-            // Soma ponto
             ECPointJacobian tmp;
             jacobian_add(&tmp, result, &to_add);
             *result = tmp;
@@ -700,8 +692,7 @@ __host__ __device__ void point_double(ECPoint *R, const ECPoint *P) {
 __host__ __device__ void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
     affine_to_jacobian(&P_jac, P);
-    //jacobian_scalar_mult(&R_jac, k, &P_jac);
-    jacobian_scalar_mult(&R_jac, k); //2 Args
+    jacobian_scalar_mult(&R_jac, k);
     jacobian_to_affine(R, &R_jac);
 }
 
@@ -724,28 +715,13 @@ __host__ __device__ void get_compressed_public_key(unsigned char *out, const ECP
 
 __host__ __device__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
     ECPoint pub;
-    ECPoint G;
-    ECPointJacobian G_jac, pub_jac;
+    ECPointJacobian pub_jac;
 
-    to_montgomery_p(G.x, GX_CONST);
-    to_montgomery_p(G.y, GY_CONST);
-    G.infinity = 0;
-
-    for (int i = 0; i < 4; i++) G_jac.Z[i] = ONE_MONT[i];
-    G_jac.infinity = 0;
-
-    for (int i = 0; i < 4; i++) {
-        G_jac.X[i] = G.x[i];
-        G_jac.Y[i] = G.y[i];
-    }
-
-    //jacobian_scalar_mult(&pub_jac, PRIV_KEY, &G_jac);
     jacobian_scalar_mult(&pub_jac, PRIV_KEY);
     jacobian_to_affine(&pub, &pub_jac);
     get_compressed_public_key(out, &pub);
 }
 
-/*
 #include <thread>
 #include <chrono>
 
@@ -781,8 +757,8 @@ int main() {
 
     return 0;
 }
-*/
 
+/*
 #include <thread>
 #include <chrono>
 
@@ -829,4 +805,6 @@ int main() {
     std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
 
     return 0;
+
 }
+*/
