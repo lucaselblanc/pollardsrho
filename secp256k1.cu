@@ -12,6 +12,9 @@
 
 /* --- AINDA EM TESTES --- */
 
+#define MAX_W 16
+#define MAX_PRECOMP (1 << (MAX_W-1))
+
 #include "secp256k1.h"
 #include <cuda_runtime.h>
 #include <cuda.h>
@@ -28,6 +31,8 @@ __device__ __constant__ uint64_t R2_MOD_P[4] = { 0x000007A2000E90A1, 0x000000000
 __device__ __constant__ uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
 __device__ __constant__ uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 __device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
+__device__ ECPointJacobian precomp_G_fixed[MAX_PRECOMP];
+__device__ int GLOBAL_W = 4;
 #else
 const uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -37,6 +42,8 @@ const uint64_t R2_MOD_P[4] = { 0x000007A2000E90A1, 0x0000000000000001, 0x0ULL, 0
 const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
 const uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint64_t MU_P = 0xD838091DD2253531ULL;
+ECPointJacobian precomp_G_fixed[MAX_PRECOMP];
+int GLOBAL_W = 4;
 #endif
 
 #ifdef __CUDA_ARCH__
@@ -583,59 +590,74 @@ __host__ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJaco
     result->infinity = 0;
 }
 
-__host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, const ECPointJacobian *point) {
-    if (jacobian_is_infinity(point)) {
-        jacobian_set_infinity(result);
-        return;
-    }
+__host__ __device__ void init_precomp_G() {
+    int tableSize = 1 << (GLOBAL_W - 1);
 
+    ECPointJacobian G;
+    uint64_t GX_mont[4], GY_mont[4];
+    to_montgomery_p(GX_mont, GX_CONST);
+    to_montgomery_p(GY_mont, GY_CONST);
+
+    for (int i = 0; i < 4; i++) {
+        G.X[i] = GX_mont[i];
+        G.Y[i] = GY_mont[i];
+        G.Z[i] = ONE_MONT[i];
+    }
+    G.infinity = 0;
+
+    precomp_G_fixed[0] = G;
+
+    ECPointJacobian dbl;
+    jacobian_double(&dbl, &G);
+
+    for (int i = 1; i < tableSize; i++) {
+        jacobian_add(&precomp_G_fixed[i], &precomp_G_fixed[i-1], &dbl);
+    }
+}
+
+__host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar) {
+    // 1. Reduz escalar
     uint64_t k[4];
     scalar_reduce_n(k, scalar);
 
-    ECPointJacobian R0, R1;
-    jacobian_set_infinity(&R0);
-    R1 = *point;
+    int W = GLOBAL_W;
+    int tableSize = 1 << (W - 1);  // tamanho real da tabela
+    int mask = (1 << W) - 1;       // máscara para extrair W bits
 
-    auto cswap = [](ECPointJacobian &a, ECPointJacobian &b, uint64_t swap) {
-        swap = 0 - swap;
-        for (int i = 0; i < 4; i++) {
-            uint64_t tmp;
+    // 2. Inicializa resultado
+    jacobian_set_infinity(result);
 
-            tmp = (a.X[i] ^ b.X[i]) & swap;
-            a.X[i] ^= tmp;
-            b.X[i] ^= tmp;
-
-            tmp = (a.Y[i] ^ b.Y[i]) & swap;
-            a.Y[i] ^= tmp;
-            b.Y[i] ^= tmp;
-
-            tmp = (a.Z[i] ^ b.Z[i]) & swap;
-            a.Z[i] ^= tmp;
-            b.Z[i] ^= tmp;
+    // 3. Loop pelos blocos de W bits
+    for (int bit = 256 - W; bit >= 0; bit -= W) {
+        if (bit != 256 - W) {
+            // Avança janela → faz W dobramentos
+            for (int i = 0; i < W; i++) {
+                jacobian_double(result, result);
+            }
         }
-        int tmp_inf = (a.infinity ^ b.infinity) & (int)swap;
-        a.infinity ^= tmp_inf;
-        b.infinity ^= tmp_inf;
-    };
 
-    for (int i = 255; i >= 0; i--) {
-        int word = i / 64;
-        int bit  = i % 64;
-        uint64_t kbit = (k[word] >> bit) & 1ULL;
+        // Extrai dígito da janela
+        int limb = bit / 64;
+        int shift = bit % 64;
+        uint64_t chunk = k[limb] >> shift;
+        if (shift > 64 - W && limb < 3) {
+            chunk |= k[limb + 1] << (64 - shift);
+        }
 
-        cswap(R0, R1, kbit);
+        int idx = chunk & mask;  // idx entre 0 e 2^W - 1
+        if (idx != 0) {
+            // Converte para índice na tabela precomp_G_fixed (0..tableSize-1)
+            int table_idx = (idx - 1) >> 1;
+            if (table_idx >= tableSize) table_idx = tableSize - 1;  // segurança extra
 
-        ECPointJacobian R0_new, R1_new;
-        jacobian_double(&R0_new, &R0);
-        jacobian_add(&R1_new, &R0, &R1);
+            ECPointJacobian to_add = precomp_G_fixed[table_idx];
 
-        R0 = R0_new;
-        R1 = R1_new;
-
-        cswap(R0, R1, kbit);
+            // Soma ponto
+            ECPointJacobian tmp;
+            jacobian_add(&tmp, result, &to_add);
+            *result = tmp;
+        }
     }
-
-    *result = R0;
 }
 
 __host__ __device__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
@@ -678,7 +700,8 @@ __host__ __device__ void point_double(ECPoint *R, const ECPoint *P) {
 __host__ __device__ void scalar_mult(ECPoint *R, const uint64_t *k, const ECPoint *P) {
     ECPointJacobian P_jac, R_jac;
     affine_to_jacobian(&P_jac, P);
-    jacobian_scalar_mult(&R_jac, k, &P_jac);
+    //jacobian_scalar_mult(&R_jac, k, &P_jac);
+    jacobian_scalar_mult(&R_jac, k); //2 Args
     jacobian_to_affine(R, &R_jac);
 }
 
@@ -716,7 +739,8 @@ __host__ __device__ void generate_public_key(unsigned char *out, const uint64_t 
         G_jac.Y[i] = G.y[i];
     }
 
-    jacobian_scalar_mult(&pub_jac, PRIV_KEY, &G_jac);
+    //jacobian_scalar_mult(&pub_jac, PRIV_KEY, &G_jac);
+    jacobian_scalar_mult(&pub_jac, PRIV_KEY);
     jacobian_to_affine(&pub, &pub_jac);
     get_compressed_public_key(out, &pub);
 }
@@ -730,8 +754,24 @@ int main() {
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
     unsigned char pubkey_compressed[33];
 
+    #ifdef __CUDA_ARCH__
+        size_t freeMem, totalMem;
+        cudaMemGetInfo(&freeMem, &totalMem);
+        size_t maxPoints = freeMem / 128;
+        int w = 4;
+        while (w < MAX_W && (1ull << (w-1)) < maxPoints) {
+            w++;
+        }
+        if (w > MAX_W) w = MAX_W;
+        GLOBAL_W = w;
+    #else
+        GLOBAL_W = 16;
+    #endif
+
+    init_precomp_G();
+
     generate_public_key(pubkey_compressed, PRIV_KEY);
-             
+
     std::cout << "Compressed Public Key: ";
     for (int i = 0; i < 33; ++i) {
         printf("%02x", pubkey_compressed[i]);
@@ -751,10 +791,26 @@ int main() {
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
     unsigned char pubkey_compressed[33];
 
+    #ifdef __CUDA_ARCH__
+        size_t freeMem, totalMem;
+        cudaMemGetInfo(&freeMem, &totalMem);
+        size_t maxPoints = freeMem / 128;
+        int w = 4;
+        while (w < MAX_W && (1ull << (w-1)) < maxPoints) {
+            w++;
+        }
+        if (w > MAX_W) w = MAX_W;
+        GLOBAL_W = w;
+    #else
+        GLOBAL_W = 16;
+    #endif
+
+    init_precomp_G();
+
     int count = 0;
     auto start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < 1000000; i++) {
+    for (int i = 0; i < 100000000; i++) {
         generate_public_key(pubkey_compressed, PRIV_KEY);
         count++;
 
@@ -764,7 +820,7 @@ int main() {
         start = now;
         }
     }
-             
+
     std::cout << "Compressed Public Key: ";
     for (int i = 0; i < 33; ++i) {
         printf("%02x", pubkey_compressed[i]);
