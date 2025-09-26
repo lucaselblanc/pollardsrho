@@ -12,7 +12,7 @@
 
 /* --- AINDA EM TESTES --- */
 
-#define MAX_W 16
+#define MAX_W 8
 #define MAX_PRECOMP (1 << (MAX_W-1))
 
 #include "secp256k1.h"
@@ -593,8 +593,11 @@ __host__ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJaco
 }
 
 __host__ __device__ void init_precomp_g() {
-    int tableSize = 1 << (window_size - 1);
+    int w = window_size;
+    int d = (256 + w - 1) / w;
+    int tableSize = (1 << w) - 1;
 
+    ECPointJacobian P_j[MAX_W];
     ECPointJacobian G;
     uint64_t GX_mont[4], GY_mont[4];
     to_montgomery_p(GX_mont, GX_CONST);
@@ -607,13 +610,24 @@ __host__ __device__ void init_precomp_g() {
     }
     G.infinity = 0;
 
-    precomp_g[0] = G;
+    P_j[0] = G;
 
-    ECPointJacobian dbl;
-    jacobian_double(&dbl, &G);
+    for (int j = 1; j < w; j++) {
+        P_j[j] = P_j[j-1];
+        for (int i = 0; i < d; i++) {
+            jacobian_double(&P_j[j], &P_j[j]);
+        }
+    }
 
-    for (int i = 1; i < tableSize; i++) {
-        jacobian_add(&precomp_g[i], &precomp_g[i-1], &dbl);
+    for (int i = 1; i <= tableSize; i++) {
+        jacobian_set_infinity(&precomp_g[i-1]);
+        for (int j = 0; j < w; j++) {
+            if ((i >> j) & 1) {
+                ECPointJacobian tmp;
+                jacobian_add(&tmp, &precomp_g[i-1], &P_j[j]);
+                precomp_g[i-1] = tmp;
+            }
+        }
     }
 }
 
@@ -621,32 +635,30 @@ __host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uin
     uint64_t k[4];
     scalar_reduce_n(k, scalar);
 
-    int tableSize = 1 << (window_size - 1);
-    int mask = (1 << window_size) - 1;
+    int w = window_size;
+    int d = (256 + w - 1) / w;
 
     jacobian_set_infinity(result);
 
-    for (int bit = 256 - window_size; bit >= 0; bit -= window_size) {
-        if (bit != 256 - window_size) {
-            for (int i = 0; i < window_size; i++) {
+    for (int col = d-1; col >= 0; col--) {
+        if (col != d-1) {
+            for (int i = 0; i < w; i++) {
                 jacobian_double(result, result);
             }
         }
 
-        int limb = bit / 64;
-        int shift = bit % 64;
-        uint64_t chunk = k[limb] >> shift;
-        if (shift > 64 - window_size && limb < 3) {
-            chunk |= k[limb + 1] << (64 - shift);
+        int idx = 0;
+        for (int row = 0; row < w; row++) {
+            int bit_index = row*d + col;
+            int limb = bit_index / 64;
+            int shift = bit_index % 64;
+            uint64_t bit = (k[limb] >> shift) & 1;
+            idx |= (bit << row);
         }
 
-        int idx = chunk & mask;
         if (idx != 0) {
-            int table_idx = (idx - 1) >> 1;
-            if (table_idx >= tableSize) table_idx = tableSize - 1;
-            ECPointJacobian to_add = precomp_g[table_idx];
             ECPointJacobian tmp;
-            jacobian_add(&tmp, result, &to_add);
+            jacobian_add(&tmp, result, &precomp_g[idx-1]);
             *result = tmp;
         }
     }
@@ -739,7 +751,7 @@ int main() {
         if (w > MAX_W) w = MAX_W;
         window_size = w;
     #else
-        window_size = 16;
+        window_size = 8;
     #endif
 
     init_precomp_g();
@@ -773,7 +785,7 @@ int main() {
         if (w > MAX_W) w = MAX_W;
         window_size = w;
     #else
-        window_size = 16;
+        window_size = 8;
     #endif
 
     init_precomp_g();
