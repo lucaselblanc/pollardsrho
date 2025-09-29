@@ -5,7 +5,7 @@ NVCC      := nvcc
 CUDA_HOME ?= $(or $(firstword $(wildcard $(HOME)/cuda-*)), /usr/local/cuda)
 
 INCLUDES  := -I$(CUDA_HOME)/include
-CXXFLAGS  := -O0 -march=native -Wall -std=c++14 -pthread $(INCLUDES)
+CXXFLAGS  := -O3 -march=native -Wall -std=c++14 -pthread $(INCLUDES)
 LDFLAGS   := -L$(CUDA_HOME)/lib64
 LDLIBS    := -lcudart -lpthread
 
@@ -29,18 +29,18 @@ recurse: $(TARGET)
 -include gpu_arch
 
 ifeq ($(GPU_ARCH),0)
-	CXXFLAGS  := -O0 -march=native -Wall -std=c++14 -pthread
-	NVCCFLAGS = -O0 -G -g \
+	CXXFLAGS  := -O3 -march=native -Wall -std=c++14 -pthread
+	NVCCFLAGS = -O3 -G -g \
 	-std=c++14 \
 	-ccbin $(CXX) \
-	-Xcompiler "-O0 -pthread -fpermissive" \
+	-Xcompiler "-O3 -pthread -fpermissive" \
 	--expt-relaxed-constexpr
 else
-	NVCCFLAGS = -O0 -G -g \
+	NVCCFLAGS = -O3 -G -g \
 	-std=c++14 \
 	-gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
 	-ccbin $(CXX) \
-	-Xcompiler "-O0 -pthread -fpermissive" \
+	-Xcompiler "-O3 -pthread -fpermissive" \
 	$(INCLUDES) \
 	--expt-relaxed-constexpr
 endif
