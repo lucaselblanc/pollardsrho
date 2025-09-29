@@ -10,7 +10,7 @@
  * Written by Lucas Leblanc              *
 ******************************************/
 
-/* --- AINDA EM TESTES --- */
+/* --- AINDA EM TESTES DE OTIMIZAÇÃO --- */
 
 #define MAX_W 16
 #define MAX_PRECOMP (1 << (MAX_W-1))
@@ -71,170 +71,32 @@ struct uint128_t {
     uint64_t lo;
     uint64_t hi;
 
-    __host__ __device__
-    uint128_t(uint64_t x = 0) : lo(x), hi(0) {}
-
-    __host__ __device__
-    uint128_t operator*(const uint128_t& other) const {
-        uint128_t res;
-        res.lo = lo * other.lo;
-        res.hi = __umul64hi(lo, other.lo);
-        return res;
-    }
-
-    __host__ __device__
-    uint128_t operator*(uint64_t other) const {
-        return *this * uint128_t(other);
-    }
-
-    __host__ __device__
-    uint128_t& operator*=(const uint128_t& other) {
-        *this = *this * other;
-        return *this;
-    }
-
-    __host__ __device__
-    uint128_t& operator*=(uint64_t other) {
-        *this = *this * other;
-        return *this;
-    }
-
-    __host__ __device__
-    uint128_t operator+(const uint128_t& other) const {
-        uint128_t res;
-        res.lo = lo + other.lo;
-        res.hi = hi + other.hi + (res.lo < lo ? 1 : 0);
-        return res;
-    }
-
-    __host__ __device__
-    uint128_t operator+(uint64_t other) const {
-        return *this + uint128_t(other);
-    }
-
-    __host__ __device__
-    uint128_t& operator+=(const uint128_t& other) {
-        uint64_t old_lo = lo;
-        lo += other.lo;
-        hi += other.hi + (lo < old_lo ? 1 : 0);
-        return *this;
-    }
-
-    __host__ __device__
-    uint128_t& operator+=(uint64_t other) {
-        *this += uint128_t(other);
-        return *this;
-    }
-
-    __host__ __device__
-    uint128_t operator-(const uint128_t& other) const {
-        uint128_t res;
-        res.lo = lo - other.lo;
-        res.hi = hi - other.hi - (lo < other.lo ? 1 : 0);
-        return res;
-    }
-
-    __host__ __device__
-    uint128_t operator-(uint64_t other) const {
-        return *this - uint128_t(other);
-    }
-
-    __host__ __device__
-    uint128_t& operator-=(const uint128_t& other) {
-        uint64_t old_lo = lo;
-        lo -= other.lo;
-        hi -= other.hi + (old_lo < other.lo ? 1 : 0);
-        return *this;
-    }
-
-    __host__ __device__
-    uint128_t& operator-=(uint64_t other) {
-        *this -= uint128_t(other);
-        return *this;
-    }
-
-    __host__ __device__
-    uint128_t operator>>(const unsigned int n) const {
-        uint128_t res;
-        if (n == 0) return *this;
-        else if (n < 64) {
-            res.lo = (lo >> n) | (hi << (64 - n));
-            res.hi = hi >> n;
-        } else if (n < 128) {
-            res.lo = hi >> (n - 64);
-            res.hi = 0;
-        } else {
-            res.lo = 0;
-            res.hi = 0;
-        }
-        return res;
-    }
-
-    __host__ __device__
-    uint128_t& operator>>=(const unsigned int n) {
-        *this = *this >> n;
-        return *this;
-    }
-
-    __host__ __device__
-    uint128_t operator<<(const unsigned int n) const {
-        uint128_t res;
-        if (n == 0) return *this;
-        else if (n < 64) {
-            res.hi = (hi << n) | (lo >> (64 - n));
-            res.lo = lo << n;
-        } else if (n < 128) {
-            res.hi = lo << (n - 64);
-            res.lo = 0;
-        } else {
-            res.lo = 0;
-            res.hi = 0;
-        }
-        return res;
-    }
-
-    __host__ __device__
-    uint128_t& operator<<=(const unsigned int n) {
-        *this = *this << n;
-        return *this;
-    }
-
-    __host__ __device__
-    operator uint64_t() const {
-        return lo;
-    }
-
-    __host__ __device__
-    bool operator<(const uint128_t& other) const {
-        return (hi < other.hi) || (hi == other.hi && lo < other.lo);
-    }
-
-    __host__ __device__
-    bool operator<=(const uint128_t& other) const {
-        return (hi < other.hi) || (hi == other.hi && lo <= other.lo);
-    }
-
-    __host__ __device__
-    bool operator==(const uint128_t& other) const {
-        return hi == other.hi && lo == other.lo;
-    }
-
-    __host__ __device__
-    bool operator!=(const uint128_t& other) const {
-        return !(*this == other);
-    }
-
-    __host__ __device__
-    bool operator<(uint64_t other) const { return *this < uint128_t(other); }
-
-    __host__ __device__
-    bool operator<=(uint64_t other) const { return *this <= uint128_t(other); }
-
-    __host__ __device__
-    bool operator==(uint64_t other) const { return *this == uint128_t(other); }
-
-    __host__ __device__
-    bool operator!=(uint64_t other) const { return *this != uint128_t(other); }
+    __host__ __device__ uint128_t(uint64_t x = 0) : lo(x), hi(0) {}
+    __host__ __device__ uint128_t operator*(const uint128_t& other) const { uint128_t res; res.lo = lo * other.lo; res.hi = __umul64hi(lo, other.lo); return res; }
+    __host__ __device__ uint128_t operator*(uint64_t other) const { return *this * uint128_t(other); }
+    __host__ __device__ uint128_t& operator*=(const uint128_t& other) { *this = *this * other; return *this; }
+    __host__ __device__ uint128_t& operator*=(uint64_t other) { *this = *this * other; return *this; }
+    __host__ __device__ uint128_t operator+(const uint128_t& other) const { uint128_t res; res.lo = lo + other.lo; res.hi = hi + other.hi + (res.lo < lo ? 1 : 0); return res; }
+    __host__ __device__ uint128_t operator+(uint64_t other) const { return *this + uint128_t(other); }
+    __host__ __device__ uint128_t& operator+=(const uint128_t& other) { uint64_t old_lo = lo; lo += other.lo; hi += other.hi + (lo < old_lo ? 1 : 0); return *this; }
+    __host__ __device__ uint128_t& operator+=(uint64_t other) { *this += uint128_t(other); return *this; }
+    __host__ __device__ uint128_t operator-(const uint128_t& other) const { uint128_t res; res.lo = lo - other.lo; res.hi = hi - other.hi - (lo < other.lo ? 1 : 0); return res; }
+    __host__ __device__ uint128_t operator-(uint64_t other) const { return *this - uint128_t(other); }
+    __host__ __device__ uint128_t& operator-=(const uint128_t& other) { uint64_t old_lo = lo; lo -= other.lo; hi -= other.hi + (old_lo < other.lo ? 1 : 0); return *this; }
+    __host__ __device__ uint128_t& operator-=(uint64_t other) { *this -= uint128_t(other); return *this; }
+    __host__ __device__ uint128_t operator>>(const unsigned int n) const { uint128_t res; if (n == 0) return *this; else if (n < 64) { res.lo = (lo >> n) | (hi << (64 - n)); res.hi = hi >> n; } else if (n < 128) { res.lo = hi >> (n - 64); res.hi = 0; } else { res.lo = 0; res.hi = 0; } return res; }
+    __host__ __device__ uint128_t& operator>>=(const unsigned int n) { *this = *this >> n; return *this; }
+    __host__ __device__ uint128_t operator<<(const unsigned int n) const { uint128_t res; if (n == 0) return *this; else if (n < 64) { res.hi = (hi << n) | (lo >> (64 - n)); res.lo = lo << n; } else if (n < 128) { res.hi = lo << (n - 64); res.lo = 0; } else { res.lo = 0; res.hi = 0; } return res; }
+    __host__ __device__ uint128_t& operator<<=(const unsigned int n) { *this = *this << n; return *this; }
+    __host__ __device__ operator uint64_t() const { return lo; }
+    __host__ __device__ bool operator<(const uint128_t& other) const { return (hi < other.hi) || (hi == other.hi && lo < other.lo); }
+    __host__ __device__ bool operator<=(const uint128_t& other) const { return (hi < other.hi) || (hi == other.hi && lo <= other.lo); }
+    __host__ __device__ bool operator==(const uint128_t& other) const { return hi == other.hi && lo == other.lo; }
+    __host__ __device__ bool operator!=(const uint128_t& other) const { return !(*this == other); }
+    __host__ __device__ bool operator<(uint64_t other) const { return *this < uint128_t(other); }
+    __host__ __device__ bool operator<=(uint64_t other) const { return *this <= uint128_t(other); }
+    __host__ __device__ bool operator==(uint64_t other) const { return *this == uint128_t(other); }
+    __host__ __device__ bool operator!=(uint64_t other) const { return *this != uint128_t(other); }
 };
 #else
 using uint128_t = unsigned __int128;
@@ -251,8 +113,7 @@ __host__ __device__ void montgomery_reduce_p(uint64_t *result, const uint64_t *i
         uint64_t ui = (uint64_t)((uint128_t)temp[i] * (uint128_t)MU_P);
         uint128_t carry = 0;
         for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)ui * (uint128_t)P_CONST[j]
-                                   + (uint128_t)temp[i + j] + carry;
+            uint128_t prod = (uint128_t)ui * (uint128_t)P_CONST[j] + (uint128_t)temp[i + j] + carry;
             temp[i + j] = (uint64_t)prod;
             carry = prod >> 64;
         }
@@ -291,9 +152,7 @@ __host__ __device__ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
         uint128_t carry = 0;
 
         for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)a_local[i] * (uint128_t)R2_MOD_P[j]
-                                   + (uint128_t)temp[i + j]
-                                   + carry;
+            uint128_t prod = (uint128_t)a_local[i] * (uint128_t)R2_MOD_P[j] + (uint128_t)temp[i + j] + carry;
             temp[i + j] = (uint64_t)prod;
             carry = prod >> 64;
         }
@@ -324,52 +183,48 @@ __host__ __device__ void from_montgomery_p(uint64_t *result, const uint64_t *a) 
 }
 
 __host__ __device__ void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
-    uint64_t temp[4];
     uint128_t carry = 0;
+
     for (int i = 0; i < 4; ++i) {
         uint128_t s = (uint128_t)a[i] + (uint128_t)b[i] + carry;
-        temp[i] = (uint64_t)s;
+        result[i] = (uint64_t)s;
         carry = s >> 64;
     }
 
     bool ge = (bool)carry;
     if (!ge) {
         for (int i = 3; i >= 0; --i) {
-            if (temp[i] > P_CONST[i]) { ge = true; break; }
-            if (temp[i] < P_CONST[i]) { ge = false; break; }
+            if (result[i] > P_CONST[i]) { ge = true; break; }
+            if (result[i] < P_CONST[i]) { ge = false; break; }
         }
     }
 
     if (ge) {
         uint64_t borrow = 0;
         for (int i = 0; i < 4; ++i) {
-            uint128_t sub = (uint128_t)temp[i] - (uint128_t)P_CONST[i] - borrow;
+            uint128_t sub = (uint128_t)result[i] - (uint128_t)P_CONST[i] - borrow;
             result[i] = (uint64_t)sub;
-            borrow = ((uint128_t)temp[i] < (uint128_t)P_CONST[i] + borrow) ? 1 : 0;
+            borrow = ((uint128_t)result[i] < (uint128_t)P_CONST[i] + borrow) ? 1 : 0;
         }
-    } else {
-        for (int i = 0; i < 4; ++i) result[i] = temp[i];
     }
 }
 
 __host__ __device__ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
-    uint64_t temp[4];
     uint64_t borrow = 0;
+
     for (int i = 0; i < 4; ++i) {
         uint128_t sub = (uint128_t)a[i] - (uint128_t)b[i] - borrow;
-        temp[i] = (uint64_t)sub;
+        result[i] = (uint64_t)sub;
         borrow = ((uint128_t)a[i] < (uint128_t)b[i] + borrow) ? 1 : 0;
     }
 
     if (borrow) {
         uint128_t carry = 0;
         for (int i = 0; i < 4; ++i) {
-            uint128_t s = (uint128_t)temp[i] + (uint128_t)P_CONST[i] + carry;
+            uint128_t s = (uint128_t)result[i] + (uint128_t)P_CONST[i] + carry;
             result[i] = (uint64_t)s;
             carry = s >> 64;
         }
-    } else {
-        for (int i = 0; i < 4; ++i) result[i] = temp[i];
     }
 }
 
@@ -476,7 +331,6 @@ __host__ __device__ int jacobian_is_infinity(const ECPointJacobian *point) {
     return point->infinity || (z_zero == 0);
 }
 
-//X/Z ONLY
 __host__ __device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
     if (jacobian_is_infinity(jac)) {
         for (int i = 0; i < 4; i++) aff->x[i] = aff->y[i] = 0;
@@ -503,63 +357,49 @@ __host__ __device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian 
     aff->infinity = 0;
 }
 
-//X/Z ONLY
 __host__ __device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
     if (jacobian_is_infinity(point)) {
         jacobian_set_infinity(result);
         return;
     }
 
-    uint64_t XX[4], ZZ[4], w[4], B[4];
+    uint64_t ZZ[4], w[4], B[4];
 
-    mod_sqr_mont_p(XX, point->X);
+    mod_sqr_mont_p(result->X, point->X); 
     mod_sqr_mont_p(ZZ, point->Z);
-    mod_add_p(w, XX, XX);
-    mod_add_p(w, w, XX);
+    mod_add_p(w, result->X, result->X);
+    mod_add_p(w, w, result->X);
     mod_mul_mont_p(B, point->X, ZZ);
-    mod_sqr_mont_p(result->X, w);
     mod_add_p(B, B, B);
+    mod_sqr_mont_p(result->X, w);
     mod_sub_p(result->X, result->X, B);
     mod_add_p(result->Z, point->X, point->Z);
     mod_sqr_mont_p(result->Z, result->Z);
-    mod_sub_p(result->Z, result->Z, XX);
+    mod_sub_p(result->Z, result->Z, result->X);
     mod_sub_p(result->Z, result->Z, ZZ);
 
     result->infinity = 0;
 }
 
-//X/Z ONLY
 __host__ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
-    int P_infinity = jacobian_is_infinity(P);
-    int Q_infinity = jacobian_is_infinity(Q);
-
-    if (P_infinity) {
-        for (int i = 0; i < 4; i++) {
-            result->X[i] = Q->X[i];
-            result->Z[i] = Q->Z[i];
-        }
-        result->infinity = Q->infinity;
+    if (jacobian_is_infinity(P)) {
+        *result = *Q;
         return;
     }
-    if (Q_infinity) {
-        for (int i = 0; i < 4; i++) {
-            result->X[i] = P->X[i];
-            result->Z[i] = P->Z[i];
-        }
-        result->infinity = P->infinity;
+    if (jacobian_is_infinity(Q)) {
+        *result = *P;
         return;
     }
 
-    uint64_t U1[4], U2[4], H[4], I[4], J[4], V[4], Z1Z2[4];
-    uint64_t Z1Z1[4], Z2Z2[4];
+    uint64_t Z1Z1[4], Z2Z2[4], U1[4], U2[4], H[4], I[4], J[4], V[4], Z1Z2[4];
+
     mod_sqr_mont_p(Z1Z1, P->Z);
     mod_sqr_mont_p(Z2Z2, Q->Z);
     mod_mul_mont_p(U1, P->X, Z2Z2);
     mod_mul_mont_p(U2, Q->X, Z1Z1);
     mod_sub_p(H, U2, U1);
 
-    uint64_t H_zero = 0;
-    for (int i = 0; i < 4; i++) H_zero |= H[i];
+    uint64_t H_zero = H[0] | H[1] | H[2] | H[3];
     if (H_zero == 0) {
         jacobian_double(result, P);
         return;
@@ -847,27 +687,10 @@ __host__ __device__ void point_from_montgomery(ECPoint *result, const ECPoint *p
     result->infinity = 0;
 }
 
-__host__ __device__ void point_init_jacobian(ECPointJacobian *P) {
-    for (int i = 0; i < 4; i++) {
-        P->X[i] = 0;
-        P->Y[i] = 0;
-        P->Z[i] = 0;
-    }
-    P->infinity = 1;
-}
-
-__host__ __device__ void point_add_jacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) {
-    jacobian_add(R, P, Q);
-}
-
-__host__ __device__ void point_double_jacobian(ECPointJacobian *R, const ECPointJacobian *P) {
-    jacobian_double(R, P);
-}
-
-__host__ __device__ void scalar_mult_jacobian(ECPointJacobian *R, const uint64_t *k) {
-    jacobian_scalar_mult_glv(R, k);
-}
-
+__host__ __device__ void point_init_jacobian(ECPointJacobian *P) { for (int i = 0; i < 4; i++) { P->X[i] = 0; P->Y[i] = 0; P->Z[i] = 0; } P->infinity = 1; }
+__host__ __device__ void point_add_jacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) { jacobian_add(R, P, Q); }
+__host__ __device__ void point_double_jacobian(ECPointJacobian *R, const ECPointJacobian *P) { jacobian_double(R, P); }
+__host__ __device__ void scalar_mult_jacobian(ECPointJacobian *R, const uint64_t *k) { jacobian_scalar_mult_glv(R, k); }
 __host__ __device__ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
     unsigned char prefix = (public_key->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
@@ -894,6 +717,7 @@ __host__ __device__ void generate_public_key(unsigned char *out, const uint64_t 
     get_compressed_public_key(out, &pub);
 }
 
+/*
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
@@ -926,8 +750,8 @@ int main() {
 
     return 0;
 }
+*/
 
-/*
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
@@ -975,4 +799,3 @@ int main() {
 
     return 0;
 }
-*/
