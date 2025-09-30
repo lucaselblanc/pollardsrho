@@ -3,6 +3,7 @@
 ![C++](https://img.shields.io/badge/language-C++-blue)
 ![CUDA](https://img.shields.io/badge/language-CUDA-green)
 ![CUDA](https://img.shields.io/badge/arch-gpu%20&%20cpu-orange)
+![Linux](https://img.shields.io/badge/platform-Linux-white)
 
 ## Description
 
