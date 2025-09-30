@@ -37,5 +37,6 @@ __host__ __device__ void point_add_jacobian(ECPointJacobian *R, const ECPointJac
 __host__ __device__ void point_double_jacobian(ECPointJacobian *R, const ECPointJacobian *P);
 __host__ __device__ void scalar_mult_jacobian(ECPointJacobian *R, const uint64_t *k);
 __host__ __device__ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key);
+__host__ __device__ void init_precomp_g();
 
 #endif /* EC_SECP256K1_H */
