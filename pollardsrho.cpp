@@ -12,7 +12,6 @@
 
 /* --- AINDA EM TESTES --- */
 
-/*
 #include "secp256k1.h"
 #include <sys/sysinfo.h>
 #include <iostream>
@@ -59,36 +58,7 @@ void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
     out[0] = (static_cast<uint64_t>(value.limbs[0]) << 32) | value.limbs[1];
 }
 
-/*
 void init_secp256k1() {
-    uint64_t gx_arr[4], gy_arr[4];
-    uint256_to_uint64_array(gx_arr, GX);
-    uint256_to_uint64_array(gy_arr, GY);
-
-    for(int i = 0; i < 4; i++) {
-        G.X[i] = gx_arr[i];
-        G.Y[i] = gy_arr[i];
-        G.Z[i] = (i == 3) ? 1 : 0;
-    }
-    G.infinity = 0;
-
-    ECPointJacobian* d_G = nullptr;
-    #ifdef __CUDACC__
-    cudaMalloc(&d_G, sizeof(ECPointJacobian));
-    cudaMemcpy(d_G, &G, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
-    #endif
-
-    point_double_jacobian(d_G, d_G);
-    #ifdef __CUDACC__
-    cudaDeviceSynchronize();
-    cudaMemcpy(&H, d_G, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
-    cudaFree(d_G);
-    #endif
-}
-*/
-
-void init_secp256k1() {
-    // Inicializa G
     uint64_t gx_arr[4], gy_arr[4];
     uint256_to_uint64_array(gx_arr, GX);
     uint256_to_uint64_array(gy_arr, GY);
@@ -113,7 +83,6 @@ void init_secp256k1() {
     cudaMemcpy(&H, d_G, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
     cudaFree(d_G);
     #else
-    // CPU: passa ponteiros normais
     point_double_jacobian(&G, &G);
     H = G;
     #endif
@@ -293,7 +262,6 @@ uint256_t left_shift_uint256(const uint256_t& a, int shift) {
     return result;
 }
 
-// OTIMIZAÇÃO 1 e 4: Comparação de coordenadas e buffers persistentes
 struct PersistentBuffers {
     ECPointJacobian* d_R;
     ECPointJacobian* d_G;
@@ -306,8 +274,6 @@ struct PersistentBuffers {
         cudaMalloc(&d_G, sizeof(ECPointJacobian));
         cudaMalloc(&d_H, sizeof(ECPointJacobian));
         cudaMalloc(&d_k, sizeof(uint64_t) * 4);
-
-        // Copiar G e H uma única vez
         cudaMemcpy(d_G, &G, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
         cudaMemcpy(d_H, &H, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
         #endif
@@ -323,7 +289,6 @@ struct PersistentBuffers {
     }
 };
 
-// OTIMIZAÇÃO 1: Comparar coordenadas X em Jacobiano
 bool compare_jacobian_x(const ECPointJacobian& p1, const ECPointJacobian& p2) {
     for(int i = 0; i < 4; i++) {
         if(p1.X[i] != p2.X[i] || p1.Z[i] != p2.Z[i]) {
@@ -333,7 +298,6 @@ bool compare_jacobian_x(const ECPointJacobian& p1, const ECPointJacobian& p2) {
     return true;
 }
 
-// OTIMIZAÇÃO 4: f otimizado com buffers persistentes
 uint256_t f_optimized(ECPointJacobian& R, uint256_t k, int key_range, PersistentBuffers& buffers) {
     const uint256_t mask = mask_for_bits(key_range);
 
@@ -346,7 +310,6 @@ uint256_t f_optimized(ECPointJacobian& R, uint256_t k, int key_range, Persistent
     unsigned int op = static_cast<unsigned int>(x_low64 % 3);
     size_t idx = static_cast<size_t>(x_low64 % NUM_JUMPS);
 
-    // Usar buffers persistentes
     #ifdef __CUDACC_
     cudaMemcpy(buffers.d_R, &R, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
     #endif
@@ -368,7 +331,6 @@ uint256_t f_optimized(ECPointJacobian& R, uint256_t k, int key_range, Persistent
 
     for(int i = 0; i < 8; i++) k.limbs[i] &= mask.limbs[i];
 
-    // Não sincronizar aqui - será feito periodicamente
     #ifdef __CUDACC_
     cudaMemcpy(&R, buffers.d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
     #endif
@@ -422,7 +384,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     std::cout << "max_range: " << uint_256_to_hex(max_scalar) << std::endl;
 
     std::atomic<unsigned long long> keys_ps{0};
-    std::atomic<unsigned long long> iteration_counter{0}; // OTIMIZAÇÃO 3
+    std::atomic<unsigned long long> iteration_counter{0};
     std::atomic<bool> search_in_progress(true);
     std::mutex pgrs;
     std::string P_key;
@@ -436,7 +398,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         uint256_t k1, k2;
         ECPointJacobian R;
         int speed;
-        PersistentBuffers* buffers; // OTIMIZAÇÃO 2: Buffers persistentes
+        PersistentBuffers* buffers;
     };
 
     PKG pkg(min_scalar, max_scalar);
@@ -444,7 +406,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
     std::vector<HareState> hare_states(hares);
 
-    // OTIMIZAÇÃO 2: Alocar buffers persistentes para cada hare
     for (int i = 0; i < hares; ++i) {
         hare_states[i].buffers = new PersistentBuffers();
 
@@ -465,7 +426,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         hare_states[i].k2 = pkg.generate();
     }
 
-    // OTIMIZAÇÃO 6: Log periódico
     std::thread log_thread([&]() {
         try {
             while(search_in_progress.load()) {
@@ -485,7 +445,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         }
     });
 
-    const unsigned long long SYNC_INTERVAL = 5000000; // OTIMIZAÇÃO 3: Sincronizar a cada 5M iterações
+    const unsigned long long SYNC_INTERVAL = 5000000;
 
     try {
         while (search_in_progress.load()) {
@@ -511,7 +471,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                         hare.k2.limbs[j] = 0;
                     }
                 } else {
-                    // OTIMIZAÇÃO 4: Usar f otimizado
                     hare.k1 = f_optimized(hare.R, hare.k1, key_range, *hare.buffers);
                     hare.k2 = f_optimized(hare.R, hare.k2, key_range, *hare.buffers);
                 }
@@ -521,10 +480,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 if (compare_uint256(hare.k2, min_scalar) < 0)
                 { hare.k2 = add_uint256(hare.k2, min_scalar); }
 
-                // OTIMIZAÇÃO 3: Sincronização periódica
                 bool should_sync = (iter % SYNC_INTERVAL == 0);
 
-                // OTIMIZAÇÃO 2: Reutilizar buffers
                 ECPointJacobian pub1_jac, pub2_jac;
 
                 uint64_t k1_array[4], k2_array[4];
@@ -536,19 +493,17 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 #endif
                 scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
                 #ifdef __CUDACC_
-                if(should_sync) cudaDeviceSynchronize(); // OTIMIZAÇÃO 3
+                if(should_sync) cudaDeviceSynchronize();
                 cudaMemcpy(&pub1_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                 cudaMemcpy(hare.buffers->d_k, k2_array, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
                 #endif
                 scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
                 #ifdef __CUDACC_
-                if(should_sync) cudaDeviceSynchronize(); // OTIMIZAÇÃO 3
+                if(should_sync) cudaDeviceSynchronize();
                 cudaMemcpy(&pub2_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                 #endif
-                // OTIMIZAÇÃO 1: Comparar primeiro coordenadas X em Jacobiano
                 bool potential_collision = compare_jacobian_x(pub1_jac, pub2_jac);
 
-                // Somente se houver potencial colisão, fazer conversão completa
                 if(potential_collision || should_sync) {
                     ECPoint pub1, pub2;
                     for(int j = 0; j < 4; j++) {
@@ -560,7 +515,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     pub1.infinity = pub1_jac.infinity;
                     pub2.infinity = pub2_jac.infinity;
 
-                    // OTIMIZAÇÃO 5: Somente gerar chaves comprimidas em verificação
                     unsigned char compressed1[33], compressed2[33];
                     unsigned char* d_compressed = nullptr;
                     ECPoint* d_pub_comp = nullptr;
@@ -683,7 +637,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                         }
                     }
 
-                    // Verificação contra target
                     if (memcmp(compressed1, target_pubkey.data(), 33) == 0 ||
                         memcmp(compressed2, target_pubkey.data(), 33) == 0) {
 
@@ -701,7 +654,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         std::cerr << "Exception: " << e.what() << std::endl;
     }
 
-    // Liberar buffers persistentes
     for (int i = 0; i < hares; ++i) {
         delete hare_states[i].buffers;
     }
@@ -759,4 +711,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-*/
