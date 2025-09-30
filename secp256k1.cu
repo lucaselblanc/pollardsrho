@@ -752,6 +752,7 @@ int main() {
 }
 */
 
+/*
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
     uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
@@ -799,3 +800,4 @@ int main() {
 
     return 0;
 }
+*/
