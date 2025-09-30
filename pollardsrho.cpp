@@ -52,17 +52,18 @@ const uint256_t GY = {
 };
 
 void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
-    out[3] = (static_cast<uint64_t>(value.limbs[6]) << 32) | value.limbs[7];
-    out[2] = (static_cast<uint64_t>(value.limbs[4]) << 32) | value.limbs[5];
-    out[1] = (static_cast<uint64_t>(value.limbs[2]) << 32) | value.limbs[3];
     out[0] = (static_cast<uint64_t>(value.limbs[0]) << 32) | value.limbs[1];
+    out[1] = (static_cast<uint64_t>(value.limbs[2]) << 32) | value.limbs[3];
+    out[2] = (static_cast<uint64_t>(value.limbs[4]) << 32) | value.limbs[5];
+    out[3] = (static_cast<uint64_t>(value.limbs[6]) << 32) | value.limbs[7];
 }
 
 void init_secp256k1() {
     uint64_t gx_arr[4], gy_arr[4];
     uint256_to_uint64_array(gx_arr, GX);
     uint256_to_uint64_array(gy_arr, GY);
-    for(int i = 0; i < 4; i++) {
+
+    for (int i = 0; i < 4; i++) {
         G.X[i] = gx_arr[i];
         G.Y[i] = gy_arr[i];
         G.Z[i] = (i == 3) ? 1 : 0;
@@ -70,21 +71,24 @@ void init_secp256k1() {
     G.infinity = 0;
 
     #ifdef __CUDACC__
-    ECPointJacobian* d_G = nullptr;
-    cudaError_t err;
-    err = cudaMalloc(&d_G, sizeof(ECPointJacobian));
-    if(err != cudaSuccess) {
-        std::cerr << "cudaMalloc failed: " << cudaGetErrorString(err) << std::endl;
-        exit(1);
-    }
-    cudaMemcpy(d_G, &G, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
-    point_double_jacobian(d_G, d_G);
-    cudaDeviceSynchronize();
-    cudaMemcpy(&H, d_G, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
-    cudaFree(d_G);
+        ECPointJacobian* d_G = nullptr;
+        cudaError_t err = cudaMalloc(&d_G, sizeof(ECPointJacobian));
+        if (err != cudaSuccess) {
+            std::cerr << "cudaMalloc failed: " << cudaGetErrorString(err) << std::endl;
+            exit(1);
+        }
+
+        cudaMemcpy(d_G, &G, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+        point_double_jacobian(d_G, d_G);
+        cudaDeviceSynchronize();
+        cudaMemcpy(&H, d_G, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+        cudaFree(d_G);
     #else
-    point_double_jacobian(&G, &G);
-    H = G;
+        ECPointJacobian* tmp = new ECPointJacobian();
+        *tmp = G;
+        point_double_jacobian(tmp, tmp);
+        H = *tmp;
+        delete tmp;
     #endif
 }
 
@@ -95,36 +99,33 @@ class PKG {
     uint64_t min_mid_high, max_mid_high;
     uint64_t min_high, max_high;
 
-public:
+    public:
     PKG(const uint256_t& min_scalar, const uint256_t& max_scalar) : gen(std::random_device{}()) {
-        min_low      = (static_cast<uint64_t>(min_scalar.limbs[6]) << 32) | min_scalar.limbs[7];
-        max_low      = (static_cast<uint64_t>(max_scalar.limbs[6]) << 32) | max_scalar.limbs[7];
-
-        min_mid_low  = (static_cast<uint64_t>(min_scalar.limbs[4]) << 32) | min_scalar.limbs[5];
-        max_mid_low  = (static_cast<uint64_t>(max_scalar.limbs[4]) << 32) | max_scalar.limbs[5];
-
-        min_mid_high = (static_cast<uint64_t>(min_scalar.limbs[2]) << 32) | min_scalar.limbs[3];
-        max_mid_high = (static_cast<uint64_t>(max_scalar.limbs[2]) << 32) | max_scalar.limbs[3];
-
         min_high     = (static_cast<uint64_t>(min_scalar.limbs[0]) << 32) | min_scalar.limbs[1];
         max_high     = (static_cast<uint64_t>(max_scalar.limbs[0]) << 32) | max_scalar.limbs[1];
+        min_mid_high = (static_cast<uint64_t>(min_scalar.limbs[2]) << 32) | min_scalar.limbs[3];
+        max_mid_high = (static_cast<uint64_t>(max_scalar.limbs[2]) << 32) | max_scalar.limbs[3];
+        min_mid_low  = (static_cast<uint64_t>(min_scalar.limbs[4]) << 32) | min_scalar.limbs[5];
+        max_mid_low  = (static_cast<uint64_t>(max_scalar.limbs[4]) << 32) | max_scalar.limbs[5];
+        min_low      = (static_cast<uint64_t>(min_scalar.limbs[6]) << 32) | min_scalar.limbs[7];
+        max_low      = (static_cast<uint64_t>(max_scalar.limbs[6]) << 32) | max_scalar.limbs[7];
     }
 
     uint256_t generate() {
-        uint64_t low      = std::uniform_int_distribution<uint64_t>(min_low, max_low)(gen);
-        uint64_t mid_low  = std::uniform_int_distribution<uint64_t>(min_mid_low, max_mid_low)(gen);
-        uint64_t mid_high = std::uniform_int_distribution<uint64_t>(min_mid_high, max_mid_high)(gen);
         uint64_t high     = std::uniform_int_distribution<uint64_t>(min_high, max_high)(gen);
+        uint64_t mid_high = std::uniform_int_distribution<uint64_t>(min_mid_high, max_mid_high)(gen);
+        uint64_t mid_low  = std::uniform_int_distribution<uint64_t>(min_mid_low, max_mid_low)(gen);
+        uint64_t low      = std::uniform_int_distribution<uint64_t>(min_low, max_low)(gen);
 
         uint256_t result;
-        result.limbs[7] = static_cast<uint32_t>(low & 0xFFFFFFFF);
-        result.limbs[6] = static_cast<uint32_t>(low >> 32);
-        result.limbs[5] = static_cast<uint32_t>(mid_low & 0xFFFFFFFF);
-        result.limbs[4] = static_cast<uint32_t>(mid_low >> 32);
-        result.limbs[3] = static_cast<uint32_t>(mid_high & 0xFFFFFFFF);
-        result.limbs[2] = static_cast<uint32_t>(mid_high >> 32);
-        result.limbs[1] = static_cast<uint32_t>(high & 0xFFFFFFFF);
         result.limbs[0] = static_cast<uint32_t>(high >> 32);
+        result.limbs[1] = static_cast<uint32_t>(high & 0xFFFFFFFF);
+        result.limbs[2] = static_cast<uint32_t>(mid_high >> 32);
+        result.limbs[3] = static_cast<uint32_t>(mid_high & 0xFFFFFFFF);
+        result.limbs[4] = static_cast<uint32_t>(mid_low >> 32);
+        result.limbs[5] = static_cast<uint32_t>(mid_low & 0xFFFFFFFF);
+        result.limbs[6] = static_cast<uint32_t>(low >> 32);
+        result.limbs[7] = static_cast<uint32_t>(low & 0xFFFFFFFF);
 
         return result;
     }
@@ -166,20 +167,20 @@ void precompute_jumps(int key_range) {
     uint256_t max_value = mask_for_bits(key_range);
 
     for (size_t i = 0; i < NUM_JUMPS; ++i) {
-        uint64_t r0 = rng();
-        uint64_t r1 = rng();
-        uint64_t r2 = rng();
-        uint64_t r3 = rng();
+        uint64_t r_high     = rng();
+        uint64_t r_mid_high = rng();
+        uint64_t r_mid_low  = rng();
+        uint64_t r_low      = rng();
 
         uint256_t r{};
-        r.limbs[7] = static_cast<uint32_t>(r0 & 0xFFFFFFFF);
-        r.limbs[6] = static_cast<uint32_t>(r0 >> 32);
-        r.limbs[5] = static_cast<uint32_t>(r1 & 0xFFFFFFFF);
-        r.limbs[4] = static_cast<uint32_t>(r1 >> 32);
-        r.limbs[3] = static_cast<uint32_t>(r2 & 0xFFFFFFFF);
-        r.limbs[2] = static_cast<uint32_t>(r2 >> 32);
-        r.limbs[1] = static_cast<uint32_t>(r3 & 0xFFFFFFFF);
-        r.limbs[0] = static_cast<uint32_t>(r3 >> 32);
+        r.limbs[0] = static_cast<uint32_t>(r_high >> 32);
+        r.limbs[1] = static_cast<uint32_t>(r_high & 0xFFFFFFFF);
+        r.limbs[2] = static_cast<uint32_t>(r_mid_high >> 32);
+        r.limbs[3] = static_cast<uint32_t>(r_mid_high & 0xFFFFFFFF);
+        r.limbs[4] = static_cast<uint32_t>(r_mid_low >> 32);
+        r.limbs[5] = static_cast<uint32_t>(r_mid_low & 0xFFFFFFFF);
+        r.limbs[6] = static_cast<uint32_t>(r_low >> 32);
+        r.limbs[7] = static_cast<uint32_t>(r_low & 0xFFFFFFFF);
 
         for(int j = 0; j < 8; j++) {
             r.limbs[j] &= max_value.limbs[j];
@@ -206,13 +207,12 @@ uint256_t sub_uint256(const uint256_t& a, const uint256_t& b) {
     uint256_t result{};
     uint64_t borrow = 0;
 
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 7; i >= 0; --i) {
         uint64_t ai = a.limbs[i];
         uint64_t bi = b.limbs[i];
         uint64_t temp = ai - bi - borrow;
-
         borrow = ((ai < bi + borrow) ? 1 : 0);
-        result.limbs[i] = temp;
+        result.limbs[i] = static_cast<uint32_t>(temp);
     }
 
     return result;
@@ -228,8 +228,8 @@ int compare_uint256(const uint256_t& a, const uint256_t& b) {
 
 uint256_t uint256_from_uint32(uint32_t value) {
     uint256_t r{};
-    r.limbs[0] = value;
-    for(int i=1;i<8;i++) r.limbs[i] = 0;
+    r.limbs[7] = value;
+    for(int i = 0; i < 7; i++) r.limbs[i] = 0;
     return r;
 }
 
@@ -247,18 +247,21 @@ uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
 uint256_t left_shift_uint256(const uint256_t& a, int shift) {
     uint256_t result{};
     if(shift == 0) return a;
+
     int limb_shift = shift / 32;
-    int bit_shift = shift % 32;
+    int bit_shift  = shift % 32;
+
     for(int i = 0; i < 8; i++) result.limbs[i] = 0;
 
-    for(int i = 0; i < 8; i++) {
-        if(i + limb_shift < 8) {
-            result.limbs[i] |= a.limbs[i + limb_shift] << bit_shift;
+    for(int i = 7; i >= 0; i--) {
+        if(i - limb_shift >= 0) {
+            result.limbs[i] |= a.limbs[i - limb_shift] << bit_shift;
         }
-        if(bit_shift != 0 && i + limb_shift + 1 < 8) {
-            result.limbs[i] |= a.limbs[i + limb_shift + 1] >> (32 - bit_shift);
+        if(bit_shift != 0 && i - limb_shift - 1 >= 0) {
+            result.limbs[i] |= a.limbs[i - limb_shift - 1] >> (32 - bit_shift);
         }
     }
+
     return result;
 }
 
@@ -269,22 +272,22 @@ struct PersistentBuffers {
     uint64_t* d_k;
 
     PersistentBuffers() {
-        #ifdef __CUDACC_
-        cudaMalloc(&d_R, sizeof(ECPointJacobian));
-        cudaMalloc(&d_G, sizeof(ECPointJacobian));
-        cudaMalloc(&d_H, sizeof(ECPointJacobian));
-        cudaMalloc(&d_k, sizeof(uint64_t) * 4);
-        cudaMemcpy(d_G, &G, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_H, &H, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+        #ifdef __CUDACC__
+            cudaMalloc(&d_R, sizeof(ECPointJacobian));
+            cudaMalloc(&d_G, sizeof(ECPointJacobian));
+            cudaMalloc(&d_H, sizeof(ECPointJacobian));
+            cudaMalloc(&d_k, sizeof(uint64_t) * 4);
+            cudaMemcpy(d_G, &G, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_H, &H, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
         #endif
     }
 
     ~PersistentBuffers() {
-        #ifdef __CUDACC_
-        cudaFree(d_R);
-        cudaFree(d_G);
-        cudaFree(d_H);
-        cudaFree(d_k);
+        #ifdef __CUDACC__
+            cudaFree(d_R);
+            cudaFree(d_G);
+            cudaFree(d_H);
+            cudaFree(d_k);
         #endif
     }
 };
@@ -298,7 +301,7 @@ bool compare_jacobian_x(const ECPointJacobian& p1, const ECPointJacobian& p2) {
     return true;
 }
 
-uint256_t f_optimized(ECPointJacobian& R, uint256_t k, int key_range, PersistentBuffers& buffers) {
+uint256_t f(ECPointJacobian& R, uint256_t k, int key_range, PersistentBuffers& buffers) {
     const uint256_t mask = mask_for_bits(key_range);
 
     uint256_t x_coord{};
@@ -310,29 +313,41 @@ uint256_t f_optimized(ECPointJacobian& R, uint256_t k, int key_range, Persistent
     unsigned int op = static_cast<unsigned int>(x_low64 % 3);
     size_t idx = static_cast<size_t>(x_low64 % NUM_JUMPS);
 
-    #ifdef __CUDACC_
-    cudaMemcpy(buffers.d_R, &R, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+    #ifdef __CUDACC__
+        cudaMemcpy(buffers.d_R, &R, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
     #endif
 
     switch(op) {
         case 0:
-            point_add_jacobian(buffers.d_R, buffers.d_R, buffers.d_G);
-            k = add_uint256(k, precomputed_jumps[idx]);
+            #ifdef __CUDACC__
+                point_add_jacobian(buffers.d_R, buffers.d_R, buffers.d_G);
+            #else
+                point_add_jacobian(&R, &R, &G);
+            #endif
+                k = add_uint256(k, precomputed_jumps[idx]);
             break;
         case 1:
-            point_add_jacobian(buffers.d_R, buffers.d_R, buffers.d_H);
-            k = add_uint256(k, precomputed_jumps[idx]);
+            #ifdef __CUDACC__
+                point_add_jacobian(buffers.d_R, buffers.d_R, buffers.d_H);
+            #else
+                point_add_jacobian(&R, &R, &H);
+            #endif
+                k = add_uint256(k, precomputed_jumps[idx]);
             break;
         default:
-            point_double_jacobian(buffers.d_R, buffers.d_R);
-            k = left_shift_uint256(k, 1);
+            #ifdef __CUDACC__
+                point_double_jacobian(buffers.d_R, buffers.d_R);
+            #else
+                point_double_jacobian(&R, &R);
+            #endif
+                k = left_shift_uint256(k, 1);
             break;
     }
 
     for(int i = 0; i < 8; i++) k.limbs[i] &= mask.limbs[i];
 
-    #ifdef __CUDACC_
-    cudaMemcpy(&R, buffers.d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+    #ifdef __CUDACC__
+        cudaMemcpy(&R, buffers.d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
     #endif
 
     return k;
@@ -386,6 +401,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     std::atomic<unsigned long long> keys_ps{0};
     std::atomic<unsigned long long> iteration_counter{0};
     std::atomic<bool> search_in_progress(true);
+    std::atomic<bool> should_sync(false);
     std::mutex pgrs;
     std::string P_key;
 
@@ -409,14 +425,21 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     for (int i = 0; i < hares; ++i) {
         hare_states[i].buffers = new PersistentBuffers();
 
-        ECPointJacobian* d_point = nullptr;
-        #ifdef __CUDACC_
-        cudaMalloc(&d_point, sizeof(ECPointJacobian));
-        #endif
-        point_init_jacobian(d_point);
-        #ifdef __CUDACC_
-        cudaMemcpy(&hare_states[i].R, d_point, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
-        cudaFree(d_point);
+        #ifdef __CUDACC__
+            ECPointJacobian* d_point = nullptr;
+            cudaError_t err = cudaMalloc(&d_point, sizeof(ECPointJacobian));
+            if (err != cudaSuccess) {
+                std::cerr << "cudaMalloc failed: " << cudaGetErrorString(err) << std::endl;
+                exit(1);
+            }
+
+            point_init_jacobian(d_point);
+            cudaMemcpy(&hare_states[i].R, d_point, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+            cudaFree(d_point);
+        #else
+            ECPointJacobian tmp;
+            point_init_jacobian(&tmp);
+            hare_states[i].R = tmp;
         #endif
 
         hare_states[i].R = G;
@@ -438,6 +461,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     std::cout << "\rTotal keys tested: " << keys_ps << std::endl;
                     std::cout << "\rIterations: " << iteration_counter.load() << std::endl;
                     keys_ps.store(0, std::memory_order_relaxed);
+                }
+                else
+                {
+                    std::cout << "Initializing, wait..." << std::endl;
                 }
             }
         } catch (const std::exception& e) {
@@ -471,8 +498,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                         hare.k2.limbs[j] = 0;
                     }
                 } else {
-                    hare.k1 = f_optimized(hare.R, hare.k1, key_range, *hare.buffers);
-                    hare.k2 = f_optimized(hare.R, hare.k2, key_range, *hare.buffers);
+                    hare.k1 = f(hare.R, hare.k1, key_range, *hare.buffers);
+                    hare.k2 = f(hare.R, hare.k2, key_range, *hare.buffers);
                 }
 
                 if (compare_uint256(hare.k1, min_scalar) < 0)
@@ -480,7 +507,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 if (compare_uint256(hare.k2, min_scalar) < 0)
                 { hare.k2 = add_uint256(hare.k2, min_scalar); }
 
-                bool should_sync = (iter % SYNC_INTERVAL == 0);
+                should_sync.store(iter % SYNC_INTERVAL == 0);
 
                 ECPointJacobian pub1_jac, pub2_jac;
 
@@ -488,23 +515,37 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 uint256_to_uint64_array(k1_array, hare.k1);
                 uint256_to_uint64_array(k2_array, hare.k2);
 
-                #ifdef __CUDACC_
-                cudaMemcpy(hare.buffers->d_k, k1_array, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
-                #endif
-                scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
-                #ifdef __CUDACC_
-                if(should_sync) cudaDeviceSynchronize();
-                cudaMemcpy(&pub1_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
-                cudaMemcpy(hare.buffers->d_k, k2_array, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
-                #endif
-                scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
-                #ifdef __CUDACC_
-                if(should_sync) cudaDeviceSynchronize();
-                cudaMemcpy(&pub2_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
-                #endif
-                bool potential_collision = compare_jacobian_x(pub1_jac, pub2_jac);
+                bool test = true;
+                //teste
+                if(test)
+                {
+                    scalar_mult_jacobian(&pub1_jac, k1_array);
+                    test = false;
+                }
 
-                if(potential_collision || should_sync) {
+                // --- pub1_jac ---
+                #ifdef __CUDACC__
+                    cudaMemcpy(hare.buffers->d_k, k1_array, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
+                    scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
+                    if (should_sync.load()) cudaDeviceSynchronize();
+                    cudaMemcpy(&pub1_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+                #else
+                    //scalar_mult_jacobian(&pub1_jac, k1_array);
+                #endif
+
+                // --- pub2_jac ---
+                #ifdef __CUDACC__
+                    cudaMemcpy(hare.buffers->d_k, k2_array, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
+                    scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
+                    if (should_sync.load()) cudaDeviceSynchronize();
+                    cudaMemcpy(&pub2_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+                #else
+                    //scalar_mult_jacobian(&pub2_jac, k2_array);
+                #endif
+
+                bool xx = compare_jacobian_x(pub1_jac, pub2_jac);
+
+                if(xx && should_sync.load()) {
                     ECPoint pub1, pub2;
                     for(int j = 0; j < 4; j++) {
                         pub1.x[j] = pub1_jac.X[j];
@@ -516,25 +557,25 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     pub2.infinity = pub2_jac.infinity;
 
                     unsigned char compressed1[33], compressed2[33];
-                    unsigned char* d_compressed = nullptr;
-                    ECPoint* d_pub_comp = nullptr;
-                    #ifdef __CUDACC_
-                    cudaMalloc(&d_compressed, 33);
-                    cudaMalloc(&d_pub_comp, sizeof(ECPoint));
-                    cudaMemcpy(d_pub_comp, &pub1, sizeof(ECPoint), cudaMemcpyHostToDevice);
-                    #endif
-                    get_compressed_public_key(d_compressed, d_pub_comp);
-                    #ifdef __CUDACC_
-                    if(should_sync) cudaDeviceSynchronize();
-                    cudaMemcpy(compressed1, d_compressed, 33, cudaMemcpyDeviceToHost);
-                    cudaMemcpy(d_pub_comp, &pub2, sizeof(ECPoint), cudaMemcpyHostToDevice);
-                    #endif
-                    get_compressed_public_key(d_compressed, d_pub_comp);
-                    #ifdef __CUDACC_
-                    if(should_sync) cudaDeviceSynchronize();
-                    cudaMemcpy(compressed2, d_compressed, 33, cudaMemcpyDeviceToHost);
-                    cudaFree(d_compressed);
-                    cudaFree(d_pub_comp);
+
+                    #ifdef __CUDACC__
+                        unsigned char* d_compressed = nullptr;
+                        ECPoint* d_pub_comp = nullptr;
+                        cudaMalloc(&d_compressed, 33);
+                        cudaMalloc(&d_pub_comp, sizeof(ECPoint));
+                        cudaMemcpy(d_pub_comp, &pub1, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                        get_compressed_public_key(d_compressed, d_pub_comp);
+                        if (should_sync.load()) cudaDeviceSynchronize();
+                        cudaMemcpy(compressed1, d_compressed, 33, cudaMemcpyDeviceToHost);
+                        cudaMemcpy(d_pub_comp, &pub2, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                        get_compressed_public_key(d_compressed, d_pub_comp);
+                        if (should_sync.load()) cudaDeviceSynchronize();
+                        cudaMemcpy(compressed2, d_compressed, 33, cudaMemcpyDeviceToHost);
+                        cudaFree(d_compressed);
+                        cudaFree(d_pub_comp);
+                    #else
+                        get_compressed_public_key(compressed1, &pub1);
+                        get_compressed_public_key(compressed2, &pub2);
                     #endif
 
                     std::string current_pubkey_hex_R = bytes_to_hex((unsigned char*)compressed1, 33);
@@ -548,7 +589,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                         return true;
                     };
 
-                    if (DP(pub1) && DP(pub2) && !test_mode && potential_collision) {
+                    if (DP(pub1) && DP(pub2) && !test_mode && xx) {
 
                         bool x_equal = true;
                         for (int j = 0; j < 4; j++) {
@@ -568,16 +609,16 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
                             uint64_t d_array[4];
                             uint256_to_uint64_array(d_array, d);
-                            #ifdef __CUDACC_
-                            cudaMemcpy(hare.buffers->d_k, d_array, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
+                            #ifdef __CUDACC__
+                                cudaMemcpy(hare.buffers->d_k, d_array, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
                             #endif
-                            scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
-                            #ifdef __CUDACC_
-                            cudaDeviceSynchronize();
+                                scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
+                            #ifdef __CUDACC__
+                                cudaDeviceSynchronize();
                             #endif
-                            ECPointJacobian test_point_jac;
-                            #ifdef __CUDACC_
-                            cudaMemcpy(&test_point_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+                                ECPointJacobian test_point_jac;
+                            #ifdef __CUDACC__
+                                cudaMemcpy(&test_point_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                             #endif
                             if (test_point_jac.infinity == 1) {
 
@@ -587,17 +628,17 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                                 }
 
                                 uint64_t found_key_array[4];
-                                uint256_to_uint64_array(found_key_array, found_key);
-                                #ifdef __CUDACC_
-                                cudaMemcpy(hare.buffers->d_k, found_key_array, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
+                                    uint256_to_uint64_array(found_key_array, found_key);
+                                #ifdef __CUDACC__
+                                    cudaMemcpy(hare.buffers->d_k, found_key_array, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
                                 #endif
-                                scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
-                                #ifdef __CUDACC_
-                                cudaDeviceSynchronize();
+                                    scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
+                                #ifdef __CUDACC__
+                                    cudaDeviceSynchronize();
                                 #endif
-                                ECPointJacobian verify_point_jac;
-                                #ifdef __CUDACC_
-                                cudaMemcpy(&verify_point_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+                                    ECPointJacobian verify_point_jac;
+                                #ifdef __CUDACC__
+                                    cudaMemcpy(&verify_point_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                                 #endif
                                 ECPoint verify_point;
                                 for(int j = 0; j < 4; j++) {
@@ -608,20 +649,20 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
                                 unsigned char* d_compressed_verify = nullptr;
                                 ECPoint* d_verify_comp = nullptr;
-                                #ifdef __CUDACC_
-                                cudaMalloc(&d_compressed_verify, 33);
-                                cudaMalloc(&d_verify_comp, sizeof(ECPoint));
-                                cudaMemcpy(d_verify_comp, &verify_point, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                                #ifdef __CUDACC__
+                                    cudaMalloc(&d_compressed_verify, 33);
+                                    cudaMalloc(&d_verify_comp, sizeof(ECPoint));
+                                    cudaMemcpy(d_verify_comp, &verify_point, sizeof(ECPoint), cudaMemcpyHostToDevice);
                                 #endif
-                                get_compressed_public_key(d_compressed_verify, d_verify_comp);
-                                #ifdef __CUDACC_
-                                cudaDeviceSynchronize();
+                                    get_compressed_public_key(d_compressed_verify, d_verify_comp);
+                                #ifdef __CUDACC__
+                                    cudaDeviceSynchronize();
                                 #endif
-                                unsigned char compressed_verify[33];
-                                #ifdef __CUDACC_
-                                cudaMemcpy(compressed_verify, d_compressed_verify, 33, cudaMemcpyDeviceToHost);
-                                cudaFree(d_compressed_verify);
-                                cudaFree(d_verify_comp);
+                                    unsigned char compressed_verify[33];
+                                #ifdef __CUDACC__
+                                    cudaMemcpy(compressed_verify, d_compressed_verify, 33, cudaMemcpyDeviceToHost);
+                                    cudaFree(d_compressed_verify);
+                                    cudaFree(d_verify_comp);
                                 #endif
 
                                 if (memcmp(compressed_verify, target_pubkey.data(), 33) == 0) {
@@ -669,6 +710,36 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     return found_key;
 }
 
+/*
+int main() {
+    const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
+
+    ECPointJacobian pub_jac;
+
+    init_precomp_g();
+
+    int count = 0;
+    auto start = std::chrono::steady_clock::now();
+
+    for (int i = 0; i < 100000000; i++) {
+        scalar_mult_jacobian(&pub_jac, PRIV_KEY);
+        count++;
+
+        auto now = std::chrono::steady_clock::now();
+        if(std::chrono::duration_cast<std::chrono::seconds>(now - start).count() >= 10) {
+        std::cout << "Chaves geradas = " << count << std::endl;
+        start = now;
+        }
+    }
+
+    std::cout << std::endl;
+    std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
+
+    return 0;
+}
+*/
+
 int main(int argc, char* argv[]) {
 
     if (argc < 3 || argc > 4) {
@@ -676,6 +747,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    init_precomp_g();
     init_secp256k1();
 
     NUM_JUMPS = (get_memory_bytes() / 2) / 32;
