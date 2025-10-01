@@ -474,12 +474,11 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     if (should_sync.load()) cudaDeviceSynchronize();
                     cudaMemcpy(&pub2_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                 #else
- 
                     k1_array[4 - (key_range + 63)/64] &= ((1ULL << (key_range % 64 == 0 ? 64 : key_range % 64)) - 1);
-scalar_mult_jacobian(&pub1_jac, k1_array + 4 - (key_range + 63)/64);
+                    scalar_mult_jacobian(&pub1_jac, k1_array + 4 - (key_range + 63)/64);
 
                     k2_array[4 - (key_range + 63)/64] &= ((1ULL << (key_range % 64 == 0 ? 64 : key_range % 64)) - 1);
-scalar_mult_jacobian(&pub2_jac, k2_array + 4 - (key_range + 63)/64);
+                    scalar_mult_jacobian(&pub2_jac, k2_array + 4 - (key_range + 63)/64);
                 #endif
 
                 bool xfilled = true;
