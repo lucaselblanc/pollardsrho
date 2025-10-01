@@ -391,8 +391,24 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     if(test_mode) { std::cout << "Test Mode: True" << std::endl; }
     else          { std::cout << "Test Mode: False" << std::endl; }
 
-    uint256_t min_scalar = left_shift_uint256(uint256_from_uint32(1), key_range - 1);
-    uint256_t max_scalar = sub_uint256(left_shift_uint256(uint256_from_uint32(1), key_range), uint256_from_uint32(1));
+    uint256_t min_scalar{};
+    uint256_t max_scalar{};
+
+    // min_scalar = 2^(key_range - 1)
+    int limb_index = 7 - ((key_range - 1) / 32);
+    int bit_in_limb = (key_range - 1) % 32;
+
+    min_scalar.limbs[limb_index] = 1U << bit_in_limb;
+
+    // max_scalar = 2^key_range - 1
+    int full_limbs = key_range / 32;
+    int rem_bits  = key_range % 32;
+    for(int i = 8 - full_limbs; i < 8; i++) {
+        max_scalar.limbs[i] = 0xFFFFFFFF;
+    }
+    if(rem_bits != 0) {
+        max_scalar.limbs[8 - full_limbs - 1] = (1U << rem_bits) - 1;
+    }
 
     std::cout << "key_range: " << key_range << std::endl;
     std::cout << "min_range: " << uint_256_to_hex(min_scalar) << std::endl;
@@ -477,7 +493,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     try {
         while (search_in_progress.load()) {
 
-            for (int i = 0; i < hares; ++i) {
+            for (int i = 0; i < hare_states.size(); ++i) {
 
                 HareState& hare = hare_states[i];
                 hare.speed = (i == 0) ? 1 : (i + 1);
@@ -485,8 +501,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 current_key = hare.k1;
                 p_key = current_key;
 
-                keys_ps.fetch_add(1, std::memory_order_relaxed);
-                unsigned long long iter = iteration_counter.fetch_add(1, std::memory_order_relaxed);
+                keys_ps.fetch_add(2, std::memory_order_relaxed);
+                unsigned long long iter = iteration_counter.fetch_add(2, std::memory_order_relaxed);
 
                 if (test_mode)
                 {
@@ -515,14 +531,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 uint256_to_uint64_array(k1_array, hare.k1);
                 uint256_to_uint64_array(k2_array, hare.k2);
 
-                bool test = true;
-                //teste
-                if(test)
-                {
-                    scalar_mult_jacobian(&pub1_jac, k1_array);
-                    test = false;
-                }
-
                 // --- pub1_jac ---
                 #ifdef __CUDACC__
                     cudaMemcpy(hare.buffers->d_k, k1_array, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
@@ -530,7 +538,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     if (should_sync.load()) cudaDeviceSynchronize();
                     cudaMemcpy(&pub1_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                 #else
-                    //scalar_mult_jacobian(&pub1_jac, k1_array);
+                    scalar_mult_jacobian(&pub1_jac, k1_array);
                 #endif
 
                 // --- pub2_jac ---
@@ -540,7 +548,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     if (should_sync.load()) cudaDeviceSynchronize();
                     cudaMemcpy(&pub2_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                 #else
-                    //scalar_mult_jacobian(&pub2_jac, k2_array);
+                    scalar_mult_jacobian(&pub2_jac, k2_array);
                 #endif
 
                 bool xx = compare_jacobian_x(pub1_jac, pub2_jac);
