@@ -491,17 +491,14 @@ __host__ __device__ void init_precomp_g() {
     }
 }
 
-__host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar) {
-    uint64_t k[4];
-    scalar_reduce_n(k, scalar);
-
+__host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, int n_bits) {
     int w = window_size;
-    int d = (128 + w - 1) / w;
+    int d = (n_bits + w - 1) / w;
 
     jacobian_set_infinity(result);
 
-    for (int col = d-1; col >= 0; col--) {
-        if (col != d-1) {
+    for (int col = d - 1; col >= 0; col--) {
+        if (col != d - 1) {
             for (int i = 0; i < w; i++) {
                 jacobian_double(result, result);
             }
@@ -509,32 +506,30 @@ __host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uin
 
         int idx = 0;
         for (int row = 0; row < w; row++) {
-            int bit_index = row*d + col;
+            int bit_index = row * d + col;
+            if (bit_index >= n_bits) continue;
             int limb = bit_index / 64;
             int shift = bit_index % 64;
-            uint64_t bit = (k[limb] >> shift) & 1;
+            uint64_t bit = (scalar[limb] >> shift) & 1ULL;
             idx |= (bit << row);
         }
 
         if (idx != 0) {
             ECPointJacobian tmp;
-            jacobian_add(&tmp, result, &precomp_g[idx-1]);
+            jacobian_add(&tmp, result, &precomp_g[idx - 1]);
             *result = tmp;
         }
     }
 }
 
-__host__ __device__ void jacobian_scalar_mult_phi(ECPointJacobian *result, const uint64_t *scalar) {
-    uint64_t k[4];
-    scalar_reduce_n(k, scalar);
-
+__host__ __device__ void jacobian_scalar_mult_phi(ECPointJacobian *result, const uint64_t *scalar, int n_bits) {
     int w = window_size;
-    int d = (128 + w - 1) / w;
+    int d = (n_bits + w - 1) / w;
 
     jacobian_set_infinity(result);
 
-    for (int col = d-1; col >= 0; col--) {
-        if (col != d-1) {
+    for (int col = d - 1; col >= 0; col--) {
+        if (col != d - 1) {
             for (int i = 0; i < w; i++) {
                 jacobian_double(result, result);
             }
@@ -542,16 +537,17 @@ __host__ __device__ void jacobian_scalar_mult_phi(ECPointJacobian *result, const
 
         int idx = 0;
         for (int row = 0; row < w; row++) {
-            int bit_index = row*d + col;
+            int bit_index = row * d + col;
+            if (bit_index >= n_bits) continue;
             int limb = bit_index / 64;
             int shift = bit_index % 64;
-            uint64_t bit = (k[limb] >> shift) & 1;
+            uint64_t bit = (scalar[limb] >> shift) & 1ULL;
             idx |= (bit << row);
         }
 
         if (idx != 0) {
             ECPointJacobian tmp;
-            jacobian_add(&tmp, result, &precomp_g_phi[idx-1]);
+            jacobian_add(&tmp, result, &precomp_g_phi[idx - 1]);
             *result = tmp;
         }
     }
@@ -664,12 +660,12 @@ __host__ __device__ void scalar_split_lambda(uint64_t r1[4], uint64_t r2[4], con
     scalar_add(r1, t1, k);
 }
 
-__host__ __device__ void jacobian_scalar_mult_glv(ECPointJacobian *R, const uint64_t k[4]) {
+__host__ __device__ void jacobian_scalar_mult_glv(ECPointJacobian *R, const uint64_t k[4], int n_bits) {
     uint64_t r1[4], r2[4];
     scalar_split_lambda(r1, r2, k);
     ECPointJacobian P1, P2;
-    jacobian_scalar_mult(&P1, r1);
-    jacobian_scalar_mult_phi(&P2, r2);
+    jacobian_scalar_mult(&P1, r1, n_bits);
+    jacobian_scalar_mult_phi(&P2, r2, n_bits);
     jacobian_add(R, &P1, &P2);
 }
 
@@ -690,7 +686,7 @@ __host__ __device__ void point_from_montgomery(ECPoint *result, const ECPoint *p
 __host__ __device__ void point_init_jacobian(ECPointJacobian *P) { for (int i = 0; i < 4; i++) { P->X[i] = 0; P->Y[i] = 0; P->Z[i] = 0; } P->infinity = 1; }
 __host__ __device__ void point_add_jacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) { jacobian_add(R, P, Q); }
 __host__ __device__ void point_double_jacobian(ECPointJacobian *R, const ECPointJacobian *P) { jacobian_double(R, P); }
-__host__ __device__ void scalar_mult_jacobian(ECPointJacobian *R, const uint64_t *k) { jacobian_scalar_mult_glv(R, k); }
+__host__ __device__ void scalar_mult_jacobian(ECPointJacobian *R, const uint64_t *k, int n_bits) { jacobian_scalar_mult_glv(R, k, n_bits); }
 __host__ __device__ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
     unsigned char prefix = (public_key->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
@@ -708,11 +704,11 @@ __host__ __device__ void get_compressed_public_key(unsigned char *out, const ECP
     }
 }
 
-__host__ __device__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY) {
+__host__ __device__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY, int n_bits) {
     ECPoint pub;
     ECPointJacobian pub_jac;
 
-    jacobian_scalar_mult_glv(&pub_jac, PRIV_KEY);
+    jacobian_scalar_mult_glv(&pub_jac, PRIV_KEY, n_bits);
     jacobian_to_affine(&pub, &pub_jac);
     get_compressed_public_key(out, &pub);
 }
@@ -739,7 +735,7 @@ int main() {
 
     init_precomp_g();
 
-    generate_public_key(pubkey_compressed, PRIV_KEY);
+    generate_public_key(pubkey_compressed, PRIV_KEY, 64);
 
     std::cout << "Compressed Public Key: ";
     for (int i = 0; i < 33; ++i) {
@@ -780,7 +776,7 @@ int main() {
     auto start = std::chrono::steady_clock::now();
 
     for (int i = 0; i < 100000000; i++) {
-        scalar_mult_jacobian(&pub_jac, PRIV_KEY);
+        scalar_mult_jacobian(&pub_jac, PRIV_KEY, 1);
         count++;
 
         auto now = std::chrono::steady_clock::now();
