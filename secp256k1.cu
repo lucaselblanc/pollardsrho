@@ -716,7 +716,7 @@ __host__ __device__ void generate_public_key(unsigned char *out, const uint64_t 
 /*
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
+    uint64_t PRIV_KEY[4] = {0x0123456789ABCDEF, 0, 0, 0};
     unsigned char pubkey_compressed[33];
 
     #ifdef __CUDA_ARCH__
@@ -751,7 +751,7 @@ int main() {
 /*
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
+    uint64_t PRIV_KEY[4] = {0x0123456789ABCDEF, 0, 0, 0};
     unsigned char pubkey_compressed[33];
 
     ECPointJacobian pub_jac;
@@ -776,7 +776,7 @@ int main() {
     auto start = std::chrono::steady_clock::now();
 
     for (int i = 0; i < 100000000; i++) {
-        scalar_mult_jacobian(&pub_jac, PRIV_KEY, 1);
+        scalar_mult_jacobian(&pub_jac, PRIV_KEY, 64);
         count++;
 
         auto now = std::chrono::steady_clock::now();
@@ -786,7 +786,7 @@ int main() {
         }
     }
 
-    generate_public_key(pubkey_compressed, PRIV_KEY);
+    generate_public_key(pubkey_compressed, PRIV_KEY, 64);
     std::cout << "Compressed Public Key: ";
     for (int i = 0; i < 33; ++i) {
         printf("%02x", pubkey_compressed[i]);
