@@ -466,19 +466,16 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
                 #ifdef __CUDACC__
                     cudaMemcpy(hare.buffers->d_k, k1_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
-                    scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
+                    scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
                     if (should_sync.load()) cudaDeviceSynchronize();
                     cudaMemcpy(&pub1_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                     cudaMemcpy(hare.buffers->d_k, k2_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
-                    scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
+                    scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
                     if (should_sync.load()) cudaDeviceSynchronize();
                     cudaMemcpy(&pub2_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                 #else
-                    k1_array[4 - (key_range + 63)/64] &= ((1ULL << (key_range % 64 == 0 ? 64 : key_range % 64)) - 1);
-                    scalar_mult_jacobian(&pub1_jac, k1_array + 4 - (key_range + 63)/64);
-
-                    k2_array[4 - (key_range + 63)/64] &= ((1ULL << (key_range % 64 == 0 ? 64 : key_range % 64)) - 1);
-                    scalar_mult_jacobian(&pub2_jac, k2_array + 4 - (key_range + 63)/64);
+                    scalar_mult_jacobian(&pub1_jac, k1_array, key_range);
+                    scalar_mult_jacobian(&pub2_jac, k2_array, key_range);
                 #endif
 
                 bool xfilled = true;
@@ -557,11 +554,11 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                             ECPointJacobian test_point_jac{};
                             #ifdef __CUDACC__
                                 cudaMemcpy(hare.buffers->d_k, d_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
-                                scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
+                                scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
                                 cudaDeviceSynchronize();
                                 cudaMemcpy(&test_point_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                             #else
-                                scalar_mult_jacobian(&test_point_jac, d_array + (4 - num_limbs));
+                                scalar_mult_jacobian(&test_point_jac, d_array + (4 - num_limbs), key_range);
                             #endif
 
                             if (test_point_jac.infinity == 1) {
@@ -577,11 +574,11 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                                 ECPointJacobian verify_point_jac{};
                                 #ifdef __CUDACC__
                                     cudaMemcpy(hare.buffers->d_k, found_key_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
-                                    scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k);
+                                    scalar_mult_jacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
                                     cudaDeviceSynchronize();
                                     cudaMemcpy(&verify_point_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                                 #else
-                                    scalar_mult_jacobian(&verify_point_jac, found_key_array + (4 - num_limbs));
+                                    scalar_mult_jacobian(&verify_point_jac, found_key_array + (4 - num_limbs), key_range);
                                 #endif
 
                                 ECPoint verify_point{};
@@ -655,17 +652,18 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 /*
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
+    uint64_t PRIV_KEY[4] = {0x0123456789ABCDEF, 0, 0, 0};
 
     ECPointJacobian pub_jac;
 
     init_precomp_g();
 
     int count = 0;
+    int key_range = 64; //priv key 64 bits
     auto start = std::chrono::steady_clock::now();
 
     for (int i = 0; i < 100000000; i++) {
-        scalar_mult_jacobian(&pub_jac, PRIV_KEY);
+        scalar_mult_jacobian(&pub_jac, PRIV_KEY, key_range);
         count++;
 
         auto now = std::chrono::steady_clock::now();
