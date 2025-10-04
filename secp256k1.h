@@ -32,11 +32,12 @@ typedef struct {
     int infinity;
 } ECPointJacobian;
 
-__host__ __device__ void point_init_jacobian(ECPointJacobian *P);
-__host__ __device__ void point_add_jacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q);
-__host__ __device__ void point_double_jacobian(ECPointJacobian *R, const ECPointJacobian *P);
-__host__ __device__ void scalar_mult_jacobian(ECPointJacobian *R, const uint64_t *k, int n_bits);
-__host__ __device__ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key);
-__host__ __device__ void init_precomp_g();
+__host__ __device__ void pointInitJacobian(ECPointJacobian *P);
+__host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q);
+__host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P);
+__host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits);
+__host__ __device__ void getCompressedPublicKey(unsigned char *out, const ECPoint *publicKey);
+__host__ __device__ void initPrecompG();
+__host__ void getfcw();
 
 #endif /* EC_SECP256K1_H */
