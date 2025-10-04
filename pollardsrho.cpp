@@ -10,775 +10,663 @@
  * Written by Lucas Leblanc              *
 ******************************************/
 
-/* --- AINDA EM TESTES DE OTIMIZAÇÃO --- */
-
-#define MAX_W 24
-#define MAX_PRECOMP (1 << (MAX_W-1))
+/* --- AINDA EM TESTES --- */
 
 #include "secp256k1.h"
-#include <cuda_runtime.h>
-#include <cuda.h>
-#include <fstream>
 #include <iostream>
-#include <stdio.h>
-#include <stdint.h>
+#include <iomanip>
+#include <sstream>
+#include <random>
 #include <thread>
+#include <atomic>
 #include <chrono>
+#include <ctime>
+#include <mutex>
+#include <cstring>
 
-#ifdef __CUDA_ARCH__
-__device__ __constant__ uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-__device__ __constant__ uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
-__device__ __constant__ uint64_t GX_CONST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
-__device__ __constant__ uint64_t GY_CONST[4] = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
-__device__ __constant__ uint64_t R2_MOD_P[4] = { 0x000007A2000E90A1, 0x0000000000000001, 0x0ULL, 0x0ULL };
-__device__ __constant__ uint64_t ZERO_MONT[4] = { 0x0ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-__device__ __constant__ uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-__device__ __constant__ uint64_t SEVEN_MONT[4] = {0x700001AB7ULL, 0x0ULL, 0x0ULL, 0x0ULL};
-__device__ __constant__ uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-__device__ __constant__ uint64_t LAMBDA_N[4] = { 0xDF02967C1B23BD72ULL, 0x122E22EA20816678ULL, 0xA5261C028812645AULL, 0x5363AD4CC05C30E0ULL };
-__device__ __constant__ uint64_t BETA_P[4] = { 0x7AE96A2B657C0710ULL, 0x6E64479EAC3434E9ULL, 0x9CF0497512F58995ULL, 0xB315ECECBB640683ULL };
-__device__ __constant__ uint64_t MINUS_B1[4] = { 0x6F547FA90ABFE4C3ULL, 0xE4437ED6010E8828ULL, 0x0000000000000000ULL, 0x0000000000000000ULL };
-__device__ __constant__ uint64_t MINUS_B2[4] = { 0xD765CDA83DB1562CULL, 0x8A280AC50774346DULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
-__device__ __constant__ uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
-__device__ __constant__ uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
-__device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
-__device__ ECPointJacobian preCompG[MAX_PRECOMP];
-__device__ ECPointJacobian preCompGphi[MAX_PRECOMP];
-__device__ int windowSize = 4;
-#else
-constexpr uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-constexpr uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
-constexpr uint64_t GX_CONST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
-constexpr uint64_t GY_CONST[4] = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
-constexpr uint64_t R2_MOD_P[4] = { 0x000007A2000E90A1, 0x0000000000000001, 0x0ULL, 0x0ULL };
-constexpr uint64_t ZERO_MONT[4] = { 0x0ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-constexpr uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-constexpr uint64_t SEVEN_MONT[4] = {0x700001AB7ULL, 0x0ULL, 0x0ULL, 0x0ULL};
-constexpr uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-constexpr uint64_t LAMBDA_N[4] = { 0xDF02967C1B23BD72ULL, 0x122E22EA20816678ULL, 0xA5261C028812645AULL, 0x5363AD4CC05C30E0ULL };
-constexpr uint64_t BETA_P[4] = { 0x7AE96A2B657C0710ULL, 0x6E64479EAC3434E9ULL, 0x9CF0497512F58995ULL, 0xB315ECECBB640683ULL };
-constexpr uint64_t MINUS_B1[4] = { 0x6F547FA90ABFE4C3ULL, 0xE4437ED6010E8828ULL, 0x0000000000000000ULL, 0x0000000000000000ULL };
-constexpr uint64_t MINUS_B2[4] = { 0xD765CDA83DB1562CULL, 0x8A280AC50774346DULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
-constexpr uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
-constexpr uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
-constexpr uint64_t MU_P = 0xD838091DD2253531ULL;
-ECPointJacobian preCompG[MAX_PRECOMP];
-ECPointJacobian preCompGphi[MAX_PRECOMP];
-int windowSize = 4;
-#endif
-
-#ifdef __CUDA_ARCH__
-struct uint128_t {
-    uint64_t lo;
-    uint64_t hi;
-
-    __host__ __device__ uint128_t(uint64_t x = 0) : lo(x), hi(0) {}
-    __host__ __device__ uint128_t operator*(const uint128_t& other) const { uint128_t res; res.lo = lo * other.lo; res.hi = __umul64hi(lo, other.lo); return res; }
-    __host__ __device__ uint128_t operator*(uint64_t other) const { return *this * uint128_t(other); }
-    __host__ __device__ uint128_t& operator*=(const uint128_t& other) { *this = *this * other; return *this; }
-    __host__ __device__ uint128_t& operator*=(uint64_t other) { *this = *this * other; return *this; }
-    __host__ __device__ uint128_t operator+(const uint128_t& other) const { uint128_t res; res.lo = lo + other.lo; res.hi = hi + other.hi + (res.lo < lo ? 1 : 0); return res; }
-    __host__ __device__ uint128_t operator+(uint64_t other) const { return *this + uint128_t(other); }
-    __host__ __device__ uint128_t& operator+=(const uint128_t& other) { uint64_t old_lo = lo; lo += other.lo; hi += other.hi + (lo < old_lo ? 1 : 0); return *this; }
-    __host__ __device__ uint128_t& operator+=(uint64_t other) { *this += uint128_t(other); return *this; }
-    __host__ __device__ uint128_t operator-(const uint128_t& other) const { uint128_t res; res.lo = lo - other.lo; res.hi = hi - other.hi - (lo < other.lo ? 1 : 0); return res; }
-    __host__ __device__ uint128_t operator-(uint64_t other) const { return *this - uint128_t(other); }
-    __host__ __device__ uint128_t& operator-=(const uint128_t& other) { uint64_t old_lo = lo; lo -= other.lo; hi -= other.hi + (old_lo < other.lo ? 1 : 0); return *this; }
-    __host__ __device__ uint128_t& operator-=(uint64_t other) { *this -= uint128_t(other); return *this; }
-    __host__ __device__ uint128_t operator>>(const unsigned int n) const { uint128_t res; if (n == 0) return *this; else if (n < 64) { res.lo = (lo >> n) | (hi << (64 - n)); res.hi = hi >> n; } else if (n < 128) { res.lo = hi >> (n - 64); res.hi = 0; } else { res.lo = 0; res.hi = 0; } return res; }
-    __host__ __device__ uint128_t& operator>>=(const unsigned int n) { *this = *this >> n; return *this; }
-    __host__ __device__ uint128_t operator<<(const unsigned int n) const { uint128_t res; if (n == 0) return *this; else if (n < 64) { res.hi = (hi << n) | (lo >> (64 - n)); res.lo = lo << n; } else if (n < 128) { res.hi = lo << (n - 64); res.lo = 0; } else { res.lo = 0; res.hi = 0; } return res; }
-    __host__ __device__ uint128_t& operator<<=(const unsigned int n) { *this = *this << n; return *this; }
-    __host__ __device__ operator uint64_t() const { return lo; }
-    __host__ __device__ bool operator<(const uint128_t& other) const { return (hi < other.hi) || (hi == other.hi && lo < other.lo); }
-    __host__ __device__ bool operator<=(const uint128_t& other) const { return (hi < other.hi) || (hi == other.hi && lo <= other.lo); }
-    __host__ __device__ bool operator==(const uint128_t& other) const { return hi == other.hi && lo == other.lo; }
-    __host__ __device__ bool operator!=(const uint128_t& other) const { return !(*this == other); }
-    __host__ __device__ bool operator<(uint64_t other) const { return *this < uint128_t(other); }
-    __host__ __device__ bool operator<=(uint64_t other) const { return *this <= uint128_t(other); }
-    __host__ __device__ bool operator==(uint64_t other) const { return *this == uint128_t(other); }
-    __host__ __device__ bool operator!=(uint64_t other) const { return *this != uint128_t(other); }
+struct uint256_t {
+    uint64_t limbs[4];
 };
-#else
-using uint128_t = unsigned __int128;
-#endif
 
-__host__ void getfcw() {
-    int w = 4;
-    std::cout << "Pre-Computing Fixed-Comb Points, Wait... " << std::endl;
-    #ifdef __CUDA_ARCH__
-        size_t freeMem, totalMem;
-        cudaMemGetInfo(&freeMem, &totalMem);
-        size_t maxPoints = (freeMem / 2) / 128; // 50% RAM
-        while (w < MAX_W && (1ull << (w-1)) < maxPoints) {
-            w++;
-            if (w > MAX_W) {
-                w = MAX_W;
-                break;
-            }
+ECPointJacobian G;
+ECPointJacobian H;
+
+const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
+const uint256_t GX = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
+const uint256_t GY = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
+
+void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
+    for(int i = 0; i < 4; i++) {
+        out[i] = value.limbs[i];
+    }
+}
+
+void init_secp256k1() {
+    getfcw();
+    initPrecompG();
+
+    uint64_t gx_arr[4], gy_arr[4];
+    uint256_to_uint64_array(gx_arr, GX);
+    uint256_to_uint64_array(gy_arr, GY);
+
+    for (int i = 0; i < 4; i++) {
+        G.X[i] = gx_arr[i];
+        G.Y[i] = gy_arr[i];
+        G.Z[i] = (i == 3) ? 1 : 0;
+    }
+    G.infinity = 0;
+
+    #ifdef __CUDACC__
+        ECPointJacobian* dg = nullptr;
+        cudaError_t err = cudaMalloc(&dg, sizeof(ECPointJacobian));
+        if (err != cudaSuccess) {
+            std::cerr << "cudaMalloc failed: " << cudaGetErrorString(err) << std::endl;
+            exit(1);
         }
+
+        cudaMemcpy(dg, &G, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+        pointDoubleJacobian(dg, dg);
+        cudaDeviceSynchronize();
+        cudaMemcpy(&H, dg, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+        cudaFree(dg);
     #else
-        auto cpuMemGetInfo = []() -> size_t {
-            std::ifstream meminfo("/proc/meminfo");
-            std::string key;
-            unsigned long value;
-            std::string unit;
-            while (meminfo >> key >> value >> unit) {
-                if (key == "MemTotal:") {
-                    return static_cast<size_t>(value) * 1024;
+        ECPointJacobian* tmp = new ECPointJacobian();
+        *tmp = G;
+        pointDoubleJacobian(tmp, tmp);
+        H = *tmp;
+        delete tmp;
+    #endif
+}
+
+class XorShift64 {
+    uint64_t state;
+    public:
+    XorShift64(uint64_t seed = 0) {
+        if(seed == 0) {
+           seed = static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+        }
+        state = seed;
+    }
+
+    uint64_t next() {
+        uint64_t x = state;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        state = x;
+        return x * 2685821657736338717ull;
+    }
+
+    uint64_t next_between(uint64_t min, uint64_t max) {
+        if (min == max) return min;
+        uint64_t range = max - min;
+        if (range == UINT64_MAX) {
+            return next();
+        } else {
+            return min + (next() % (range + 1));
+        }
+    }
+
+};
+
+class PKG {
+    XorShift64 gen;
+    uint64_t min_low, max_low;
+    uint64_t min_mid_low, max_mid_low;
+    uint64_t min_mid_high, max_mid_high;
+    uint64_t min_high, max_high;
+
+    public:
+    PKG(const uint256_t& min_scalar, const uint256_t& max_scalar) : gen(std::random_device{}()) {
+        min_high     = min_scalar.limbs[0];
+        max_high     = max_scalar.limbs[0];
+        min_mid_high = min_scalar.limbs[1];
+        max_mid_high = max_scalar.limbs[1];
+        min_mid_low  = min_scalar.limbs[2];
+        max_mid_low  = max_scalar.limbs[2];
+        min_low      = min_scalar.limbs[3];
+        max_low      = max_scalar.limbs[3];
+    }
+
+    uint256_t generate() {
+        uint64_t high     = gen.next_between(min_high, max_high);
+        uint64_t mid_high = gen.next_between(min_mid_high, max_mid_high);
+        uint64_t mid_low  = gen.next_between(min_mid_low, max_mid_low);
+        uint64_t low      = gen.next_between(min_low, max_low);
+
+        uint256_t result{};
+        result.limbs[0] = high;
+        result.limbs[1] = mid_high;
+        result.limbs[2] = mid_low;
+        result.limbs[3] = low;
+
+        return result;
+    }
+};
+
+uint256_t mask_for_bits(int bits) {
+    uint256_t mask{};
+    int full_limbs = bits / 64;
+    int rem_bits   = bits % 64;
+    for(int i = 0; i < 4; i++) mask.limbs[i] = 0;
+    for(int i = 3; i > 3 - full_limbs; i--) mask.limbs[i] = 0xFFFFFFFFFFFFFFFFULL;
+    if(full_limbs < 4 && rem_bits > 0) mask.limbs[3 - full_limbs] = (1ULL << rem_bits) - 1;
+    return mask;
+}
+
+uint256_t sub_uint256(const uint256_t& a, const uint256_t& b) {
+    uint256_t result{};
+    uint64_t borrow = 0;
+
+    for (int i = 3; i >= 0; --i) {
+        uint64_t ai = a.limbs[i];
+        uint64_t bi = b.limbs[i];
+        uint64_t temp = ai - bi - borrow;
+        borrow = ((ai < bi + borrow) ? 1 : 0);
+        result.limbs[i] = temp;
+    } return result;
+}
+
+int compare_uint256(const uint256_t& a, const uint256_t& b) {
+    for (int i = 3; i >= 0; i--) {
+        if (a.limbs[i] > b.limbs[i]) return 1;
+        if (a.limbs[i] < b.limbs[i]) return -1;
+    } return 0;
+}
+
+uint256_t uint256_from_uint32(uint32_t value) {
+    uint256_t r{};
+    r.limbs[3] = value;
+    for(int i = 0; i < 3; i++) r.limbs[i] = 0;
+    return r;
+}
+
+uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
+    uint256_t result{};
+    uint64_t carry = 0;
+    for(int i = 3; i >= 0; i--) {
+        uint64_t sum = a.limbs[i] + b.limbs[i] + carry;
+        carry = (sum < a.limbs[i] || (carry && sum == a.limbs[i])) ? 1 : 0;
+        result.limbs[i] = sum;
+    } return result;
+}
+
+uint256_t left_shift_uint256(const uint256_t& a, int shift) {
+    uint256_t result{};
+    int limb_shift = shift / 64;
+    int bit_shift  = shift % 64;
+    for(int i = 0; i < 4; i++) result.limbs[i] = 0;
+    for(int i = 3; i >= 0; i--) {
+    if(i - limb_shift >= 0) result.limbs[i] |= a.limbs[i - limb_shift] << bit_shift;
+    if(bit_shift != 0 && i - limb_shift - 1 >= 0) result.limbs[i] |= a.limbs[i - limb_shift - 1] >> (64 - bit_shift);
+    } return result;
+}
+
+struct Buffers {
+    ECPointJacobian* d_R;
+    ECPointJacobian* d_G;
+    ECPointJacobian* d_H;
+    uint64_t* d_k;
+
+    Buffers() {
+        #ifdef __CUDACC__
+            cudaMalloc(&d_R, sizeof(ECPointJacobian));
+            cudaMalloc(&d_G, sizeof(ECPointJacobian));
+            cudaMalloc(&d_H, sizeof(ECPointJacobian));
+            cudaMalloc(&d_k, sizeof(uint64_t) * 4);
+            cudaMemcpy(d_G, &G, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_H, &H, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+        #endif
+    }
+
+    ~Buffers() {
+        #ifdef __CUDACC__
+            cudaFree(d_R);
+            cudaFree(d_G);
+            cudaFree(d_H);
+            cudaFree(d_k);
+        #endif
+    }
+};
+
+bool cmpxJac(const ECPointJacobian& p1, const ECPointJacobian& p2) {
+    for(int i = 0; i < 4; i++) {
+        if(p1.X[i] != p2.X[i] || p1.Z[i] != p2.Z[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+uint256_t f(ECPointJacobian& R, uint256_t k, int key_range, Buffers& buffers) {
+    const uint256_t mask = mask_for_bits(key_range);
+
+    uint64_t x_low64 = R.X[3];
+
+    unsigned int op = static_cast<unsigned int>(x_low64 % 3);
+
+    XorShift64 rng(x_low64);
+    uint64_t jump1 = rng.next();
+    uint64_t jump2 = rng.next();
+    uint64_t jump3 = rng.next();
+    uint64_t jump4 = rng.next();
+
+    uint256_t jump{};
+    jump.limbs[0] = 0;
+    jump.limbs[1] = 0;
+    jump.limbs[2] = 0;
+    jump.limbs[3] = jump1;
+
+    #ifdef __CUDACC__
+        cudaMemcpy(buffers.d_R, &R, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+    #endif
+
+    switch(op) {
+        case 0:
+            #ifdef __CUDACC__
+                pointAddJacobian(buffers.d_R, buffers.d_R, buffers.d_G);
+            #else
+                pointAddJacobian(&R, &R, &G);
+            #endif
+            k = add_uint256(k, jump);
+            break;
+        case 1:
+            #ifdef __CUDACC__
+                pointAddJacobian(buffers.d_R, buffers.d_R, buffers.d_H);
+            #else
+                pointAddJacobian(&R, &R, &H);
+            #endif
+            k = add_uint256(k, jump);
+            break;
+        default:
+            #ifdef __CUDACC__
+                pointDoubleJacobian(buffers.d_R, buffers.d_R);
+            #else
+                pointDoubleJacobian(&R, &R);
+            #endif
+            k = left_shift_uint256(k, 1);
+            break;
+    }
+
+    for(int i = 0; i < 4; i++) k.limbs[i] &= mask.limbs[i];
+
+    #ifdef __CUDACC__
+        cudaMemcpy(&R, buffers.d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+    #endif
+
+    return k;
+}
+
+uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool test_mode) {
+    auto uint_256_to_hex = [](const uint256_t& value) -> std::string {
+        std::ostringstream oss;
+        for(int i = 0; i < 4; i++) {
+            oss << std::setw(16) << std::setfill('0') << std::hex << value.limbs[i];
+        }
+        return oss.str();
+    };
+
+    auto bytes_to_hex = [](const unsigned char* bytes, size_t length) -> std::string {
+        std::string hex_str;
+        hex_str.reserve(length * 2);
+        const char* hex_chars = "0123456789abcdef";
+        for (size_t i = 0; i < length; ++i) {
+            hex_str.push_back(hex_chars[bytes[i] >> 4]);
+            hex_str.push_back(hex_chars[bytes[i] & 0x0F]);
+        }
+        return hex_str;
+    };
+
+    auto hex_to_bytes = [](const std::string& hex) -> std::vector<unsigned char> {
+        std::vector<unsigned char> bytes;
+        for (size_t i = 0; i < hex.length(); i += 2) {
+            unsigned char byte = (unsigned char) std::stoi(hex.substr(i, 2), nullptr, 16);
+            bytes.push_back(byte);
+        }
+        return bytes;
+    };
+
+    auto start_time = std::chrono::system_clock::now();
+    auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
+    std::tm start_tm = *std::localtime(&start_time_t);
+
+    std::cout << "Started at: " << std::put_time(&start_tm, "%H:%M:%S") << std::endl;
+    if(test_mode) { std::cout << "Test Mode: True" << std::endl; }
+    else          { std::cout << "Test Mode: False" << std::endl; }
+
+    uint256_t min_scalar{};
+    uint256_t max_scalar{};
+
+    int num_limbs = (key_range + 63) / 64;
+    int limb_index = 3 - ((key_range - 1) / 64);
+    int bit_in_limb = (key_range - 1) % 64;
+    min_scalar.limbs[limb_index] = 1ULL << bit_in_limb;
+    int full_limbs = key_range / 64;
+    int rem_bits = key_range % 64;
+    for (int i = 4 - full_limbs; i < 4; i++) max_scalar.limbs[i] = 0xFFFFFFFFFFFFFFFFULL;
+    if (rem_bits != 0) max_scalar.limbs[4 - full_limbs - 1] = (1ULL << rem_bits) - 1;
+
+    std::cout << "key_range: " << key_range << std::endl;
+    std::cout << "min_range: " << uint_256_to_hex(min_scalar) << std::endl;
+    std::cout << "max_range: " << uint_256_to_hex(max_scalar) << std::endl;
+
+    std::atomic<bool> search_in_progress(true);
+    std::atomic<bool> should_sync(false);
+    std::mutex pgrs;
+    std::string P_key;
+
+    uint256_t p_key{};
+    uint256_t found_key{};
+
+    unsigned long long total_keys = 0;
+    const unsigned long long SYNC_INTERVAL = 5000000;
+
+    auto target_pubkey = hex_to_bytes(target_pubkey_hex);
+
+    struct HareState {
+        uint256_t k1, k2;
+        ECPointJacobian R;
+        int speed;
+        Buffers* buffers;
+    };
+
+    PKG pkg(min_scalar, max_scalar);
+    uint256_t current_key = pkg.generate();
+
+    std::vector<HareState> hare_states(hares);
+
+    for (int i = 0; i < hares; ++i) {
+        hare_states[i].buffers = new Buffers();
+
+        #ifdef __CUDACC__
+            ECPointJacobian* d_point = nullptr;
+            cudaError_t err = cudaMalloc(&d_point, sizeof(ECPointJacobian));
+            if (err != cudaSuccess) {
+                std::cerr << "cudaMalloc failed: " << cudaGetErrorString(err) << std::endl;
+                exit(1);
+            }
+
+            pointInitJacobian(d_point);
+            cudaMemcpy(&hare_states[i].R, d_point, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+            cudaFree(d_point);
+        #else
+            ECPointJacobian tmp;
+            pointInitJacobian(&tmp);
+            hare_states[i].R = tmp;
+        #endif
+
+        hare_states[i].R = G;
+        hare_states[i].R.infinity = 0;
+        hare_states[i].speed = 0;
+        hare_states[i].k1 = pkg.generate();
+        hare_states[i].k2 = pkg.generate();
+    }
+
+    std::thread log_thread([&]() {
+        try {
+            while(search_in_progress.load()) {
+                std::this_thread::sleep_for(std::chrono::seconds(10));
+                std::lock_guard<std::mutex> lock(pgrs);
+
+                if(search_in_progress.load()) {
+                    std::cout << "\rCurrent private key: " << uint_256_to_hex(p_key) << std::endl;
+                    std::cout << "\rLast tested public key: " << P_key << std::endl;
+                    std::cout << "\rTotal keys tested: " << total_keys << std::endl;
+
+                    /*
+                    if(total_keys % 1000000)
+                    {
+                        search_in_progress.store(false);
+                    }
+                    */
+                }
+                else
+                {
+                    std::cout << "Initializing, wait..." << std::endl;
                 }
             }
-            return 0;
-        };
-        size_t freeMem = cpuMemGetInfo();
-        size_t maxPoints = (freeMem / 2) / 128; // 50% RAM
-        while ((1ull << (w-1)) < maxPoints) {
-            w++;
-            if (w > MAX_W) {
-                w = MAX_W;
-                break;
-            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error in log_thread: " << e.what() << std::endl;
         }
-    #endif
-    windowSize = w;
-}
-
-__host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
-    uint64_t temp[8];
-    for (int i = 0; i < 4; i++) {
-        temp[i]     =  inputLow[i];
-        temp[i + 4] = inputHigh[i];
-    }
-
-    for (int i = 0; i < 4; i++) {
-        uint64_t ui = (uint64_t)((uint128_t)temp[i] * (uint128_t)MU_P);
-        uint128_t carry = 0;
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)ui * (uint128_t)P_CONST[j] + (uint128_t)temp[i + j] + carry;
-            temp[i + j] = (uint64_t)prod;
-            carry = prod >> 64;
-        }
-        uint128_t s = (uint128_t)temp[i + 4] + carry;
-        temp[i + 4] = (uint64_t)s;
-        carry = s >> 64;
-        for (int j = i + 5; j < 8; ++j) {
-            uint128_t sum = (uint128_t)temp[j] + carry;
-            temp[j] = (uint64_t)sum;
-            carry = sum >> 64;
-        }
-    }
-
-    for (int i = 0; i < 4; i++) result[i] = temp[i + 4];
-
-    uint64_t diff[4];
-    uint128_t borrow = 0;
-    for (int i = 0; i < 4; i++) {
-        uint128_t sub = (uint128_t)result[i] - (uint128_t)P_CONST[i] - borrow;
-        diff[i] = (uint64_t)sub;
-        borrow = (sub >> 127) & 1;
-    }
-
-    if (borrow == 0) {
-        for (int i = 0; i < 4; i++) result[i] = diff[i];
-    }
-}
-
-__host__ __device__ void toMontgomeryP(uint64_t *result, const uint64_t *a) {
-    uint64_t aLocal[4];
-    for (int i = 0; i < 4; i++) aLocal[i] = a[i];
-
-    uint64_t temp[8] = {0};
-
-    for (int i = 0; i < 4; i++) {
-        uint128_t carry = 0;
-
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)aLocal[i] * (uint128_t)R2_MOD_P[j] + (uint128_t)temp[i + j] + carry;
-            temp[i + j] = (uint64_t)prod;
-            carry = prod >> 64;
-        }
-
-        uint128_t sum = (uint128_t)temp[i + 4] + carry;
-        temp[i + 4] = (uint64_t)sum;
-        carry = sum >> 64;
-
-        for (int k = i + 5; k < 8; k++) {
-            uint128_t s = (uint128_t)temp[k] + carry;
-            temp[k] = (uint64_t)s;
-            carry = s >> 64;
-        }
-    }
-
-    uint64_t low[4], high[4];
-    for (int i = 0; i < 4; i++) {
-        low[i] = temp[i];
-        high[i] = temp[i + 4];
-    }
-
-    montgomeryReduceP(result, high, low);
-}
-
-__host__ __device__ void fromMontgomeryP(uint64_t *result, const uint64_t *a) {
-    uint64_t zero[4] = {0, 0, 0, 0};
-    montgomeryReduceP(result, zero, a);
-}
-
-__host__ __device__ void modAddP(uint64_t *result, const uint64_t *a, const uint64_t *b) {
-    uint128_t carry = 0;
-
-    for (int i = 0; i < 4; ++i) {
-        uint128_t s = (uint128_t)a[i] + (uint128_t)b[i] + carry;
-        result[i] = (uint64_t)s;
-        carry = s >> 64;
-    }
-
-    bool ge = (bool)carry;
-    if (!ge) {
-        for (int i = 3; i >= 0; --i) {
-            if (result[i] > P_CONST[i]) { ge = true; break; }
-            if (result[i] < P_CONST[i]) { ge = false; break; }
-        }
-    }
-
-    if (ge) {
-        uint64_t borrow = 0;
-        for (int i = 0; i < 4; ++i) {
-            uint128_t sub = (uint128_t)result[i] - (uint128_t)P_CONST[i] - borrow;
-            result[i] = (uint64_t)sub;
-            borrow = ((uint128_t)result[i] < (uint128_t)P_CONST[i] + borrow) ? 1 : 0;
-        }
-    }
-}
-
-__host__ __device__ void modSubP(uint64_t *result, const uint64_t *a, const uint64_t *b) {
-    uint64_t borrow = 0;
-
-    for (int i = 0; i < 4; ++i) {
-        uint128_t sub = (uint128_t)a[i] - (uint128_t)b[i] - borrow;
-        result[i] = (uint64_t)sub;
-        borrow = ((uint128_t)a[i] < (uint128_t)b[i] + borrow) ? 1 : 0;
-    }
-
-    if (borrow) {
-        uint128_t carry = 0;
-        for (int i = 0; i < 4; ++i) {
-            uint128_t s = (uint128_t)result[i] + (uint128_t)P_CONST[i] + carry;
-            result[i] = (uint64_t)s;
-            carry = s >> 64;
-        }
-    }
-}
-
-__host__ __device__ void modMulMontP(uint64_t *result, const uint64_t *a, const uint64_t *b) {
-    uint64_t high[4], low[4];
-
-    uint64_t temp[8] = {0};
-    for (int i = 0; i < 4; i++) {
-        uint64_t carry = 0ULL;
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)a[i] * (uint128_t)b[j] + (uint128_t)temp[i + j] + (uint128_t)carry;
-            temp[i + j] = (uint64_t)prod;
-            carry = (uint64_t)(prod >> 64);
-        }
-        temp[i + 4] = carry;
-    }
-
-    for (int i = 0; i < 4; i++) {
-        low[i] = temp[i];
-        high[i] = temp[i + 4];
-    }
-
-    montgomeryReduceP(result, high, low);
-}
-
-__host__ __device__ void modSqrtMontP(uint64_t *out, const uint64_t *in) {
-    modMulMontP(out, in, in);
-}
-
-__host__ __device__ void scalarReduceN(uint64_t *r, const uint64_t *k) {
-    bool ge = false;
-    for (int i = 3; i >= 0; i--) {
-        if (k[i] > N_CONST[i]) { ge = true; break; }
-        if (k[i] < N_CONST[i]) { ge = false; break; }
-    }
-
-    if (ge) {
-        uint64_t borrow = 0;
-        for (int i = 0; i < 4; i++) {
-            uint64_t temp = k[i] - N_CONST[i] - borrow;
-            borrow = (k[i] < N_CONST[i] + borrow) ? 1 : 0;
-            r[i] = temp;
-        }
-    } else {
-        for (int i = 0; i < 4; i++) {
-            r[i] = k[i];
-        }
-    }
-}
-
-__host__ __device__ void modExpMontP(uint64_t *res, const uint64_t *base, const uint64_t *exp) {
-    uint64_t one[4] = {0};
-    one[0] = 1ULL;
-    toMontgomeryP(res, one);
-
-    uint64_t acc[4];
-    for (int i = 0; i < 4; i++) acc[i] = base[i];
-
-    for (int word = 3; word >= 0; word--) {
-        for (int bit = 63; bit >= 0; bit--) {
-            modSqrtMontP(res, res);
-
-            if ((exp[word] >> bit) & 1ULL) {
-                modMulMontP(res, res, acc);
-            }
-        }
-    }
-}
-
-__host__ __device__ void sqrtModP(uint64_t y[4], const uint64_t v[4]) {
-    uint64_t exp[4];
-
-    exp[0] = 0x0FFFFFFFFFFFFFFF;
-    exp[1] = 0xFFFFFFFFFFFFFFFF;
-    exp[2] = 0xFFFFFFFFFFFFFFFF;
-    exp[3] = 0x3FFFFFFF0000000C;
-
-    modExpMontP(y, v, exp);
-}
-
-__host__ __device__ void jacobianInit(ECPointJacobian *point) {
-    for (int i = 0; i < 4; i++) {
-        point->X[i] = 0;
-        point->Y[i] = 0;
-        point->Z[i] = ONE_MONT[i];
-    }
-    point->infinity = 0;
-}
-
-__host__ __device__ void jacobianSetInfinity(ECPointJacobian *point) {
-    for (int i = 0; i < 4; i++) {
-        point->X[i] = ONE_MONT[i];
-        point->Y[i] = ONE_MONT[i];
-        point->Z[i] = 0;
-    }
-    point->infinity = 1;
-}
-
-__host__ __device__ int jacobianIsInfinity(const ECPointJacobian *point) {
-    uint64_t z_zero = 0;
-    for (int i = 0; i < 4; i++) {
-        z_zero |= point->Z[i];
-    }
-    return point->infinity || (z_zero == 0);
-}
-
-__host__ __device__ void jacobianToAffine(ECPoint *aff, const ECPointJacobian *jac) {
-    if (jacobianIsInfinity(jac)) {
-        for (int i = 0; i < 4; i++) aff->x[i] = aff->y[i] = 0;
-        aff->infinity = 1;
-        return;
-    }
-
-    uint64_t zInv[4], zInv2[4];
-
-    modExpMontP(zInv, jac->Z, P_CONST_MINUS_2);
-    modSqrtMontP(zInv2, zInv);
-    modMulMontP(aff->x, jac->X, zInv2);
-    fromMontgomeryP(aff->x, aff->x);
-
-    uint64_t X3[4], aX[4], rhs[4];
-    modSqrtMontP(X3, aff->x);
-    modMulMontP(X3, X3, aff->x);
-    modMulMontP(aX, aff->x, ZERO_MONT);
-    modAddP(rhs, X3, aX);
-    modAddP(rhs, rhs, SEVEN_MONT);
-
-    sqrtModP(aff->y, rhs);
-
-    aff->infinity = 0;
-}
-
-__host__ __device__ void jacobianDouble(ECPointJacobian *result, const ECPointJacobian *point) {
-    if (jacobianIsInfinity(point)) {
-        jacobianSetInfinity(result);
-        return;
-    }
-
-    uint64_t ZZ[4], w[4], B[4];
-
-    modSqrtMontP(result->X, point->X); 
-    modSqrtMontP(ZZ, point->Z);
-    modAddP(w, result->X, result->X);
-    modAddP(w, w, result->X);
-    modMulMontP(B, point->X, ZZ);
-    modAddP(B, B, B);
-    modSqrtMontP(result->X, w);
-    modSubP(result->X, result->X, B);
-    modAddP(result->Z, point->X, point->Z);
-    modSqrtMontP(result->Z, result->Z);
-    modSubP(result->Z, result->Z, result->X);
-    modSubP(result->Z, result->Z, ZZ);
-
-    result->infinity = 0;
-}
-
-__host__ __device__ void jacobianAdd(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
-    if (jacobianIsInfinity(P)) {
-        *result = *Q;
-        return;
-    }
-    if (jacobianIsInfinity(Q)) {
-        *result = *P;
-        return;
-    }
-
-    uint64_t Z1Z1[4], Z2Z2[4], U1[4], U2[4], H[4], I[4], J[4], V[4], Z1Z2[4];
-
-    modSqrtMontP(Z1Z1, P->Z);
-    modSqrtMontP(Z2Z2, Q->Z);
-    modMulMontP(U1, P->X, Z2Z2);
-    modMulMontP(U2, Q->X, Z1Z1);
-    modSubP(H, U2, U1);
-
-    uint64_t H_zero = H[0] | H[1] | H[2] | H[3];
-    if (H_zero == 0) {
-        jacobianDouble(result, P);
-        return;
-    }
-
-    modAddP(I, H, H);
-    modSqrtMontP(I, I);
-    modMulMontP(J, H, I);
-    modMulMontP(V, U1, I);
-    modAddP(H, V, V);
-    modAddP(H, H, J);
-    modSubP(result->X, I, H);
-    modAddP(Z1Z2, P->Z, Q->Z);
-    modSqrtMontP(Z1Z2, Z1Z2);
-    modSubP(Z1Z2, Z1Z2, Z1Z1);
-    modSubP(Z1Z2, Z1Z2, Z2Z2);
-    modMulMontP(result->Z, Z1Z2, H);
-
-    result->infinity = 0;
-}
-
-__host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobian *P) {
-    modMulMontP(R->X, P->X, BETA_P);
-    for (int i = 0; i < 4; i++) {
-        R->Y[i] = P->Y[i];
-        R->Z[i] = P->Z[i];
-    }
-    R->infinity = P->infinity;
-}
-
-__host__ __device__ void initPrecompG() {
-    int w = windowSize;
-    int dnorm = (256 + w - 1) / w;
-    int dphi    = (128 + w - 1) / w;
-    int tableSize = (1 << w) - 1;
-
-    uint64_t gxMont[4];
-    toMontgomeryP(gxMont, GX_CONST);
-
-    ECPointJacobian g, ge;
-    for (int i = 0; i < 4; i++) {
-        g.X[i] = gxMont[i];
-        g.Z[i] = ONE_MONT[i];
-        ge.X[i] = gxMont[i];
-        ge.Z[i] = ONE_MONT[i];
-    }
-
-    g.infinity  = 0;
-    ge.infinity = 0;
-
-    endomorphismMap(&ge, &ge);
-
-    ECPointJacobian jacNorm[MAX_W];
-    ECPointJacobian jacEndo[MAX_W];
-
-    jacNorm[0]  = g;
-    jacEndo[0] = ge;
-
-    for (int j = 1; j < w; j++) {
-        jacNorm[j]  = jacNorm[j-1];
-        jacEndo[j] = jacEndo[j-1];
-
-        for (int i = 0; i < dnorm; i++) {
-            jacobianDouble(&jacNorm[j], &jacNorm[j]);
-        }
-        for (int i = 0; i < dphi; i++) {
-            jacobianDouble(&jacEndo[j], &jacEndo[j]);
-        }
-    }
-
-    for (int i = 1; i <= tableSize; i++) {
-        jacobianSetInfinity(&preCompG[i-1]);
-        for (int j = 0; j < w; j++) {
-            if ((i >> j) & 1) {
-                ECPointJacobian tmp;
-                jacobianAdd(&tmp, &preCompG[i-1], &jacNorm[j]);
-                preCompG[i-1] = tmp;
-            }
-        }
-
-        jacobianSetInfinity(&preCompGphi[i-1]);
-        for (int j = 0; j < w; j++) {
-            if ((i >> j) & 1) {
-                ECPointJacobian tmp;
-                jacobianAdd(&tmp, &preCompGphi[i-1], &jacEndo[j]);
-                preCompGphi[i-1] = tmp;
+    });
+
+    try {
+        while (search_in_progress.load()) {
+
+            for (int i = 0; i < hares; ++i) {
+
+                HareState& hare = hare_states[i];
+                hare.speed = (i == 0) ? 1 : (i + 1);
+                total_keys += 2;
+
+                current_key = hare.k1;
+                p_key = current_key;
+
+                if (test_mode) {
+                    hare.k1 = add_uint256(hare.k1, uint256_from_uint32(hare.speed));
+                    hare.k2 = add_uint256(hare.k2, uint256_from_uint32(hare.speed));
+                    for (int j = 2; j < 4; j++) {
+                        hare.k1.limbs[j] = 0;
+                        hare.k2.limbs[j] = 0;
+                    }
+                } else {
+                    hare.k1 = f(hare.R, hare.k1, key_range, *hare.buffers);
+                    hare.k2 = f(hare.R, hare.k2, key_range, *hare.buffers);
+                }
+
+                if (compare_uint256(hare.k1, min_scalar) < 0)
+                    hare.k1 = add_uint256(hare.k1, min_scalar);
+                if (compare_uint256(hare.k2, min_scalar) < 0)
+                    hare.k2 = add_uint256(hare.k2, min_scalar);
+
+                should_sync.store(total_keys % SYNC_INTERVAL == 0);
+
+                ECPointJacobian pub1_jac{}, pub2_jac{};
+
+                uint64_t k1_array[4], k2_array[4];
+                uint256_to_uint64_array(k1_array, hare.k1);
+                uint256_to_uint64_array(k2_array, hare.k2);
+
+                #ifdef __CUDACC__
+                    cudaMemcpy(hare.buffers->d_k, k1_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
+                    scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
+                    if (should_sync.load()) cudaDeviceSynchronize();
+                    cudaMemcpy(&pub1_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+                    cudaMemcpy(hare.buffers->d_k, k2_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
+                    scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
+                    if (should_sync.load()) cudaDeviceSynchronize();
+                    cudaMemcpy(&pub2_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+                #else
+                    scalarMultJacobian(&pub1_jac, k1_array, key_range);
+                    scalarMultJacobian(&pub2_jac, k2_array, key_range);
+                #endif
+
+                bool xfilled = true;
+                for (int j = 0; j < 4; j++) {
+                    if (pub1_jac.X[j] != 0 || pub2_jac.X[j] != 0) {
+                        xfilled = false;
+                        break;
+                    }
+                }
+
+                bool xx = cmpxJac(pub1_jac, pub2_jac);
+
+                if (xx && !xfilled && should_sync.load()) {
+                    ECPoint pub1{}, pub2{};
+                    for (int j = 0; j < 4; j++) {
+                        pub1.x[j] = pub1_jac.X[j];
+                        pub1.y[j] = pub1_jac.Y[j];
+                        pub2.x[j] = pub2_jac.X[j];
+                        pub2.y[j] = pub2_jac.Y[j];
+                    }
+                    pub1.infinity = pub1_jac.infinity;
+                    pub2.infinity = pub2_jac.infinity;
+
+                    unsigned char compressed1[33], compressed2[33];
+
+                    #ifdef __CUDACC__
+                        unsigned char* d_compressed = nullptr;
+                        ECPoint* d_pub_comp = nullptr;
+                        cudaMalloc(&d_compressed, 33);
+                        cudaMalloc(&d_pub_comp, sizeof(ECPoint));
+                        cudaMemcpy(d_pub_comp, &pub1, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                        getCompressedPublicKey(d_compressed, d_pub_comp);
+                        if (should_sync.load()) cudaDeviceSynchronize();
+                        cudaMemcpy(compressed1, d_compressed, 33, cudaMemcpyDeviceToHost);
+                        cudaMemcpy(d_pub_comp, &pub2, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                        getCompressedPublicKey(d_compressed, d_pub_comp);
+                        if (should_sync.load()) cudaDeviceSynchronize();
+                        cudaMemcpy(compressed2, d_compressed, 33, cudaMemcpyDeviceToHost);
+                        cudaFree(d_compressed);
+                        cudaFree(d_pub_comp);
+                    #else
+                        getCompressedPublicKey(compressed1, &pub1);
+                        getCompressedPublicKey(compressed2, &pub2);
+                    #endif
+
+                    std::string current_pubkey_hex_R = bytes_to_hex((unsigned char*)compressed1, 33);
+                    P_key = current_pubkey_hex_R;
+
+                    int LSB = 5;
+                    auto DP = [LSB](const ECPoint& point) -> bool {
+                        for (int i = 0; i < LSB; i++) {
+                            if ((point.x[0] >> i) & 1) return false;
+                        }
+                        return true;
+                    };
+
+                    if (DP(pub1) && DP(pub2) && !test_mode && xx) {
+
+                        bool x_equal = true;
+                        for (int j = 0; j < 4; j++) {
+                            if (pub1.x[j] != pub2.x[j]) {
+                                x_equal = false;
+                                break;
+                            }
+                        }
+
+                        if (x_equal && compare_uint256(hare.k1, hare.k2) != 0) {
+
+                            uint256_t tortoise_key = hare.k2;
+                            uint256_t hare_key = hare.k1;
+                            uint256_t d = (compare_uint256(hare_key, tortoise_key) >= 0) ? sub_uint256(hare_key, tortoise_key) : sub_uint256(N, sub_uint256(tortoise_key, hare_key));
+
+                            uint64_t d_array[4];
+                            uint256_to_uint64_array(d_array, d);
+
+                            ECPointJacobian test_point_jac{};
+                            #ifdef __CUDACC__
+                                cudaMemcpy(hare.buffers->d_k, d_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
+                                scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
+                                cudaDeviceSynchronize();
+                                cudaMemcpy(&test_point_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+                            #else
+                                scalarMultJacobian(&test_point_jac, d_array + (4 - num_limbs), key_range);
+                            #endif
+
+                            if (test_point_jac.infinity == 1) {
+
+                                found_key = add_uint256(tortoise_key, d);
+                                if (compare_uint256(found_key, N) >= 0) {
+                                    found_key = sub_uint256(found_key, N);
+                                }
+
+                                uint64_t found_key_array[4];
+                                uint256_to_uint64_array(found_key_array, found_key);
+
+                                ECPointJacobian verify_point_jac{};
+                                #ifdef __CUDACC__
+                                    cudaMemcpy(hare.buffers->d_k, found_key_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
+                                    scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
+                                    cudaDeviceSynchronize();
+                                    cudaMemcpy(&verify_point_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+                                #else
+                                    scalarMultJacobian(&verify_point_jac, found_key_array + (4 - num_limbs), key_range);
+                                #endif
+
+                                ECPoint verify_point{};
+                                for (int j = 0; j < 4; j++) {
+                                    verify_point.x[j] = verify_point_jac.X[j];
+                                    verify_point.y[j] = verify_point_jac.Y[j];
+                                }
+
+                                verify_point.infinity = verify_point_jac.infinity;
+
+                                unsigned char compressed_verify[33];
+                                #ifdef __CUDACC__
+                                    unsigned char* d_compressed_verify = nullptr;
+                                    ECPoint* d_verify_comp = nullptr;
+                                    cudaMalloc(&d_compressed_verify, 33);
+                                    cudaMalloc(&d_verify_comp, sizeof(ECPoint));
+                                    cudaMemcpy(d_verify_comp, &verify_point, sizeof(ECPoint), cudaMemcpyHostToDevice);
+                                    getCompressedPublicKey(d_compressed_verify, d_verify_comp);
+                                    cudaDeviceSynchronize();
+                                    cudaMemcpy(compressed_verify, d_compressed_verify, 33, cudaMemcpyDeviceToHost);
+                                    cudaFree(d_compressed_verify);
+                                    cudaFree(d_verify_comp);
+                                #else
+                                    getCompressedPublicKey(compressed_verify, &verify_point);
+                                #endif
+
+                                if (memcmp(compressed_verify, target_pubkey.data(), 33) == 0) {
+                                    std::cout << "\033[33mDP detected for hare " << i << " at k1: " << uint_256_to_hex(hare.k1) << "\033[0m" << std::endl;
+                                    std::cout << "\033[33mDP detected for hare " << i << " at k2: " << uint_256_to_hex(hare.k2) << "\033[0m" << std::endl;
+                                    std::cout << "A multiplicação satisfaz a equação (d * G ≡ 0)" << std::endl;
+                                    std::cout << "Private Key Found: " << uint_256_to_hex(found_key) << std::endl;
+
+                                    search_in_progress.store(false);
+                                }
+                            }
+                        }
+                    }
+
+                    if (memcmp(compressed1, target_pubkey.data(), 33) == 0 ||
+                        memcmp(compressed2, target_pubkey.data(), 33) == 0) {
+
+                        found_key = (memcmp(compressed1, target_pubkey.data(), 33) == 0) ? hare.k1 : hare.k2;
+                        std::cout << "\033[32mPrivate key found!\033[0m" << std::endl;
+                        std::cout << "Private Key: " << uint_256_to_hex(found_key) << std::endl;
+
+                        search_in_progress.store(false);
+                    }
+                }
             }
         }
     }
-}
-
-__host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint64_t *scalar, int nBits) {
-    int w = windowSize;
-    int d = (nBits + w - 1) / w;
-
-    jacobianSetInfinity(result);
-
-    for (int col = d - 1; col >= 0; col--) {
-        if (col != d - 1) {
-            for (int i = 0; i < w; i++) {
-                jacobianDouble(result, result);
-            }
-        }
-
-        int idx = 0;
-        for (int row = 0; row < w; row++) {
-            int bitIndex = row * d + col;
-            if (bitIndex >= nBits) continue;
-            int limb = bitIndex / 64;
-            int shift = bitIndex % 64;
-            uint64_t bit = (scalar[limb] >> shift) & 1ULL;
-            idx |= (bit << row);
-        }
-
-        if (idx != 0) {
-            ECPointJacobian tmp;
-            jacobianAdd(&tmp, result, &preCompG[idx - 1]);
-            *result = tmp;
-        }
-    }
-}
-
-__host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, const uint64_t *scalar, int nBits) {
-    int w = windowSize;
-    int d = (nBits + w - 1) / w;
-
-    jacobianSetInfinity(result);
-
-    for (int col = d - 1; col >= 0; col--) {
-        if (col != d - 1) {
-            for (int i = 0; i < w; i++) {
-                jacobianDouble(result, result);
-            }
-        }
-
-        int idx = 0;
-        for (int row = 0; row < w; row++) {
-            int bitIndex = row * d + col;
-            if (bitIndex >= nBits) continue;
-            int limb = bitIndex / 64;
-            int shift = bitIndex % 64;
-            uint64_t bit = (scalar[limb] >> shift) & 1ULL;
-            idx |= (bit << row);
-        }
-
-        if (idx != 0) {
-            ECPointJacobian tmp;
-            jacobianAdd(&tmp, result, &preCompGphi[idx - 1]);
-            *result = tmp;
-        }
-    }
-}
-
-__host__ __device__ void scalarMulShiftVar(uint64_t r[4], const uint64_t a[4], const uint64_t b[4], int shift) {
-    uint64_t t[8] = {0};
-
-    for (int i = 0; i < 4; i++) {
-        uint64_t carry = 0;
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)a[i] * b[j];
-            prod += t[i+j];
-            prod += carry;
-            t[i+j] = (uint64_t)prod;
-            carry = (uint64_t)(prod >> 64);
-        }
-        t[i+4] = carry;
+    catch (const std::exception& e) {
+        std::cerr << "Exception: " << e.what() << std::endl;
     }
 
-    int word_shift = shift / 64;
-    int bit_shift  = shift % 64;
-    for (int i = 0; i < 4; i++) {
-        uint128_t v = 0;
-        if (i + word_shift < 8) v = uint128_t(t[i + word_shift]);
-        if (bit_shift && i + word_shift + 1 < 8) {
-            v += uint128_t(t[i + word_shift + 1]) << 64;
-        }
-        r[i] = (uint64_t)(v >> bit_shift);
-    }
-}
-
-__host__ __device__ void scalarMul(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
-    uint64_t t[8] = {0};
-
-    for (int i = 0; i < 4; i++) {
-        uint64_t carry = 0;
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)a[i] * b[j];
-            prod += t[i+j];
-            prod += carry;
-            t[i+j] = (uint64_t)prod;
-            carry = (uint64_t)(prod >> 64);
-        }
-        t[i+4] = carry;
+    for (int i = 0; i < hares; ++i) {
+        delete hare_states[i].buffers;
     }
 
-    scalarReduceN(r, t);
-}
+    log_thread.join();
 
-__host__ __device__ void scalarAdd(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
-    uint64_t carry = 0;
-    for (int i = 0; i < 4; i++) {
-        uint64_t tmp = a[i] + b[i] + carry;
-        carry = (tmp < a[i]) || (carry && tmp == a[i]);
-        r[i] = tmp;
-    }
-    scalarReduceN(r, r);
-}
+    auto end_time = std::chrono::system_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+    std::cout << "Total duration: " << std::setw(2) << std::setfill('0') << duration.count() / 3600 << ":"
+    << std::setw(2) << std::setfill('0') << (duration.count() % 3600) / 60 << ":"
+    << std::setw(2) << std::setfill('0') << duration.count() % 60 << std::endl;
 
-__host__ __device__ void scalarSub(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
-    uint64_t borrow = 0;
-    for (int i = 0; i < 4; i++) {
-        uint64_t bi = b[i] + borrow;
-        uint64_t ri = a[i] - bi;
-        borrow = (a[i] < bi);
-        r[i] = ri;
-    }
-
-    if (borrow) {
-        uint64_t carry = 0;
-        for (int i = 0; i < 4; i++) {
-            uint64_t tmp = r[i] + N_CONST[i] + carry;
-            carry = (tmp < r[i]);
-            r[i] = tmp;
-        }
-    }
-
-    scalarReduceN(r, r);
-}
-
-__host__ __device__ int scalarIsZero(const uint64_t a[4]) {
-    uint64_t acc = 0;
-    for (int i = 0; i < 4; i++) {
-        acc |= a[i];
-    }
-    return acc == 0;
-}
-
-__host__ __device__ void scalarNeg(uint64_t r[4], const uint64_t a[4]) {
-    if (scalarIsZero(a)) {
-        r[0] = r[1] = r[2] = r[3] = 0;
-        return;
-    }
-    uint64_t tmp[4];
-    scalarSub(tmp, N_CONST, a);
-    scalarReduceN(r, tmp);
-}
-
-__host__ __device__ void scalarSplitLambda(uint64_t r1[4], uint64_t r2[4], const uint64_t k[4]) {
-    uint64_t c1[4], c2[4], t1[4], t2[4];
-
-    scalarMulShiftVar(c1, k, G1, 384);
-    scalarMulShiftVar(c2, k, G2, 384);
-    scalarMul(t1, c1, MINUS_B1);
-    scalarMul(t2, c2, MINUS_B2);
-    scalarAdd(r2, t1, t2);
-    scalarMul(t1, r2, LAMBDA_N);
-    scalarNeg(t1, t1);
-    scalarAdd(r1, t1, k);
-}
-
-__host__ __device__ void jacobianScalarMultGlv(ECPointJacobian *R, const uint64_t k[4], int nBits) {
-    uint64_t r1[4], r2[4];
-    scalarSplitLambda(r1, r2, k);
-    ECPointJacobian P1, P2;
-    jacobianScalarMult(&P1, r1, nBits);
-    jacobianScalarMultPhi(&P2, r2, nBits);
-    jacobianAdd(R, &P1, &P2);
-}
-
-__host__ __device__ void pointInitJacobian(ECPointJacobian *P) { for (int i = 0; i < 4; i++) { P->X[i] = 0; P->Y[i] = 0; P->Z[i] = 0; } P->infinity = 1; }
-__host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) { jacobianAdd(R, P, Q); }
-__host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P) { jacobianDouble(R, P); }
-__host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits) { jacobianScalarMultGlv(R, k, nBits); }
-__host__ __device__ void getCompressedPublicKey(unsigned char *out, const ECPoint *publicKey) {
-    unsigned char prefix = (publicKey->y[0] & 1ULL) ? 0x03 : 0x02;
-    out[0] = prefix;
-
-    for (int i = 0; i < 4; i++) {
-        uint64_t word = publicKey->x[3 - i];
-        out[1 + i*8 + 0] = (word >> 56) & 0xFF;
-        out[1 + i*8 + 1] = (word >> 48) & 0xFF;
-        out[1 + i*8 + 2] = (word >> 40) & 0xFF;
-        out[1 + i*8 + 3] = (word >> 32) & 0xFF;
-        out[1 + i*8 + 4] = (word >> 24) & 0xFF;
-        out[1 + i*8 + 5] = (word >> 16) & 0xFF;
-        out[1 + i*8 + 6] = (word >> 8) & 0xFF;
-        out[1 + i*8 + 7] = word & 0xFF;
-    }
-}
-
-__host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *PRIV_KEY, int nBits) {
-    ECPoint pub;
-    ECPointJacobian pub_jac;
-
-    jacobianScalarMultGlv(&pub_jac, PRIV_KEY, nBits);
-    jacobianToAffine(&pub, &pub_jac);
-    getCompressedPublicKey(out, &pub);
+    return found_key;
 }
 
 /*
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
-    unsigned char pubkey_compressed[33];
-
-    getfcw();
-    initPrecompG();
-
-    generatePublicKey(pubkey_compressed, PRIV_KEY, 1);
-
-    std::cout << "Compressed Public Key: ";
-    for (int i = 0; i < 33; ++i) {
-        printf("%02x", pubkey_compressed[i]);
-    }
-    std::cout << std::endl;
-    std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
-    std::cout << "WindowSize: " << windowSize << std::endl;
-
-    return 0;
-}
-*/
-
-/*
-int main() {
-    const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
-    unsigned char pubkey_compressed[33];
+    uint64_t PRIV_KEY[4] = {0x0123456789ABCDEF, 0, 0, 0};
 
     ECPointJacobian pub_jac;
 
-    getfcw();
-    initPrecompG();
+    init_secp256k1();
 
     int count = 0;
+    int key_range = 64; //priv key 64 bits
     auto start = std::chrono::steady_clock::now();
 
     for (int i = 0; i < 100000000; i++) {
-        scalarMultJacobian(&pub_jac, PRIV_KEY, 1);
+        scalarMultJacobian(&pub_jac, PRIV_KEY, key_range);
         count++;
 
         auto now = std::chrono::steady_clock::now();
@@ -788,14 +676,44 @@ int main() {
         }
     }
 
-    generatePublicKey(pubkey_compressed, PRIV_KEY, 1);
-    std::cout << "Compressed Public Key: ";
-    for (int i = 0; i < 33; ++i) {
-        printf("%02x", pubkey_compressed[i]);
-    }
     std::cout << std::endl;
     std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
 
     return 0;
 }
 */
+
+int main(int argc, char* argv[]) {
+
+    if (argc < 3 || argc > 4) {
+        std::cerr << "Uso: " << argv[0] << " <Compressed Public Key> <Key Range> <Optional Test Mode: --t to true>" << std::endl;
+        return 1;
+    }
+
+    init_secp256k1();
+
+    std::string pub_key_hex(argv[1]);
+    int key_range = std::stoi(argv[2]);
+    bool test_mode = (argc == 4 && std::string(argv[3]) == "--t");
+
+    if(test_mode && key_range > 20){
+        std::cout << "Use a range of 20 bits or less for test mode!" << std::endl;
+        return 1;
+    }
+
+    std::cout << "Press 'Ctrl \\' to Quit\n";
+
+    uint256_t found_key = prho(pub_key_hex, key_range, 3, test_mode);
+
+    auto uint_256_to_hex = [](const uint256_t& value) -> std::string {
+        std::ostringstream oss;
+        for(int i = 0; i < 4; i++) {
+            oss << std::setw(16) << std::setfill('0') << std::hex << value.limbs[i];
+        }
+        return oss.str();
+    };
+
+    std::cout << "Chave privada encontrada: " << uint_256_to_hex(found_key) << std::endl;
+
+    return 0;
+}
