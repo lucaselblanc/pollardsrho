@@ -12,12 +12,13 @@
 
 /* --- AINDA EM TESTES DE OTIMIZAÇÃO --- */
 
-#define MAX_W 16
+#define MAX_W 24 //Adjust according to your RAM memory
 #define MAX_PRECOMP (1 << (MAX_W-1))
 
 #include "secp256k1.h"
 #include <cuda_runtime.h>
 #include <cuda.h>
+#include <fstream>
 #include <iostream>
 #include <stdio.h>
 #include <stdint.h>
@@ -41,9 +42,9 @@ __device__ __constant__ uint64_t MINUS_B2[4] = { 0xD765CDA83DB1562CULL, 0x8A280A
 __device__ __constant__ uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
 __device__ __constant__ uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
 __device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
-__device__ ECPointJacobian precomp_g[MAX_PRECOMP];
-__device__ ECPointJacobian precomp_g_phi[MAX_PRECOMP];
-__device__ int window_size = 4;
+__device__ ECPointJacobian preCompG[MAX_PRECOMP];
+__device__ ECPointJacobian preCompGphi[MAX_PRECOMP];
+__device__ int windowSize = 4;
 #else
 constexpr uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 constexpr uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -61,9 +62,9 @@ constexpr uint64_t MINUS_B2[4] = { 0xD765CDA83DB1562CULL, 0x8A280AC50774346DULL,
 constexpr uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
 constexpr uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
 constexpr uint64_t MU_P = 0xD838091DD2253531ULL;
-ECPointJacobian precomp_g[MAX_PRECOMP];
-ECPointJacobian precomp_g_phi[MAX_PRECOMP];
-int window_size = 4;
+ECPointJacobian preCompG[MAX_PRECOMP];
+ECPointJacobian preCompGphi[MAX_PRECOMP];
+int windowSize = 4;
 #endif
 
 #ifdef __CUDA_ARCH__
@@ -102,11 +103,51 @@ struct uint128_t {
 using uint128_t = unsigned __int128;
 #endif
 
-__host__ __device__ void montgomery_reduce_p(uint64_t *result, const uint64_t *input_high, const uint64_t *input_low) {
+__host__ void getfcw() {
+    int w = 4;
+    std::cout << "Pre-Computing Fixed-Comb Points, Wait... " << std::endl;
+    #ifdef __CUDA_ARCH__
+        size_t freeMem, totalMem;
+        cudaMemGetInfo(&freeMem, &totalMem);
+        size_t maxPoints = (freeMem / 2) / 128; // 50% RAM
+        while (w < MAX_W && (1ull << (w-1)) < maxPoints) {
+            w++;
+            if (w > MAX_W) {
+                w = MAX_W;
+                break;
+            }
+        }
+    #else
+        auto cpuMemGetInfo = []() -> size_t {
+            std::ifstream meminfo("/proc/meminfo");
+            std::string key;
+            unsigned long value;
+            std::string unit;
+            while (meminfo >> key >> value >> unit) {
+                if (key == "MemTotal:") {
+                    return static_cast<size_t>(value) * 1024;
+                }
+            }
+            return 0;
+        };
+        size_t freeMem = cpuMemGetInfo();
+        size_t maxPoints = (freeMem / 2) / 128; // 50% RAM
+        while ((1ull << (w-1)) < maxPoints) {
+            w++;
+            if (w > MAX_W) {
+                w = MAX_W;
+                break;
+            }
+        }
+    #endif
+    windowSize = w;
+}
+
+__host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
     uint64_t temp[8];
     for (int i = 0; i < 4; i++) {
-        temp[i]     = input_low[i];
-        temp[i + 4] = input_high[i];
+        temp[i]     =  inputLow[i];
+        temp[i + 4] = inputHigh[i];
     }
 
     for (int i = 0; i < 4; i++) {
@@ -142,9 +183,9 @@ __host__ __device__ void montgomery_reduce_p(uint64_t *result, const uint64_t *i
     }
 }
 
-__host__ __device__ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
-    uint64_t a_local[4];
-    for (int i = 0; i < 4; i++) a_local[i] = a[i];
+__host__ __device__ void toMontgomeryP(uint64_t *result, const uint64_t *a) {
+    uint64_t aLocal[4];
+    for (int i = 0; i < 4; i++) aLocal[i] = a[i];
 
     uint64_t temp[8] = {0};
 
@@ -152,7 +193,7 @@ __host__ __device__ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
         uint128_t carry = 0;
 
         for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)a_local[i] * (uint128_t)R2_MOD_P[j] + (uint128_t)temp[i + j] + carry;
+            uint128_t prod = (uint128_t)aLocal[i] * (uint128_t)R2_MOD_P[j] + (uint128_t)temp[i + j] + carry;
             temp[i + j] = (uint64_t)prod;
             carry = prod >> 64;
         }
@@ -174,15 +215,15 @@ __host__ __device__ void to_montgomery_p(uint64_t *result, const uint64_t *a) {
         high[i] = temp[i + 4];
     }
 
-    montgomery_reduce_p(result, high, low);
+    montgomeryReduceP(result, high, low);
 }
 
-__host__ __device__ void from_montgomery_p(uint64_t *result, const uint64_t *a) {
+__host__ __device__ void fromMontgomeryP(uint64_t *result, const uint64_t *a) {
     uint64_t zero[4] = {0, 0, 0, 0};
-    montgomery_reduce_p(result, zero, a);
+    montgomeryReduceP(result, zero, a);
 }
 
-__host__ __device__ void mod_add_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+__host__ __device__ void modAddP(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint128_t carry = 0;
 
     for (int i = 0; i < 4; ++i) {
@@ -209,7 +250,7 @@ __host__ __device__ void mod_add_p(uint64_t *result, const uint64_t *a, const ui
     }
 }
 
-__host__ __device__ void mod_sub_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+__host__ __device__ void modSubP(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t borrow = 0;
 
     for (int i = 0; i < 4; ++i) {
@@ -228,7 +269,7 @@ __host__ __device__ void mod_sub_p(uint64_t *result, const uint64_t *a, const ui
     }
 }
 
-__host__ __device__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+__host__ __device__ void modMulMontP(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t high[4], low[4];
 
     uint64_t temp[8] = {0};
@@ -247,14 +288,14 @@ __host__ __device__ void mod_mul_mont_p(uint64_t *result, const uint64_t *a, con
         high[i] = temp[i + 4];
     }
 
-    montgomery_reduce_p(result, high, low);
+    montgomeryReduceP(result, high, low);
 }
 
-__host__ __device__ void mod_sqr_mont_p(uint64_t *out, const uint64_t *in) {
-    mod_mul_mont_p(out, in, in);
+__host__ __device__ void modSqrtMontP(uint64_t *out, const uint64_t *in) {
+    modMulMontP(out, in, in);
 }
 
-__host__ __device__ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
+__host__ __device__ void scalarReduceN(uint64_t *r, const uint64_t *k) {
     bool ge = false;
     for (int i = 3; i >= 0; i--) {
         if (k[i] > N_CONST[i]) { ge = true; break; }
@@ -275,26 +316,26 @@ __host__ __device__ void scalar_reduce_n(uint64_t *r, const uint64_t *k) {
     }
 }
 
-__host__ __device__ void mod_exp_mont_p(uint64_t *res, const uint64_t *base, const uint64_t *exp) {
+__host__ __device__ void modExpMontP(uint64_t *res, const uint64_t *base, const uint64_t *exp) {
     uint64_t one[4] = {0};
     one[0] = 1ULL;
-    to_montgomery_p(res, one);
+    toMontgomeryP(res, one);
 
     uint64_t acc[4];
     for (int i = 0; i < 4; i++) acc[i] = base[i];
 
     for (int word = 3; word >= 0; word--) {
         for (int bit = 63; bit >= 0; bit--) {
-            mod_sqr_mont_p(res, res);
+            modSqrtMontP(res, res);
 
             if ((exp[word] >> bit) & 1ULL) {
-                mod_mul_mont_p(res, res, acc);
+                modMulMontP(res, res, acc);
             }
         }
     }
 }
 
-__host__ __device__ void sqrt_mod_p(uint64_t y[4], const uint64_t v[4]) {
+__host__ __device__ void sqrtModP(uint64_t y[4], const uint64_t v[4]) {
     uint64_t exp[4];
 
     exp[0] = 0x0FFFFFFFFFFFFFFF;
@@ -302,10 +343,10 @@ __host__ __device__ void sqrt_mod_p(uint64_t y[4], const uint64_t v[4]) {
     exp[2] = 0xFFFFFFFFFFFFFFFF;
     exp[3] = 0x3FFFFFFF0000000C;
 
-    mod_exp_mont_p(y, v, exp);
+    modExpMontP(y, v, exp);
 }
 
-__host__ __device__ void jacobian_init(ECPointJacobian *point) {
+__host__ __device__ void jacobianInit(ECPointJacobian *point) {
     for (int i = 0; i < 4; i++) {
         point->X[i] = 0;
         point->Y[i] = 0;
@@ -314,7 +355,7 @@ __host__ __device__ void jacobian_init(ECPointJacobian *point) {
     point->infinity = 0;
 }
 
-__host__ __device__ void jacobian_set_infinity(ECPointJacobian *point) {
+__host__ __device__ void jacobianSetInfinity(ECPointJacobian *point) {
     for (int i = 0; i < 4; i++) {
         point->X[i] = ONE_MONT[i];
         point->Y[i] = ONE_MONT[i];
@@ -323,7 +364,7 @@ __host__ __device__ void jacobian_set_infinity(ECPointJacobian *point) {
     point->infinity = 1;
 }
 
-__host__ __device__ int jacobian_is_infinity(const ECPointJacobian *point) {
+__host__ __device__ int jacobianIsInfinity(const ECPointJacobian *point) {
     uint64_t z_zero = 0;
     for (int i = 0; i < 4; i++) {
         z_zero |= point->Z[i];
@@ -331,98 +372,98 @@ __host__ __device__ int jacobian_is_infinity(const ECPointJacobian *point) {
     return point->infinity || (z_zero == 0);
 }
 
-__host__ __device__ void jacobian_to_affine(ECPoint *aff, const ECPointJacobian *jac) {
-    if (jacobian_is_infinity(jac)) {
+__host__ __device__ void jacobianToAffine(ECPoint *aff, const ECPointJacobian *jac) {
+    if (jacobianIsInfinity(jac)) {
         for (int i = 0; i < 4; i++) aff->x[i] = aff->y[i] = 0;
         aff->infinity = 1;
         return;
     }
 
-    uint64_t Z_inv[4], Z_inv2[4];
+    uint64_t zInv[4], zInv2[4];
 
-    mod_exp_mont_p(Z_inv, jac->Z, P_CONST_MINUS_2);
-    mod_sqr_mont_p(Z_inv2, Z_inv);
-    mod_mul_mont_p(aff->x, jac->X, Z_inv2);
-    from_montgomery_p(aff->x, aff->x);
+    modExpMontP(zInv, jac->Z, P_CONST_MINUS_2);
+    modSqrtMontP(zInv2, zInv);
+    modMulMontP(aff->x, jac->X, zInv2);
+    fromMontgomeryP(aff->x, aff->x);
 
     uint64_t X3[4], aX[4], rhs[4];
-    mod_sqr_mont_p(X3, aff->x);
-    mod_mul_mont_p(X3, X3, aff->x);
-    mod_mul_mont_p(aX, aff->x, ZERO_MONT);
-    mod_add_p(rhs, X3, aX);
-    mod_add_p(rhs, rhs, SEVEN_MONT);
+    modSqrtMontP(X3, aff->x);
+    modMulMontP(X3, X3, aff->x);
+    modMulMontP(aX, aff->x, ZERO_MONT);
+    modAddP(rhs, X3, aX);
+    modAddP(rhs, rhs, SEVEN_MONT);
 
-    sqrt_mod_p(aff->y, rhs);
+    sqrtModP(aff->y, rhs);
 
     aff->infinity = 0;
 }
 
-__host__ __device__ void jacobian_double(ECPointJacobian *result, const ECPointJacobian *point) {
-    if (jacobian_is_infinity(point)) {
-        jacobian_set_infinity(result);
+__host__ __device__ void jacobianDouble(ECPointJacobian *result, const ECPointJacobian *point) {
+    if (jacobianIsInfinity(point)) {
+        jacobianSetInfinity(result);
         return;
     }
 
     uint64_t ZZ[4], w[4], B[4];
 
-    mod_sqr_mont_p(result->X, point->X); 
-    mod_sqr_mont_p(ZZ, point->Z);
-    mod_add_p(w, result->X, result->X);
-    mod_add_p(w, w, result->X);
-    mod_mul_mont_p(B, point->X, ZZ);
-    mod_add_p(B, B, B);
-    mod_sqr_mont_p(result->X, w);
-    mod_sub_p(result->X, result->X, B);
-    mod_add_p(result->Z, point->X, point->Z);
-    mod_sqr_mont_p(result->Z, result->Z);
-    mod_sub_p(result->Z, result->Z, result->X);
-    mod_sub_p(result->Z, result->Z, ZZ);
+    modSqrtMontP(result->X, point->X); 
+    modSqrtMontP(ZZ, point->Z);
+    modAddP(w, result->X, result->X);
+    modAddP(w, w, result->X);
+    modMulMontP(B, point->X, ZZ);
+    modAddP(B, B, B);
+    modSqrtMontP(result->X, w);
+    modSubP(result->X, result->X, B);
+    modAddP(result->Z, point->X, point->Z);
+    modSqrtMontP(result->Z, result->Z);
+    modSubP(result->Z, result->Z, result->X);
+    modSubP(result->Z, result->Z, ZZ);
 
     result->infinity = 0;
 }
 
-__host__ __device__ void jacobian_add(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
-    if (jacobian_is_infinity(P)) {
+__host__ __device__ void jacobianAdd(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
+    if (jacobianIsInfinity(P)) {
         *result = *Q;
         return;
     }
-    if (jacobian_is_infinity(Q)) {
+    if (jacobianIsInfinity(Q)) {
         *result = *P;
         return;
     }
 
     uint64_t Z1Z1[4], Z2Z2[4], U1[4], U2[4], H[4], I[4], J[4], V[4], Z1Z2[4];
 
-    mod_sqr_mont_p(Z1Z1, P->Z);
-    mod_sqr_mont_p(Z2Z2, Q->Z);
-    mod_mul_mont_p(U1, P->X, Z2Z2);
-    mod_mul_mont_p(U2, Q->X, Z1Z1);
-    mod_sub_p(H, U2, U1);
+    modSqrtMontP(Z1Z1, P->Z);
+    modSqrtMontP(Z2Z2, Q->Z);
+    modMulMontP(U1, P->X, Z2Z2);
+    modMulMontP(U2, Q->X, Z1Z1);
+    modSubP(H, U2, U1);
 
     uint64_t H_zero = H[0] | H[1] | H[2] | H[3];
     if (H_zero == 0) {
-        jacobian_double(result, P);
+        jacobianDouble(result, P);
         return;
     }
 
-    mod_add_p(I, H, H);
-    mod_sqr_mont_p(I, I);
-    mod_mul_mont_p(J, H, I);
-    mod_mul_mont_p(V, U1, I);
-    mod_add_p(H, V, V);
-    mod_add_p(H, H, J);
-    mod_sub_p(result->X, I, H);
-    mod_add_p(Z1Z2, P->Z, Q->Z);
-    mod_sqr_mont_p(Z1Z2, Z1Z2);
-    mod_sub_p(Z1Z2, Z1Z2, Z1Z1);
-    mod_sub_p(Z1Z2, Z1Z2, Z2Z2);
-    mod_mul_mont_p(result->Z, Z1Z2, H);
+    modAddP(I, H, H);
+    modSqrtMontP(I, I);
+    modMulMontP(J, H, I);
+    modMulMontP(V, U1, I);
+    modAddP(H, V, V);
+    modAddP(H, H, J);
+    modSubP(result->X, I, H);
+    modAddP(Z1Z2, P->Z, Q->Z);
+    modSqrtMontP(Z1Z2, Z1Z2);
+    modSubP(Z1Z2, Z1Z2, Z1Z1);
+    modSubP(Z1Z2, Z1Z2, Z2Z2);
+    modMulMontP(result->Z, Z1Z2, H);
 
     result->infinity = 0;
 }
 
-__host__ __device__ void endomorphism_map(ECPointJacobian *R, const ECPointJacobian *P) {
-    mod_mul_mont_p(R->X, P->X, BETA_P);
+__host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobian *P) {
+    modMulMontP(R->X, P->X, BETA_P);
     for (int i = 0; i < 4; i++) {
         R->Y[i] = P->Y[i];
         R->Z[i] = P->Z[i];
@@ -430,130 +471,130 @@ __host__ __device__ void endomorphism_map(ECPointJacobian *R, const ECPointJacob
     R->infinity = P->infinity;
 }
 
-__host__ __device__ void init_precomp_g() {
-    int w = window_size;
-    int d_normal = (256 + w - 1) / w;
-    int d_phi    = (128 + w - 1) / w;
+__host__ __device__ void initPrecompG() {
+    int w = windowSize;
+    int dnorm = (256 + w - 1) / w;
+    int dphi    = (128 + w - 1) / w;
     int tableSize = (1 << w) - 1;
 
-    uint64_t GX_mont[4];
-    to_montgomery_p(GX_mont, GX_CONST);
+    uint64_t gxMont[4];
+    toMontgomeryP(gxMont, GX_CONST);
 
-    ECPointJacobian G, GE;
+    ECPointJacobian g, ge;
     for (int i = 0; i < 4; i++) {
-        G.X[i] = GX_mont[i];
-        G.Z[i] = ONE_MONT[i];
-        GE.X[i] = GX_mont[i];
-        GE.Z[i] = ONE_MONT[i];
+        g.X[i] = gxMont[i];
+        g.Z[i] = ONE_MONT[i];
+        ge.X[i] = gxMont[i];
+        ge.Z[i] = ONE_MONT[i];
     }
 
-    G.infinity  = 0;
-    GE.infinity = 0;
+    g.infinity  = 0;
+    ge.infinity = 0;
 
-    endomorphism_map(&GE, &GE);
+    endomorphismMap(&ge, &ge);
 
-    ECPointJacobian P_j[MAX_W];
-    ECPointJacobian P_je[MAX_W];
+    ECPointJacobian jacNorm[MAX_W];
+    ECPointJacobian jacEndo[MAX_W];
 
-    P_j[0]  = G;
-    P_je[0] = GE;
+    jacNorm[0]  = g;
+    jacEndo[0] = ge;
 
     for (int j = 1; j < w; j++) {
-        P_j[j]  = P_j[j-1];
-        P_je[j] = P_je[j-1];
+        jacNorm[j]  = jacNorm[j-1];
+        jacEndo[j] = jacEndo[j-1];
 
-        for (int i = 0; i < d_normal; i++) {
-            jacobian_double(&P_j[j], &P_j[j]);
+        for (int i = 0; i < dnorm; i++) {
+            jacobianDouble(&jacNorm[j], &jacNorm[j]);
         }
-        for (int i = 0; i < d_phi; i++) {
-            jacobian_double(&P_je[j], &P_je[j]);
+        for (int i = 0; i < dphi; i++) {
+            jacobianDouble(&jacEndo[j], &jacEndo[j]);
         }
     }
 
     for (int i = 1; i <= tableSize; i++) {
-        jacobian_set_infinity(&precomp_g[i-1]);
+        jacobianSetInfinity(&preCompG[i-1]);
         for (int j = 0; j < w; j++) {
             if ((i >> j) & 1) {
                 ECPointJacobian tmp;
-                jacobian_add(&tmp, &precomp_g[i-1], &P_j[j]);
-                precomp_g[i-1] = tmp;
+                jacobianAdd(&tmp, &preCompG[i-1], &jacNorm[j]);
+                preCompG[i-1] = tmp;
             }
         }
 
-        jacobian_set_infinity(&precomp_g_phi[i-1]);
+        jacobianSetInfinity(&preCompGphi[i-1]);
         for (int j = 0; j < w; j++) {
             if ((i >> j) & 1) {
                 ECPointJacobian tmp;
-                jacobian_add(&tmp, &precomp_g_phi[i-1], &P_je[j]);
-                precomp_g_phi[i-1] = tmp;
+                jacobianAdd(&tmp, &preCompGphi[i-1], &jacEndo[j]);
+                preCompGphi[i-1] = tmp;
             }
         }
     }
 }
 
-__host__ __device__ void jacobian_scalar_mult(ECPointJacobian *result, const uint64_t *scalar, int n_bits) {
-    int w = window_size;
-    int d = (n_bits + w - 1) / w;
+__host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint64_t *scalar, int nBits) {
+    int w = windowSize;
+    int d = (nBits + w - 1) / w;
 
-    jacobian_set_infinity(result);
+    jacobianSetInfinity(result);
 
     for (int col = d - 1; col >= 0; col--) {
         if (col != d - 1) {
             for (int i = 0; i < w; i++) {
-                jacobian_double(result, result);
+                jacobianDouble(result, result);
             }
         }
 
         int idx = 0;
         for (int row = 0; row < w; row++) {
-            int bit_index = row * d + col;
-            if (bit_index >= n_bits) continue;
-            int limb = bit_index / 64;
-            int shift = bit_index % 64;
+            int bitIndex = row * d + col;
+            if (bitIndex >= nBits) continue;
+            int limb = bitIndex / 64;
+            int shift = bitIndex % 64;
             uint64_t bit = (scalar[limb] >> shift) & 1ULL;
             idx |= (bit << row);
         }
 
         if (idx != 0) {
             ECPointJacobian tmp;
-            jacobian_add(&tmp, result, &precomp_g[idx - 1]);
+            jacobianAdd(&tmp, result, &preCompG[idx - 1]);
             *result = tmp;
         }
     }
 }
 
-__host__ __device__ void jacobian_scalar_mult_phi(ECPointJacobian *result, const uint64_t *scalar, int n_bits) {
-    int w = window_size;
-    int d = (n_bits + w - 1) / w;
+__host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, const uint64_t *scalar, int nBits) {
+    int w = windowSize;
+    int d = (nBits + w - 1) / w;
 
-    jacobian_set_infinity(result);
+    jacobianSetInfinity(result);
 
     for (int col = d - 1; col >= 0; col--) {
         if (col != d - 1) {
             for (int i = 0; i < w; i++) {
-                jacobian_double(result, result);
+                jacobianDouble(result, result);
             }
         }
 
         int idx = 0;
         for (int row = 0; row < w; row++) {
-            int bit_index = row * d + col;
-            if (bit_index >= n_bits) continue;
-            int limb = bit_index / 64;
-            int shift = bit_index % 64;
+            int bitIndex = row * d + col;
+            if (bitIndex >= nBits) continue;
+            int limb = bitIndex / 64;
+            int shift = bitIndex % 64;
             uint64_t bit = (scalar[limb] >> shift) & 1ULL;
             idx |= (bit << row);
         }
 
         if (idx != 0) {
             ECPointJacobian tmp;
-            jacobian_add(&tmp, result, &precomp_g_phi[idx - 1]);
+            jacobianAdd(&tmp, result, &preCompGphi[idx - 1]);
             *result = tmp;
         }
     }
 }
 
-__host__ __device__ void scalar_mul_shift_var(uint64_t r[4], const uint64_t a[4], const uint64_t b[4], int shift) {
+__host__ __device__ void scalarMulShiftVar(uint64_t r[4], const uint64_t a[4], const uint64_t b[4], int shift) {
     uint64_t t[8] = {0};
 
     for (int i = 0; i < 4; i++) {
@@ -580,7 +621,7 @@ __host__ __device__ void scalar_mul_shift_var(uint64_t r[4], const uint64_t a[4]
     }
 }
 
-__host__ __device__ void scalar_mul(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
+__host__ __device__ void scalarMul(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
     uint64_t t[8] = {0};
 
     for (int i = 0; i < 4; i++) {
@@ -595,20 +636,20 @@ __host__ __device__ void scalar_mul(uint64_t r[4], const uint64_t a[4], const ui
         t[i+4] = carry;
     }
 
-    scalar_reduce_n(r, t);
+    scalarReduceN(r, t);
 }
 
-__host__ __device__ void scalar_add(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
+__host__ __device__ void scalarAdd(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
     uint64_t carry = 0;
     for (int i = 0; i < 4; i++) {
         uint64_t tmp = a[i] + b[i] + carry;
         carry = (tmp < a[i]) || (carry && tmp == a[i]);
         r[i] = tmp;
     }
-    scalar_reduce_n(r, r);
+    scalarReduceN(r, r);
 }
 
-__host__ __device__ void scalar_sub(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
+__host__ __device__ void scalarSub(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
     uint64_t borrow = 0;
     for (int i = 0; i < 4; i++) {
         uint64_t bi = b[i] + borrow;
@@ -626,10 +667,10 @@ __host__ __device__ void scalar_sub(uint64_t r[4], const uint64_t a[4], const ui
         }
     }
 
-    scalar_reduce_n(r, r);
+    scalarReduceN(r, r);
 }
 
-__host__ __device__ int scalar_is_zero(const uint64_t a[4]) {
+__host__ __device__ int scalarIsZero(const uint64_t a[4]) {
     uint64_t acc = 0;
     for (int i = 0; i < 4; i++) {
         acc |= a[i];
@@ -637,62 +678,48 @@ __host__ __device__ int scalar_is_zero(const uint64_t a[4]) {
     return acc == 0;
 }
 
-__host__ __device__ void scalar_neg(uint64_t r[4], const uint64_t a[4]) {
-    if (scalar_is_zero(a)) {
+__host__ __device__ void scalarNeg(uint64_t r[4], const uint64_t a[4]) {
+    if (scalarIsZero(a)) {
         r[0] = r[1] = r[2] = r[3] = 0;
         return;
     }
     uint64_t tmp[4];
-    scalar_sub(tmp, N_CONST, a);
-    scalar_reduce_n(r, tmp);
+    scalarSub(tmp, N_CONST, a);
+    scalarReduceN(r, tmp);
 }
 
-__host__ __device__ void scalar_split_lambda(uint64_t r1[4], uint64_t r2[4], const uint64_t k[4]) {
+__host__ __device__ void scalarSplitLambda(uint64_t r1[4], uint64_t r2[4], const uint64_t k[4]) {
     uint64_t c1[4], c2[4], t1[4], t2[4];
 
-    scalar_mul_shift_var(c1, k, G1, 384);
-    scalar_mul_shift_var(c2, k, G2, 384);
-    scalar_mul(t1, c1, MINUS_B1);
-    scalar_mul(t2, c2, MINUS_B2);
-    scalar_add(r2, t1, t2);
-    scalar_mul(t1, r2, LAMBDA_N);
-    scalar_neg(t1, t1);
-    scalar_add(r1, t1, k);
+    scalarMulShiftVar(c1, k, G1, 384);
+    scalarMulShiftVar(c2, k, G2, 384);
+    scalarMul(t1, c1, MINUS_B1);
+    scalarMul(t2, c2, MINUS_B2);
+    scalarAdd(r2, t1, t2);
+    scalarMul(t1, r2, LAMBDA_N);
+    scalarNeg(t1, t1);
+    scalarAdd(r1, t1, k);
 }
 
-__host__ __device__ void jacobian_scalar_mult_glv(ECPointJacobian *R, const uint64_t k[4], int n_bits) {
+__host__ __device__ void jacobianScalarMultGlv(ECPointJacobian *R, const uint64_t k[4], int nBits) {
     uint64_t r1[4], r2[4];
-    scalar_split_lambda(r1, r2, k);
+    scalarSplitLambda(r1, r2, k);
     ECPointJacobian P1, P2;
-    jacobian_scalar_mult(&P1, r1, n_bits);
-    jacobian_scalar_mult_phi(&P2, r2, n_bits);
-    jacobian_add(R, &P1, &P2);
+    jacobianScalarMult(&P1, r1, nBits);
+    jacobianScalarMultPhi(&P2, r2, nBits);
+    jacobianAdd(R, &P1, &P2);
 }
 
-__host__ __device__ void point_from_montgomery(ECPoint *result, const ECPoint *point_mont) {
-    if (point_mont->infinity) {
-        result->infinity = 1;
-        for (int i = 0; i < 4; i++) {
-            result->x[i] = 0;
-            result->y[i] = 0;
-        }
-        return;
-    }
-    from_montgomery_p(result->x, point_mont->x);
-    from_montgomery_p(result->y, point_mont->y);
-    result->infinity = 0;
-}
-
-__host__ __device__ void point_init_jacobian(ECPointJacobian *P) { for (int i = 0; i < 4; i++) { P->X[i] = 0; P->Y[i] = 0; P->Z[i] = 0; } P->infinity = 1; }
-__host__ __device__ void point_add_jacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) { jacobian_add(R, P, Q); }
-__host__ __device__ void point_double_jacobian(ECPointJacobian *R, const ECPointJacobian *P) { jacobian_double(R, P); }
-__host__ __device__ void scalar_mult_jacobian(ECPointJacobian *R, const uint64_t *k, int n_bits) { jacobian_scalar_mult_glv(R, k, n_bits); }
-__host__ __device__ void get_compressed_public_key(unsigned char *out, const ECPoint *public_key) {
-    unsigned char prefix = (public_key->y[0] & 1ULL) ? 0x03 : 0x02;
+__host__ __device__ void pointInitJacobian(ECPointJacobian *P) { for (int i = 0; i < 4; i++) { P->X[i] = 0; P->Y[i] = 0; P->Z[i] = 0; } P->infinity = 1; }
+__host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) { jacobianAdd(R, P, Q); }
+__host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P) { jacobianDouble(R, P); }
+__host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits) { jacobianScalarMultGlv(R, k, nBits); }
+__host__ __device__ void getCompressedPublicKey(unsigned char *out, const ECPoint *publicKey) {
+    unsigned char prefix = (publicKey->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
 
     for (int i = 0; i < 4; i++) {
-        uint64_t word = public_key->x[3 - i];
+        uint64_t word = publicKey->x[3 - i];
         out[1 + i*8 + 0] = (word >> 56) & 0xFF;
         out[1 + i*8 + 1] = (word >> 48) & 0xFF;
         out[1 + i*8 + 2] = (word >> 40) & 0xFF;
@@ -704,38 +731,25 @@ __host__ __device__ void get_compressed_public_key(unsigned char *out, const ECP
     }
 }
 
-__host__ __device__ void generate_public_key(unsigned char *out, const uint64_t *PRIV_KEY, int n_bits) {
+__host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *PRIV_KEY, int nBits) {
     ECPoint pub;
     ECPointJacobian pub_jac;
 
-    jacobian_scalar_mult_glv(&pub_jac, PRIV_KEY, n_bits);
-    jacobian_to_affine(&pub, &pub_jac);
-    get_compressed_public_key(out, &pub);
+    jacobianScalarMultGlv(&pub_jac, PRIV_KEY, nBits);
+    jacobianToAffine(&pub, &pub_jac);
+    getCompressedPublicKey(out, &pub);
 }
 
 /*
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t PRIV_KEY[4] = {0x0123456789ABCDEF, 0, 0, 0};
+    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
     unsigned char pubkey_compressed[33];
 
-    #ifdef __CUDA_ARCH__
-        size_t freeMem, totalMem;
-        cudaMemGetInfo(&freeMem, &totalMem);
-        size_t maxPoints = freeMem / 128;
-        int w = 4;
-        while (w < MAX_W && (1ull << (w-1)) < maxPoints) {
-            w++;
-        }
-        if (w > MAX_W) w = MAX_W;
-        window_size = w;
-    #else
-        window_size = 8;
-    #endif
+    getfcw();
+    initPrecompG();
 
-    init_precomp_g();
-
-    generate_public_key(pubkey_compressed, PRIV_KEY, 64);
+    generatePublicKey(pubkey_compressed, PRIV_KEY, 1);
 
     std::cout << "Compressed Public Key: ";
     for (int i = 0; i < 33; ++i) {
@@ -743,6 +757,7 @@ int main() {
     }
     std::cout << std::endl;
     std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
+    std::cout << "WindowSize: " << windowSize << std::endl;
 
     return 0;
 }
@@ -751,32 +766,19 @@ int main() {
 /*
 int main() {
     const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t PRIV_KEY[4] = {0x0123456789ABCDEF, 0, 0, 0};
+    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
     unsigned char pubkey_compressed[33];
 
     ECPointJacobian pub_jac;
 
-    #ifdef __CUDA_ARCH__
-        size_t freeMem, totalMem;
-        cudaMemGetInfo(&freeMem, &totalMem);
-        size_t maxPoints = freeMem / 128;
-        int w = 4;
-        while (w < MAX_W && (1ull << (w-1)) < maxPoints) {
-            w++;
-        }
-        if (w > MAX_W) w = MAX_W;
-        window_size = w;
-    #else
-        window_size = 8;
-    #endif
-
-    init_precomp_g();
+    getfcw();
+    initPrecompG();
 
     int count = 0;
     auto start = std::chrono::steady_clock::now();
 
     for (int i = 0; i < 100000000; i++) {
-        scalar_mult_jacobian(&pub_jac, PRIV_KEY, 64);
+        scalarMultJacobian(&pub_jac, PRIV_KEY, 1);
         count++;
 
         auto now = std::chrono::steady_clock::now();
@@ -786,7 +788,7 @@ int main() {
         }
     }
 
-    generate_public_key(pubkey_compressed, PRIV_KEY, 64);
+    generatePublicKey(pubkey_compressed, PRIV_KEY, 1);
     std::cout << "Compressed Public Key: ";
     for (int i = 0; i < 33; ++i) {
         printf("%02x", pubkey_compressed[i]);
