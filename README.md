@@ -55,6 +55,23 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
     ```bash
     ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135
     ```
+    ```
+    pre-computation fixed-comb:
+
+    2 GB -> MAX_W -> 	25 ->	33.554.431 PTS
+    4 GB -> MAX_W -> 	26 ->	67.108.863 PTS
+    8 GB -> MAX_W ->	 27 ->	134.217.727 PTS
+    16 GB -> MAX_W ->	 28 ->	268.435.455 PTS
+    32 GB	-> MAX_W -> 29 -> 536.870.911 PTS
+    64 GB -> MAX_W ->	 30 ->	1.073.741.823 PTS
+    128 GB -> MAX_W ->	 31 ->	2.147.483.647 PTS
+    256 GB -> MAX_W -> 	32 ->	4.294.967.295 PTS
+    512 GB -> MAX_W -> 	33 ->	8.589.934.591 PTS
+    1024 GB -> MAX_W -> 34 ->	17.179.869.823 PTS
+    2048 GB -> MAX_W -> 35 ->	34.359.738.367 PTS
+    4096 GB -> MAX_W -> 36 ->	68.719.476.735 PTS
+    8192 GB -> MAX_W -> 37 ->	137.438.953.471 PTS
+   ```
 
 ## Commands
 
