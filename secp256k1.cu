@@ -12,9 +12,6 @@
 
 /* --- AINDA EM TESTES DE OTIMIZAÇÃO --- */
 
-#define MAX_W 24 //Adjust according to your RAM memory
-#define MAX_PRECOMP (1 << (MAX_W-1))
-
 #include "secp256k1.h"
 #include <cuda_runtime.h>
 #include <cuda.h>
@@ -42,8 +39,8 @@ __device__ __constant__ uint64_t MINUS_B2[4] = { 0xD765CDA83DB1562CULL, 0x8A280A
 __device__ __constant__ uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
 __device__ __constant__ uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
 __device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
-__device__ ECPointJacobian preCompG[MAX_PRECOMP];
-__device__ ECPointJacobian preCompGphi[MAX_PRECOMP];
+__device__ ECPointJacobian* jacNorm;
+__device__ ECPointJacobian* jacEndo;
 __device__ int windowSize = 4;
 #else
 constexpr uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -62,10 +59,13 @@ constexpr uint64_t MINUS_B2[4] = { 0xD765CDA83DB1562CULL, 0x8A280AC50774346DULL,
 constexpr uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
 constexpr uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
 constexpr uint64_t MU_P = 0xD838091DD2253531ULL;
-ECPointJacobian preCompG[MAX_PRECOMP];
-ECPointJacobian preCompGphi[MAX_PRECOMP];
+ECPointJacobian* jacNorm;
+ECPointJacobian* jacEndo;
 int windowSize = 4;
 #endif
+
+ECPointJacobian* preCompG;
+ECPointJacobian* preCompGphi;
 
 #ifdef __CUDA_ARCH__
 struct uint128_t {
@@ -105,42 +105,31 @@ using uint128_t = unsigned __int128;
 
 __host__ void getfcw() {
     int w = 4;
-    std::cout << "Pre-Computing Fixed-Comb Points, Wait... " << std::endl;
-    #ifdef __CUDA_ARCH__
-        size_t freeMem, totalMem;
-        cudaMemGetInfo(&freeMem, &totalMem);
-        size_t maxPoints = (freeMem / 2) / 128; // 50% RAM
-        while (w < MAX_W && (1ull << (w-1)) < maxPoints) {
-            w++;
-            if (w > MAX_W) {
-                w = MAX_W;
-                break;
-            }
-        }
-    #else
-        auto cpuMemGetInfo = []() -> size_t {
-            std::ifstream meminfo("/proc/meminfo");
-            std::string key;
-            unsigned long value;
-            std::string unit;
-            while (meminfo >> key >> value >> unit) {
-                if (key == "MemTotal:") {
-                    return static_cast<size_t>(value) * 1024;
-                }
-            }
-            return 0;
-        };
-        size_t freeMem = cpuMemGetInfo();
-        size_t maxPoints = (freeMem / 2) / 128; // 50% RAM
-        while ((1ull << (w-1)) < maxPoints) {
-            w++;
-            if (w > MAX_W) {
-                w = MAX_W;
-                break;
-            }
-        }
-    #endif
-    windowSize = w;
+    for (int idx = 0;; idx++) {
+        std::ifstream levelFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/level");
+        if (!levelFile.is_open()) break;
+        int level; levelFile >> level;
+        std::ifstream typeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/type");
+        std::string type; typeFile >> type;
+        if (type != "Data" && type != "Unified") continue;
+        std::ifstream sizeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/size");
+        std::string sizeStr; sizeFile >> sizeStr;
+        size_t mult = 1;
+        if (sizeStr.back() == 'K') mult = 1024;
+        else if (sizeStr.back() == 'M') mult = 1024*1024;
+        size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
+        size_t maxPoints = size * 0.5 / 128;
+        if (maxPoints == 0) continue;
+        w = static_cast<int>(std::floor(std::log2(maxPoints)));
+    }
+
+    if(w > 4)
+    {
+        windowSize = w;
+    }
+
+    preCompG    = new ECPointJacobian[1ULL << windowSize];
+    preCompGphi = new ECPointJacobian[1ULL << windowSize];
 }
 
 __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
@@ -472,10 +461,9 @@ __host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobi
 }
 
 __host__ __device__ void initPrecompG() {
-    int w = windowSize;
-    int dnorm = (256 + w - 1) / w;
-    int dphi    = (128 + w - 1) / w;
-    int tableSize = (1 << w) - 1;
+    int dnorm = (256 + windowSize - 1) / windowSize;
+    int dphi = (128 + windowSize - 1) / windowSize;
+    int tableSize = (1 << windowSize) - 1;
 
     uint64_t gxMont[4];
     toMontgomeryP(gxMont, GX_CONST);
@@ -493,13 +481,18 @@ __host__ __device__ void initPrecompG() {
 
     endomorphismMap(&ge, &ge);
 
-    ECPointJacobian jacNorm[MAX_W];
-    ECPointJacobian jacEndo[MAX_W];
+    #ifdef __CUDA_ARCH__
+        cudaMalloc(&jacNorm, sizeof(ECPointJacobian) * windowSize);
+        cudaMalloc(&jacEndo, sizeof(ECPointJacobian) * windowSize);
+    #else
+        jacNorm = new ECPointJacobian[windowSize];
+        jacEndo = new ECPointJacobian[windowSize];
+    #endif
 
     jacNorm[0]  = g;
     jacEndo[0] = ge;
 
-    for (int j = 1; j < w; j++) {
+    for (int j = 1; j < windowSize; j++) {
         jacNorm[j]  = jacNorm[j-1];
         jacEndo[j] = jacEndo[j-1];
 
@@ -513,7 +506,7 @@ __host__ __device__ void initPrecompG() {
 
     for (int i = 1; i <= tableSize; i++) {
         jacobianSetInfinity(&preCompG[i-1]);
-        for (int j = 0; j < w; j++) {
+        for (int j = 0; j < windowSize; j++) {
             if ((i >> j) & 1) {
                 ECPointJacobian tmp;
                 jacobianAdd(&tmp, &preCompG[i-1], &jacNorm[j]);
@@ -522,7 +515,7 @@ __host__ __device__ void initPrecompG() {
         }
 
         jacobianSetInfinity(&preCompGphi[i-1]);
-        for (int j = 0; j < w; j++) {
+        for (int j = 0; j < windowSize; j++) {
             if ((i >> j) & 1) {
                 ECPointJacobian tmp;
                 jacobianAdd(&tmp, &preCompGphi[i-1], &jacEndo[j]);
@@ -530,23 +523,30 @@ __host__ __device__ void initPrecompG() {
             }
         }
     }
+
+    #ifdef __CUDA_ARCH__
+        cudaFree(jacNorm);
+        cudaFree(jacEndo);
+    #else
+        delete[] jacNorm;
+        delete[] jacEndo;
+    #endif
 }
 
 __host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint64_t *scalar, int nBits) {
-    int w = windowSize;
-    int d = (nBits + w - 1) / w;
+    int d = (nBits + windowSize - 1) / windowSize;
 
     jacobianSetInfinity(result);
 
     for (int col = d - 1; col >= 0; col--) {
         if (col != d - 1) {
-            for (int i = 0; i < w; i++) {
+            for (int i = 0; i < windowSize; i++) {
                 jacobianDouble(result, result);
             }
         }
 
         int idx = 0;
-        for (int row = 0; row < w; row++) {
+        for (int row = 0; row < windowSize; row++) {
             int bitIndex = row * d + col;
             if (bitIndex >= nBits) continue;
             int limb = bitIndex / 64;
@@ -564,20 +564,19 @@ __host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint6
 }
 
 __host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, const uint64_t *scalar, int nBits) {
-    int w = windowSize;
-    int d = (nBits + w - 1) / w;
+    int d = (nBits + windowSize - 1) / windowSize;
 
     jacobianSetInfinity(result);
 
     for (int col = d - 1; col >= 0; col--) {
         if (col != d - 1) {
-            for (int i = 0; i < w; i++) {
+            for (int i = 0; i < windowSize; i++) {
                 jacobianDouble(result, result);
             }
         }
 
         int idx = 0;
-        for (int row = 0; row < w; row++) {
+        for (int row = 0; row < windowSize; row++) {
             int bitIndex = row * d + col;
             if (bitIndex >= nBits) continue;
             int limb = bitIndex / 64;
@@ -739,63 +738,3 @@ __host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *P
     jacobianToAffine(&pub, &pub_jac);
     getCompressedPublicKey(out, &pub);
 }
-
-/*
-int main() {
-    const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
-    unsigned char pubkey_compressed[33];
-
-    getfcw();
-    initPrecompG();
-
-    generatePublicKey(pubkey_compressed, PRIV_KEY, 1);
-
-    std::cout << "Compressed Public Key: ";
-    for (int i = 0; i < 33; ++i) {
-        printf("%02x", pubkey_compressed[i]);
-    }
-    std::cout << std::endl;
-    std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
-    std::cout << "WindowSize: " << windowSize << std::endl;
-
-    return 0;
-}
-*/
-
-/*
-int main() {
-    const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t PRIV_KEY[4] = {1, 0, 0, 0};
-    unsigned char pubkey_compressed[33];
-
-    ECPointJacobian pub_jac;
-
-    getfcw();
-    initPrecompG();
-
-    int count = 0;
-    auto start = std::chrono::steady_clock::now();
-
-    for (int i = 0; i < 100000000; i++) {
-        scalarMultJacobian(&pub_jac, PRIV_KEY, 1);
-        count++;
-
-        auto now = std::chrono::steady_clock::now();
-        if(std::chrono::duration_cast<std::chrono::seconds>(now - start).count() >= 10) {
-        std::cout << "Chaves geradas = " << count << std::endl;
-        start = now;
-        }
-    }
-
-    generatePublicKey(pubkey_compressed, PRIV_KEY, 1);
-    std::cout << "Compressed Public Key: ";
-    for (int i = 0; i < 33; ++i) {
-        printf("%02x", pubkey_compressed[i]);
-    }
-    std::cout << std::endl;
-    std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
-
-    return 0;
-}
-*/
