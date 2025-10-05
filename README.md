@@ -56,6 +56,8 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
     ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135
     ```
 
+---
+
     ```
  ## Pre-Computation Fixed-Comb:
 
