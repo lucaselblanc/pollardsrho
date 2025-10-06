@@ -558,7 +558,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     }
                 }
 
-                if (!xfilled && should_sync.load()) {
+                if (!xfilled) {
                     ECPoint pub1{}, pub2{};
                     for (int j = 0; j < 4; j++) {
                         pub1.x[j] = pub1_jac.X[j];
