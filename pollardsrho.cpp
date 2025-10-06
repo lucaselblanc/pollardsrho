@@ -13,6 +13,7 @@
 /* --- AINDA EM TESTES --- */
 
 #include "secp256k1.h"
+#include <fstream>
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -35,9 +36,54 @@ const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFF
 const uint256_t GX = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
 const uint256_t GY = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
 
+int windowSize = 4;
+
 void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
     for(int i = 0; i < 4; i++) {
         out[i] = value.limbs[i];
+    }
+}
+
+void getfcw() {
+    int w = 4;
+    for (int idx = 0;; idx++) {
+        std::ifstream levelFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/level");
+        if (!levelFile.is_open()) break;
+        int level;
+        levelFile >> level;
+
+        std::ifstream typeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/type");
+        std::string type;
+        typeFile >> type;
+        if (type != "Data" && type != "Unified") continue;
+
+        std::ifstream sizeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/size");
+        std::string sizeStr;
+        sizeFile >> sizeStr;
+        if (sizeStr.empty()) continue;
+
+        size_t mult = 1;
+        if (sizeStr.back() == 'K') mult = 1024;
+        else if (sizeStr.back() == 'M') mult = 1024*1024;
+
+        try {
+            size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
+            size_t maxPoints = size * 0.5 / 128;
+            if (maxPoints == 0) continue;
+            w = static_cast<int>(std::floor(std::log2(maxPoints)));
+        }
+        catch(const std::invalid_argument& e) {
+            std::cout << "Warning: " << e.what() << std::endl;
+            continue;
+        }
+        catch(const std::out_of_range& e) {
+            std::cout << "Warning: " << e.what() << std::endl;
+            continue;
+        }
+    }
+
+    if(w > 4) {
+        windowSize = w;
     }
 }
 
@@ -56,8 +102,8 @@ void init_secp256k1() {
         jacNorm = new ECPointJacobian[windowSize];
         jacEndo = new ECPointJacobian[windowSize];
     #endif
-   
-    initPrecompG();
+
+    initPrecompG(windowSize);
 
     uint64_t gx_arr[4], gy_arr[4];
     uint256_to_uint64_array(gx_arr, GX);
@@ -480,16 +526,16 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
                 #ifdef __CUDACC__
                     cudaMemcpy(hare.buffers->d_k, k1_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
-                    scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
+                    scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range, windowSize);
                     if (should_sync.load()) cudaDeviceSynchronize();
                     cudaMemcpy(&pub1_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                     cudaMemcpy(hare.buffers->d_k, k2_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
-                    scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
+                    scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range, windowSize);
                     if (should_sync.load()) cudaDeviceSynchronize();
                     cudaMemcpy(&pub2_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                 #else
-                    scalarMultJacobian(&pub1_jac, k1_array, key_range);
-                    scalarMultJacobian(&pub2_jac, k2_array, key_range);
+                    scalarMultJacobian(&pub1_jac, k1_array, key_range, windowSize);
+                    scalarMultJacobian(&pub2_jac, k2_array, key_range, windowSize);
                 #endif
 
                 bool xfilled = true;
@@ -568,11 +614,11 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                             ECPointJacobian test_point_jac{};
                             #ifdef __CUDACC__
                                 cudaMemcpy(hare.buffers->d_k, d_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
-                                scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
+                                scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range, windowSize);
                                 cudaDeviceSynchronize();
                                 cudaMemcpy(&test_point_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                             #else
-                                scalarMultJacobian(&test_point_jac, d_array + (4 - num_limbs), key_range);
+                                scalarMultJacobian(&test_point_jac, d_array + (4 - num_limbs), key_range, windowSize);
                             #endif
 
                             if (test_point_jac.infinity == 1) {
@@ -588,11 +634,11 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                                 ECPointJacobian verify_point_jac{};
                                 #ifdef __CUDACC__
                                     cudaMemcpy(hare.buffers->d_k, found_key_array + (4 - num_limbs), sizeof(uint64_t) * num_limbs, cudaMemcpyHostToDevice);
-                                    scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range);
+                                    scalarMultJacobian(hare.buffers->d_R, hare.buffers->d_k, key_range, windowSize);
                                     cudaDeviceSynchronize();
                                     cudaMemcpy(&verify_point_jac, hare.buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
                                 #else
-                                    scalarMultJacobian(&verify_point_jac, found_key_array + (4 - num_limbs), key_range);
+                                    scalarMultJacobian(&verify_point_jac, found_key_array + (4 - num_limbs), key_range, windowSize);
                                 #endif
 
                                 ECPoint verify_point{};
