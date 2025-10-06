@@ -32,26 +32,24 @@ typedef struct {
     int infinity;
 } ECPointJacobian;
 
-#if defined(__CUDACC__)
-    __device__ ECPointJacobian* preCompG;
-    __device__ ECPointJacobian* preCompGphi;
-    __device__ ECPointJacobian* jacNorm;
-    __device__ ECPointJacobian* jacEndo;
-    __device__ int windowSize = 4;
+#ifdef __CUDA_ARCH__
+    __device__ extern ECPointJacobian* preCompG;
+    __device__ extern ECPointJacobian* preCompGphi;
+    __device__ extern ECPointJacobian* jacNorm;
+    __device__ extern ECPointJacobian* jacEndo;
 #else
-    ECPointJacobian* preCompG;
-    ECPointJacobian* preCompGphi;
-    ECPointJacobian* jacNorm;
-    ECPointJacobian* jacEndo;
-    int windowSize = 4;
+    extern ECPointJacobian* preCompG;
+    extern ECPointJacobian* preCompGphi;
+    extern ECPointJacobian* jacNorm;
+    extern ECPointJacobian* jacEndo;
 #endif
 
 __host__ __device__ void pointInitJacobian(ECPointJacobian *P);
 __host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q);
 __host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P);
-__host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits);
+__host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits, int windowSize);
 __host__ __device__ void getCompressedPublicKey(unsigned char *out, const ECPoint *publicKey);
-__host__ __device__ void initPrecompG();
+__host__ __device__ void initPrecompG(int windowSize);
 __host__ void getfcw();
 
 #endif /* EC_SECP256K1_H */
