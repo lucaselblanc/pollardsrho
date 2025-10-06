@@ -15,7 +15,6 @@
 #include "secp256k1.h"
 #include <cuda_runtime.h>
 #include <cuda.h>
-#include <fstream>
 #include <iostream>
 #include <stdio.h>
 #include <stdint.h>
@@ -38,7 +37,11 @@ __device__ __constant__ uint64_t MINUS_B1[4] = { 0x6F547FA90ABFE4C3ULL, 0xE4437E
 __device__ __constant__ uint64_t MINUS_B2[4] = { 0xD765CDA83DB1562CULL, 0x8A280AC50774346DULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 __device__ __constant__ uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
 __device__ __constant__ uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
-__device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
+__device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
+__device__ ECPointJacobian* preCompG;
+__device__ ECPointJacobian* preCompGphi;
+__device__ ECPointJacobian* jacNorm;
+__device__ ECPointJacobian* jacEndo;
 #else
 constexpr uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 constexpr uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -56,6 +59,10 @@ constexpr uint64_t MINUS_B2[4] = { 0xD765CDA83DB1562CULL, 0x8A280AC50774346DULL,
 constexpr uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
 constexpr uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
 constexpr uint64_t MU_P = 0xD838091DD2253531ULL;
+ECPointJacobian* preCompG = nullptr;
+ECPointJacobian* preCompGphi = nullptr;
+ECPointJacobian* jacNorm = nullptr;
+ECPointJacobian* jacEndo = nullptr;
 #endif
 
 #ifdef __CUDA_ARCH__
@@ -93,49 +100,6 @@ struct uint128_t {
 #else
 using uint128_t = unsigned __int128;
 #endif
-
-__host__ void getfcw() {
-    int w = 4;
-    for (int idx = 0;; idx++) {
-        std::ifstream levelFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/level");
-        if (!levelFile.is_open()) break;
-        int level;
-        levelFile >> level;
-
-        std::ifstream typeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/type");
-        std::string type;
-        typeFile >> type;
-        if (type != "Data" && type != "Unified") continue;
-
-        std::ifstream sizeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/size");
-        std::string sizeStr;
-        sizeFile >> sizeStr;
-        if (sizeStr.empty()) continue;
-
-        size_t mult = 1;
-        if (sizeStr.back() == 'K') mult = 1024;
-        else if (sizeStr.back() == 'M') mult = 1024*1024;
-
-        try {
-            size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
-            size_t maxPoints = size * 0.5 / 128;
-            if (maxPoints == 0) continue;
-            w = static_cast<int>(std::floor(std::log2(maxPoints)));
-        }
-        catch(const std::invalid_argument& e) {
-            std::cout << "Warning: " << e.what() << std::endl;
-            continue;
-        }
-        catch(const std::out_of_range& e) {
-            std::cout << "Warning: " << e.what() << std::endl;
-            continue;
-        }
-    }
-
-    if(w > 4) {
-        windowSize = w;
-    }
-}
 
 __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
     uint64_t temp[8];
@@ -465,7 +429,7 @@ __host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobi
     R->infinity = P->infinity;
 }
 
-__host__ __device__ void initPrecompG() {
+__host__ __device__ void initPrecompG(int windowSize) {
     int dnorm = (256 + windowSize - 1) / windowSize;
     int dphi = (128 + windowSize - 1) / windowSize;
     int tableSize = (1 << windowSize) - 1;
@@ -522,7 +486,7 @@ __host__ __device__ void initPrecompG() {
     }
 }
 
-__host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint64_t *scalar, int nBits) {
+__host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint64_t *scalar, int nBits, int windowSize) {
     int d = (nBits + windowSize - 1) / windowSize;
 
     jacobianSetInfinity(result);
@@ -552,7 +516,7 @@ __host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint6
     }
 }
 
-__host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, const uint64_t *scalar, int nBits) {
+__host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, const uint64_t *scalar, int nBits, int windowSize) {
     int d = (nBits + windowSize - 1) / windowSize;
 
     jacobianSetInfinity(result);
@@ -689,19 +653,19 @@ __host__ __device__ void scalarSplitLambda(uint64_t r1[4], uint64_t r2[4], const
     scalarAdd(r1, t1, k);
 }
 
-__host__ __device__ void jacobianScalarMultGlv(ECPointJacobian *R, const uint64_t k[4], int nBits) {
+__host__ __device__ void jacobianScalarMultGlv(ECPointJacobian *R, const uint64_t k[4], int nBits, int windowSize) {
     uint64_t r1[4], r2[4];
     scalarSplitLambda(r1, r2, k);
     ECPointJacobian P1, P2;
-    jacobianScalarMult(&P1, r1, nBits);
-    jacobianScalarMultPhi(&P2, r2, nBits);
+    jacobianScalarMult(&P1, r1, nBits, windowSize);
+    jacobianScalarMultPhi(&P2, r2, nBits, windowSize);
     jacobianAdd(R, &P1, &P2);
 }
 
 __host__ __device__ void pointInitJacobian(ECPointJacobian *P) { for (int i = 0; i < 4; i++) { P->X[i] = 0; P->Y[i] = 0; P->Z[i] = 0; } P->infinity = 1; }
 __host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) { jacobianAdd(R, P, Q); }
 __host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P) { jacobianDouble(R, P); }
-__host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits) { jacobianScalarMultGlv(R, k, nBits); }
+__host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits, int windowSize) { jacobianScalarMultGlv(R, k, nBits, windowSize); }
 __host__ __device__ void getCompressedPublicKey(unsigned char *out, const ECPoint *publicKey) {
     unsigned char prefix = (publicKey->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
@@ -719,11 +683,11 @@ __host__ __device__ void getCompressedPublicKey(unsigned char *out, const ECPoin
     }
 }
 
-__host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *PRIV_KEY, int nBits) {
+__host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *PRIV_KEY, int nBits, int windowSize) {
     ECPoint pub;
     ECPointJacobian pub_jac;
 
-    jacobianScalarMultGlv(&pub_jac, PRIV_KEY, nBits);
+    jacobianScalarMultGlv(&pub_jac, PRIV_KEY, nBits, windowSize);
     jacobianToAffine(&pub, &pub_jac);
     getCompressedPublicKey(out, &pub);
 }
