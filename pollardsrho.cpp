@@ -43,6 +43,18 @@ void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
 
 void init_secp256k1() {
     getfcw();
+    #ifdef __CUDACC__
+        cudaMalloc(&preCompG, sizeof(ECPointJacobian) * (1ULL << windowSize));
+        cudaMalloc(&preCompGphi, sizeof(ECPointJacobian) * (1ULL << windowSize));
+        cudaMalloc(&jacNorm, sizeof(ECPointJacobian) * windowSize);
+        cudaMalloc(&jacEndo, sizeof(ECPointJacobian) * windowSize);
+   #else
+        preCompG = new ECPointJacobian[1ULL << windowSize];
+        preCompGphi = new ECPointJacobian[1ULL << windowSize];
+        jacNorm = new ECPointJacobian[windowSize];
+        jacEndo = new ECPointJacobian[windowSize];
+    #endif
+
     initPrecompG();
 
     uint64_t gx_arr[4], gy_arr[4];
@@ -69,12 +81,16 @@ void init_secp256k1() {
         cudaDeviceSynchronize();
         cudaMemcpy(&H, dg, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
         cudaFree(dg);
+        cudaFree(jacNorm);
+        cudaFree(jacEndo);
     #else
         ECPointJacobian* tmp = new ECPointJacobian();
         *tmp = G;
         pointDoubleJacobian(tmp, tmp);
         H = *tmp;
         delete tmp;
+        delete[] jacNorm;
+        delete[] jacEndo;
     #endif
 }
 
@@ -412,13 +428,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     std::cout << "\rCurrent private key: " << uint_256_to_hex(p_key) << std::endl;
                     std::cout << "\rLast tested public key: " << P_key << std::endl;
                     std::cout << "\rTotal keys tested: " << total_keys << std::endl;
-
-                    /*
-                    if(total_keys % 1000000)
-                    {
-                        search_in_progress.store(false);
-                    }
-                    */
                 }
                 else
                 {
@@ -651,37 +660,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
     return found_key;
 }
-
-/*
-int main() {
-    const std::string expected_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    uint64_t PRIV_KEY[4] = {0x0123456789ABCDEF, 0, 0, 0};
-
-    ECPointJacobian pub_jac;
-
-    init_secp256k1();
-
-    int count = 0;
-    int key_range = 64; //priv key 64 bits
-    auto start = std::chrono::steady_clock::now();
-
-    for (int i = 0; i < 100000000; i++) {
-        scalarMultJacobian(&pub_jac, PRIV_KEY, key_range);
-        count++;
-
-        auto now = std::chrono::steady_clock::now();
-        if(std::chrono::duration_cast<std::chrono::seconds>(now - start).count() >= 10) {
-        std::cout << "Chaves geradas = " << count << std::endl;
-        start = now;
-        }
-    }
-
-    std::cout << std::endl;
-    std::cout << "A chave pública esperada é: " << expected_pubkey << std::endl;
-
-    return 0;
-}
-*/
 
 int main(int argc, char* argv[]) {
 
