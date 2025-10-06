@@ -50,6 +50,5 @@ __host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJa
 __host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits, int windowSize);
 __host__ __device__ void getCompressedPublicKey(unsigned char *out, const ECPoint *publicKey);
 __host__ __device__ void initPrecompG(int windowSize);
-__host__ void getfcw();
 
 #endif /* EC_SECP256K1_H */
