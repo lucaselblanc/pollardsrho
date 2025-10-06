@@ -13,6 +13,7 @@
 /* --- AINDA EM TESTES --- */
 
 #include "secp256k1.h"
+#include <unordered_set>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -49,8 +50,8 @@ void getfcw() {
     for (int idx = 0;; idx++) {
         std::ifstream levelFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/level");
         if (!levelFile.is_open()) break;
-        int level;
-        levelFile >> level;
+        int L;
+        levelFile >> L;
 
         std::ifstream typeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/type");
         std::string type;
@@ -66,11 +67,17 @@ void getfcw() {
         if (sizeStr.back() == 'K') mult = 1024;
         else if (sizeStr.back() == 'M') mult = 1024*1024;
 
+        //Adjust the table to fit in the processor's L3 cache, avoiding jumping to RAM.
         try {
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
-            size_t maxPoints = size * 0.5 / 128;
-            if (maxPoints == 0) continue;
-            w = static_cast<int>(std::floor(std::log2(maxPoints)));
+
+            if (L == 3)
+            {
+                size_t maxPoints = size / 128;
+                if (maxPoints == 0) continue;
+                w = static_cast<int>(std::floor(std::log2(maxPoints)));
+                break;
+            }
         }
         catch(const std::invalid_argument& e) {
             std::cout << "Warning: " << e.what() << std::endl;
@@ -293,15 +300,6 @@ struct Buffers {
     }
 };
 
-bool cmpxJac(const ECPointJacobian& p1, const ECPointJacobian& p2) {
-    for(int i = 0; i < 4; i++) {
-        if(p1.X[i] != p2.X[i] || p1.Z[i] != p2.Z[i]) {
-            return false;
-        }
-    }
-    return true;
-}
-
 uint256_t f(ECPointJacobian& R, uint256_t k, int key_range, Buffers& buffers) {
     const uint256_t mask = mask_for_bits(key_range);
 
@@ -361,6 +359,18 @@ uint256_t f(ECPointJacobian& R, uint256_t k, int key_range, Buffers& buffers) {
     return k;
 }
 
+uint64_t hashed_dp(const ECPointJacobian& P) {
+    uint64_t h = 0;
+    for(int i = 0; i < 4; i++) {
+        h ^= P.X[i] + 0x9e3779b97f4a7c15 + (h << 6) + (h >> 2);
+    }
+    return h;
+}
+
+bool DP(const ECPointJacobian& P, int LSB) {
+    return (P.X[0] & ((1ULL << LSB) - 1)) == 0;
+}
+
 uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool test_mode) {
     auto uint_256_to_hex = [](const uint256_t& value) -> std::string {
         std::ostringstream oss;
@@ -400,6 +410,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
     uint256_t min_scalar{};
     uint256_t max_scalar{};
+
+    std::unordered_set<uint64_t> dp_table;
 
     int num_limbs = (key_range + 63) / 64;
     int limb_index = 3 - ((key_range - 1) / 64);
@@ -494,7 +506,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
                 HareState& hare = hare_states[i];
                 hare.speed = (i == 0) ? 1 : (i + 1);
-                total_keys += 2;
+                total_keys += 2 * hares;
 
                 current_key = hare.k1;
                 p_key = current_key;
@@ -546,9 +558,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     }
                 }
 
-                bool xx = cmpxJac(pub1_jac, pub2_jac);
-
-                if (xx && !xfilled && should_sync.load()) {
+                if (!xfilled && should_sync.load()) {
                     ECPoint pub1{}, pub2{};
                     for (int j = 0; j < 4; j++) {
                         pub1.x[j] = pub1_jac.X[j];
@@ -558,6 +568,14 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     }
                     pub1.infinity = pub1_jac.infinity;
                     pub2.infinity = pub2_jac.infinity;
+
+                    int LSB = 5;
+                    if (!DP(pub1_jac, LSB)) continue;
+                    if (!DP(pub2_jac, LSB)) continue;
+                    if (dp_table.insert(hashed_dp(pub1_jac)).second) continue;
+                    if (dp_table.insert(hashed_dp(pub2_jac)).second) continue;
+
+                    std::cout << "Collision detected at DP!" << std::endl;
 
                     unsigned char compressed1[33], compressed2[33];
 
@@ -584,16 +602,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     std::string current_pubkey_hex_R = bytes_to_hex((unsigned char*)compressed1, 33);
                     P_key = current_pubkey_hex_R;
 
-                    int LSB = 5;
-                    auto DP = [LSB](const ECPoint& point) -> bool {
-                        for (int i = 0; i < LSB; i++) {
-                            if ((point.x[0] >> i) & 1) return false;
-                        }
-                        return true;
-                    };
-
-                    if (DP(pub1) && DP(pub2) && !test_mode && xx) {
-
+                    if (!test_mode) {
                         bool x_equal = true;
                         for (int j = 0; j < 4; j++) {
                             if (pub1.x[j] != pub2.x[j]) {
@@ -728,6 +737,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "Press 'Ctrl \\' to Quit\n";
+    std::cout << "Auto Window-Size for secp256k1: " << windowSize << std::endl;
 
     uint256_t found_key = prho(pub_key_hex, key_range, 3, test_mode);
 
