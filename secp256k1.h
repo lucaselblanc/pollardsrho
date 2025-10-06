@@ -32,6 +32,20 @@ typedef struct {
     int infinity;
 } ECPointJacobian;
 
+#if defined(__CUDA_ARCH__)
+    __device__ ECPointJacobian* preCompG;
+    __device__ ECPointJacobian* preCompGphi;
+    __device__ ECPointJacobian* jacNorm;
+    __device__ ECPointJacobian* jacEndo;
+    __device__ int windowSize = 4;
+#else
+    ECPointJacobian* preCompG;
+    ECPointJacobian* preCompGphi;
+    ECPointJacobian* jacNorm;
+    ECPointJacobian* jacEndo;
+    int windowSize = 4;
+#endif
+
 __host__ __device__ void pointInitJacobian(ECPointJacobian *P);
 __host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q);
 __host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P);
