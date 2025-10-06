@@ -32,7 +32,7 @@ typedef struct {
     int infinity;
 } ECPointJacobian;
 
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) && !defined(__CUDACC__)
     __device__ ECPointJacobian* preCompG;
     __device__ ECPointJacobian* preCompGphi;
     __device__ ECPointJacobian* jacNorm;
