@@ -38,10 +38,7 @@ __device__ __constant__ uint64_t MINUS_B1[4] = { 0x6F547FA90ABFE4C3ULL, 0xE4437E
 __device__ __constant__ uint64_t MINUS_B2[4] = { 0xD765CDA83DB1562CULL, 0x8A280AC50774346DULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 __device__ __constant__ uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
 __device__ __constant__ uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
-__device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
-__device__ ECPointJacobian* jacNorm;
-__device__ ECPointJacobian* jacEndo;
-__device__ int windowSize = 4;
+__device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
 #else
 constexpr uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 constexpr uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -59,13 +56,7 @@ constexpr uint64_t MINUS_B2[4] = { 0xD765CDA83DB1562CULL, 0x8A280AC50774346DULL,
 constexpr uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
 constexpr uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
 constexpr uint64_t MU_P = 0xD838091DD2253531ULL;
-ECPointJacobian* jacNorm;
-ECPointJacobian* jacEndo;
-int windowSize = 4;
 #endif
-
-ECPointJacobian* preCompG;
-ECPointJacobian* preCompGphi;
 
 #ifdef __CUDA_ARCH__
 struct uint128_t {
@@ -108,28 +99,42 @@ __host__ void getfcw() {
     for (int idx = 0;; idx++) {
         std::ifstream levelFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/level");
         if (!levelFile.is_open()) break;
-        int level; levelFile >> level;
+        int level;
+        levelFile >> level;
+
         std::ifstream typeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/type");
-        std::string type; typeFile >> type;
+        std::string type;
+        typeFile >> type;
         if (type != "Data" && type != "Unified") continue;
+
         std::ifstream sizeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/size");
-        std::string sizeStr; sizeFile >> sizeStr;
+        std::string sizeStr;
+        sizeFile >> sizeStr;
+        if (sizeStr.empty()) continue;
+
         size_t mult = 1;
         if (sizeStr.back() == 'K') mult = 1024;
         else if (sizeStr.back() == 'M') mult = 1024*1024;
-        size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
-        size_t maxPoints = size * 0.5 / 128;
-        if (maxPoints == 0) continue;
-        w = static_cast<int>(std::floor(std::log2(maxPoints)));
+
+        try {
+            size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
+            size_t maxPoints = size * 0.5 / 128;
+            if (maxPoints == 0) continue;
+            w = static_cast<int>(std::floor(std::log2(maxPoints)));
+        }
+        catch(const std::invalid_argument& e) {
+            std::cout << "Warning: " << e.what() << std::endl;
+            continue;
+        }
+        catch(const std::out_of_range& e) {
+            std::cout << "Warning: " << e.what() << std::endl;
+            continue;
+        }
     }
 
-    if(w > 4)
-    {
+    if(w > 4) {
         windowSize = w;
     }
-
-    preCompG    = new ECPointJacobian[1ULL << windowSize];
-    preCompGphi = new ECPointJacobian[1ULL << windowSize];
 }
 
 __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
@@ -395,7 +400,7 @@ __host__ __device__ void jacobianDouble(ECPointJacobian *result, const ECPointJa
 
     uint64_t ZZ[4], w[4], B[4];
 
-    modSqrtMontP(result->X, point->X); 
+    modSqrtMontP(result->X, point->X);
     modSqrtMontP(ZZ, point->Z);
     modAddP(w, result->X, result->X);
     modAddP(w, w, result->X);
@@ -481,14 +486,6 @@ __host__ __device__ void initPrecompG() {
 
     endomorphismMap(&ge, &ge);
 
-    #ifdef __CUDA_ARCH__
-        cudaMalloc(&jacNorm, sizeof(ECPointJacobian) * windowSize);
-        cudaMalloc(&jacEndo, sizeof(ECPointJacobian) * windowSize);
-    #else
-        jacNorm = new ECPointJacobian[windowSize];
-        jacEndo = new ECPointJacobian[windowSize];
-    #endif
-
     jacNorm[0]  = g;
     jacEndo[0] = ge;
 
@@ -523,14 +520,6 @@ __host__ __device__ void initPrecompG() {
             }
         }
     }
-
-    #ifdef __CUDA_ARCH__
-        cudaFree(jacNorm);
-        cudaFree(jacEndo);
-    #else
-        delete[] jacNorm;
-        delete[] jacEndo;
-    #endif
 }
 
 __host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint64_t *scalar, int nBits) {
