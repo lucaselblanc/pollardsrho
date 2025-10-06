@@ -42,6 +42,9 @@ void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
 }
 
 void init_secp256k1() {
+
+    getfcw();
+
     #ifdef __CUDACC__
         cudaMalloc(&preCompG, sizeof(ECPointJacobian) * (1ULL << windowSize));
         cudaMalloc(&preCompGphi, sizeof(ECPointJacobian) * (1ULL << windowSize));
@@ -54,7 +57,6 @@ void init_secp256k1() {
         jacEndo = new ECPointJacobian[windowSize];
     #endif
    
-    getfcw();
     initPrecompG();
 
     uint64_t gx_arr[4], gy_arr[4];
