@@ -368,7 +368,7 @@ uint64_t hashed_dp(const ECPointJacobian& P) {
 }
 
 bool DP(const ECPointJacobian& P, int LSB) {
-    return (P.X[0] & ((1ULL << LSB) - 1)) == 0;
+    return (P.X[3] & ((1ULL << LSB) - 1)) == 0;
 }
 
 uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool test_mode) {
