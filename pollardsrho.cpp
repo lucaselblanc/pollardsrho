@@ -314,9 +314,9 @@ uint256_t f(ECPointJacobian& R, uint256_t k, int key_range, Buffers& buffers) {
     uint64_t jump4 = rng.next();
 
     uint256_t jump{};
-    jump.limbs[0] = 0;
-    jump.limbs[1] = 0;
-    jump.limbs[2] = 0;
+    jump.limbs[0] = jump4;
+    jump.limbs[1] = jump3;
+    jump.limbs[2] = jump2;
     jump.limbs[3] = jump1;
 
     #ifdef __CUDACC__
