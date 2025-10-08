@@ -13,7 +13,7 @@
 /* --- AINDA EM TESTES --- */
 
 #include "secp256k1.h"
-#include <unordered_set>
+#include <unordered_map>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -37,7 +37,7 @@ const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFF
 const uint256_t GX = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
 const uint256_t GY = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
 
-int windowSize = 4;
+int windowSize = 16; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
 
 void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
     for(int i = 0; i < 4; i++) {
@@ -67,7 +67,7 @@ void getfcw() {
         if (sizeStr.back() == 'K') mult = 1024;
         else if (sizeStr.back() == 'M') mult = 1024*1024;
 
-        //Adjust the table to fit in the processor's L3 cache, avoiding jumping to RAM.
+        //Adjust the table to fit in the processor's L3 cache (more fast), avoiding jumping to RAM.
         try {
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
 
@@ -411,7 +411,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     uint256_t min_scalar{};
     uint256_t max_scalar{};
 
-    std::unordered_set<uint64_t> dp_table;
+    std::unordered_map<uint64_t, int> dp_table;
 
     int num_limbs = (key_range + 63) / 64;
     int limb_index = 3 - ((key_range - 1) / 64);
@@ -572,10 +572,21 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                     int LSB = 5;
                     if (!DP(pub1_jac, LSB)) continue;
                     if (!DP(pub2_jac, LSB)) continue;
-                    if (dp_table.insert(hashed_dp(pub1_jac)).second) continue;
-                    if (dp_table.insert(hashed_dp(pub2_jac)).second) continue;
 
-                    std::cout << "Collision detected at DP!" << std::endl;
+                    if (dp_table.find(hashed_dp(pub1_jac)) == dp_table.end()) { dp_table[hashed_dp(pub1_jac)] = i; continue; }
+                    if (dp_table.find(hashed_dp(pub2_jac)) == dp_table.end()) { dp_table[hashed_dp(pub2_jac)] = i; continue; }
+                    if (dp_table.find(hashed_dp(pub1_jac))->second == i || dp_table.find(hashed_dp(pub2_jac))->second == i)
+                    {
+                        hare.k1 = pkg.generate();
+                        hare.k2 = pkg.generate();
+
+                        f(hare.R, hare.k1, key_range, *hare.buffers);
+                        f(hare.R, hare.k2, key_range, *hare.buffers);
+
+                        continue;
+                    }
+
+                    //std::cout << "Cicle detected at DP!" << std::endl;
 
                     unsigned char compressed1[33], compressed2[33];
 
