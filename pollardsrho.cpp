@@ -300,63 +300,59 @@ struct Buffers {
     }
 };
 
-uint256_t f(ECPointJacobian& R, uint256_t k, int key_range, Buffers& buffers) {
-    const uint256_t mask = mask_for_bits(key_range);
+struct RhoState {
+    ECPointJacobian R;
+    uint256_t a;
+    uint256_t b;
+};
 
-    uint64_t x_low64 = R.X[3];
+uint256_t modN(const uint256_t& x) {
+    return (compare_uint256(x, N) >= 0) ? sub_uint256(x, N) : x;
+}
 
+void f(RhoState& s, Buffers& buffers, const ECPointJacobian& Q)
+{
+    uint64_t x_low64 = s.R.X[3];
     unsigned int op = static_cast<unsigned int>(x_low64 % 3);
 
-    XorShift64 rng(x_low64);
-    uint64_t jump1 = rng.next();
-    uint64_t jump2 = rng.next();
-    uint64_t jump3 = rng.next();
-    uint64_t jump4 = rng.next();
-
-    uint256_t jump{};
-    jump.limbs[0] = jump4;
-    jump.limbs[1] = jump3;
-    jump.limbs[2] = jump2;
-    jump.limbs[3] = jump1;
-
     #ifdef __CUDACC__
-        cudaMemcpy(buffers.d_R, &R, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+        cudaMemcpy(buffers.d_R, &s.R, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
     #endif
 
-    switch(op) {
+    switch (op) {
+
         case 0:
-            #ifdef __CUDACC__
-                pointAddJacobian(buffers.d_R, buffers.d_R, buffers.d_G);
-            #else
-                pointAddJacobian(&R, &R, &G);
-            #endif
-            k = add_uint256(k, jump);
-            break;
+    #ifdef __CUDACC__
+        pointAddJacobian(buffers.d_R, buffers.d_R, buffers.d_G);
+    #else
+        pointAddJacobian(&s.R, &s.R, &G);
+    #endif
+        s.a = modN(add_uint256(s.a, uint256_from_uint32(1)));
+        break;
+
         case 1:
-            #ifdef __CUDACC__
-                pointAddJacobian(buffers.d_R, buffers.d_R, buffers.d_H);
-            #else
-                pointAddJacobian(&R, &R, &H);
-            #endif
-            k = add_uint256(k, jump);
-            break;
-        default:
-            #ifdef __CUDACC__
-                pointDoubleJacobian(buffers.d_R, buffers.d_R);
-            #else
-                pointDoubleJacobian(&R, &R);
-            #endif
-            k = left_shift_uint256(k, 1);
-            break;
+    #ifdef __CUDACC__
+        pointDoubleJacobian(buffers.d_R, buffers.d_R);
+    #else
+        pointDoubleJacobian(&s.R, &s.R);
+    #endif
+        s.a = modN(add_uint256(s.a, s.a));
+        s.b = modN(add_uint256(s.b, s.b));
+        break;
+
+        case 2:
+    #ifdef __CUDACC__
+        pointAddJacobian(buffers.d_R, buffers.d_R, buffers.d_H); // buffers.d_H = Q
+    #else
+        pointAddJacobian(&s.R, &s.R, &Q);
+    #endif
+        s.b = modN(add_uint256(s.b, uint256_from_uint32(1)));
+        break;
     }
 
-    for(int i = 0; i < 4; i++) k.limbs[i] &= mask.limbs[i];
-
     #ifdef __CUDACC__
-        cudaMemcpy(&R, buffers.d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&s.R, buffers.d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
     #endif
-
-    return k;
 }
 
 uint64_t hashed_dp(const ECPointJacobian& P) {
@@ -763,4 +759,5 @@ int main(int argc, char* argv[]) {
     std::cout << "Chave privada encontrada: " << uint_256_to_hex(found_key) << std::endl;
 
     return 0;
+
 }
