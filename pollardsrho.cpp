@@ -310,6 +310,8 @@ uint256_t modN(const uint256_t& x) {
     return (compare_uint256(x, N) >= 0) ? sub_uint256(x, N) : x;
 }
 
+  //f(hare.R, hare.k1, key_range, *hare.buffers);
+
 void f(RhoState& s, Buffers& buffers, const ECPointJacobian& Q)
 {
     uint64_t x_low64 = s.R.X[3];
