@@ -59,7 +59,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 ## Commands
 
 - `~/pollardsrho$ ./pollardsrho <compressed public key> <key range>`: Starts the search for the private key corresponding to the given public key.
-- `~/pollardsrho$ ./pollardsrho <compressed public key> <key range> --t`: Starts searching for the private key corresponding to the public key provided in test mode for ranges equal to or less than 20 bits.
+- `~/pollardsrho$ ./pollardsrho <compressed public key> <key range> --t`: Start the search with a large initial jump of 2⁴⁰ to the second group of hares.
 
 ## External Libraries Used
 
