@@ -19,6 +19,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
 - build-essential
 - nvidia-cuda-runtime-13-0
 - nvidia-cuda-toolkit-13-0
+- boost/multiprecision/cpp_int.hpp
 
 ---
 
@@ -36,6 +37,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is <
     sudo apt install build-essential g++ -y
     sudo apt install nvidia-cuda-runtime-13-0 -y
     sudo apt install nvidia-cuda-toolkit-13-0 -y
+    sudo apt install libboost-dev -y
     ```
 
 3. Compile the project:
