@@ -307,7 +307,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     };
 
     ECPoint target_affine{};
-    getCompressedPublicKey(target_pubkey.data(), &target_affine);
+    decompressPublicKey(&target_affine, target_pubkey.data());
 
     for (int i = 0; i < 4; i++) {
         H.X[i] = target_affine.x[i];
