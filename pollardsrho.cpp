@@ -232,8 +232,7 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
             pointAddJacobian(&R, &R, &G);
         #endif
             a = add_uint256(a, uint256_from_uint32(1));
-            if (compare_uint256(a, N) >= 0)
-                a = sub_uint256(a, N);
+            if (compare_uint256(a, N) >= 0) a = sub_uint256(a, N);
             break;
 
         case 1:
@@ -243,8 +242,7 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
             pointAddJacobian(&R, &R, &H);
         #endif
             b = add_uint256(b, uint256_from_uint32(1));
-            if (compare_uint256(b, N) >= 0)
-                b = sub_uint256(b, N);
+            if (compare_uint256(b, N) >= 0) b = sub_uint256(b, N);
             break;
 
         default:
@@ -254,12 +252,10 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
             pointDoubleJacobian(&R, &R);
         #endif
             a = add_uint256(a, a);
-            if (compare_uint256(a, N) >= 0)
-                a = sub_uint256(a, N);
+            if (compare_uint256(a, N) >= 0) a = sub_uint256(a, N);
 
             b = add_uint256(b, b);
-            if (compare_uint256(b, N) >= 0)
-                b = sub_uint256(b, N);
+            if (compare_uint256(b, N) >= 0) b = sub_uint256(b, N);
         break;
     }
 
@@ -415,6 +411,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
     uint256_t k{};
 
+    uint256_t range = sub_uint256(max_scalar, min_scalar);
+    uint256_t normalized_range = add_uint256(range, uint256_from_uint32(1));
+
     while (search_in_progress.load()) {
         for (int i = 0; i < hares; i++) {
 
@@ -466,8 +465,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
             std::cout << "\033[32mCollision found!\033[0m" << std::endl;
             std::cout << "Difference of the coefficient a: " << uint_256_to_hex(diff_coeff_a) << std::endl;
             std::cout << "Difference of the coefficient b: " << uint_256_to_hex(diff_coeff_b) << std::endl;
-            std::cout << "Candidate a: " << uint_256_to_hex(h->a) << std::endl;
-            std::cout << "Candidate b: " << uint_256_to_hex(h->b) << std::endl;
+            std::cout << "Scalar Coefficient a (Non-Key): " << uint_256_to_hex(h->a) << std::endl;
+            std::cout << "Scalar Coefficient b (Non-Key): " << uint_256_to_hex(h->b) << std::endl;
 
             uint256_t inv_diff_coeff_b = almostinverse(diff_coeff_b, N);
 
@@ -482,15 +481,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 k.limbs[i] = k_s[i];
             }
 
-            for (auto& hs : hares_state) delete hs.buffers;
-
             search_in_progress.store(false);
         }
 
         auto now = std::chrono::steady_clock::now();
         if (now - last_print >= std::chrono::seconds(10)) {
-            std::cout << "\rCurrent coeff: " << uint_256_to_hex(current_coeff) << std::endl;
-            std::cout << "\rTotal keys tested: " << tested_keys << std::endl;
+            std::cout << "\rScalar Coefficient a (Non-Key): " << uint_256_to_hex(current_coeff) << std::endl;
+            std::cout << "\rTotal Iterations: " << tested_keys << std::endl;
             last_print = now;
         }
     }
