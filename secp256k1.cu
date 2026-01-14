@@ -666,7 +666,7 @@ __host__ __device__ void pointInitJacobian(ECPointJacobian *P) { for (int i = 0;
 __host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) { jacobianAdd(R, P, Q); }
 __host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P) { jacobianDouble(R, P); }
 __host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits, int windowSize) { jacobianScalarMultGlv(R, k, nBits, windowSize); }
-__host__ __device__ void getCompressedPublicKey(unsigned char *out, const ECPoint *publicKey) {
+__host__ __device__ void serializePublicKey(unsigned char *out, const ECPoint *publicKey) {
     unsigned char prefix = (publicKey->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
 
@@ -689,5 +689,37 @@ __host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *P
 
     jacobianScalarMultGlv(&pub_jac, PRIV_KEY, nBits, windowSize);
     jacobianToAffine(&pub, &pub_jac);
-    getCompressedPublicKey(out, &pub);
+    serializePublicKey(out, &pub);
+}
+
+__host__ __device__ void decompressPublicKey(ECPoint* out, const unsigned char compressed[33]) {
+    unsigned char prefix = compressed[0];
+
+    for (int i = 0; i < 4; i++) {
+        uint64_t word = 0;
+        for (int j = 0; j < 8; j++) {
+            word = (word << 8) | compressed[1 + i * 8 + j];
+        }
+        out->x[3 - i] = word;
+    }
+
+    uint64_t x_mont[4], x2[4], x3[4], rhs[4];
+
+    toMontgomeryP(x_mont, out->x);
+    modMulMontP(x2, x_mont, x_mont);
+    modMulMontP(x3, x2, x_mont);
+    modAddP(rhs, x3, SEVEN_MONT);
+
+    uint64_t y_mont[4];
+    sqrtModP(y_mont, rhs);
+    fromMontgomeryP(out->y, y_mont);
+
+    uint64_t is_odd   = out->y[0] & 1ULL;
+    uint64_t want_odd = (prefix == 0x03);
+
+    if (is_odd != want_odd) {
+        modSubP(out->y, P_CONST, out->y);
+    }
+
+    out->infinity = 0;
 }
