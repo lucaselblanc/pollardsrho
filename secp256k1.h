@@ -55,7 +55,8 @@ __host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacob
 __host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P);
 __host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits, int windowSize);
 __host__ __device__ void scalarMul(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]);
-__host__ __device__ void getCompressedPublicKey(unsigned char *out, const ECPoint *publicKey);
+__host__ __device__ void serializePublicKey(unsigned char *out, const ECPoint *publicKey);
+__host__ __device__ void decompressPublicKey(ECPoint* out, const unsigned char compressed[33]);
 __host__ __device__ void initPrecompG(int windowSize);
 
 #endif /* EC_SECP256K1_H */
