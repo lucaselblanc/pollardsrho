@@ -15,7 +15,7 @@
 
 ## Algorithm Complexity
 
-The expected time complexity of Pollard's Rho algorithm for elliptic curves is <code>O(&#8730;n)</code>, where <code>n</code> is the order of the group to the generating point(G). Given secp256k1, this translates to approximately <code>O(2<sup>128</sup>)</code>, which is the quadratic needed to achieve the birthday paradox.
+ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group to the generating point (G). Given secp256k1, this translates to approximately O(2^128), as predicted by the birthday paradox for random walks over a finite group.
 
 #### Prerequisites
 
