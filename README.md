@@ -7,7 +7,7 @@
 
 ## Description
 
-This repository contains the implementation of Pollard's Rho algorithm for the secp256k1 elliptic curve. The goal is to generate pseudorandom private keys with search complexity O√n using the tortoise/hare race method. To run the program, you need the public key of your Bitcoin wallet.
+This repository contains an implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve. The objective is to recover the scalar � from the relation �, where � is the curve generator and � is a public point. The algorithm performs pseudo-random walks over the elliptic curve group using an iteration function �, maintaining representations of the form �. A collision between two identical group elements with different coefficient pairs yields a solvable linear congruence modulo the group order. To enable efficient collision detection and parallelization, the implementation uses distinguished points stored in a table. Multiple independent walkers traverse the group along different paths until a collision is found. The expected time complexity of the algorithm is �, which for secp256k1 corresponds to approximately � group operations. The program requires as input a public key represented as a point on the secp256k1 curve.
 
 ## Algorithm Complexity
 
