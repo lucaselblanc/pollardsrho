@@ -5,7 +5,7 @@
 ![CUDA](https://img.shields.io/badge/arch-gpu%20&%20cpu-orange)
 ![Linux](https://img.shields.io/badge/platform-Linux-white)
 
-### Description
+## Description
 
 ---
 
@@ -15,11 +15,11 @@ The algorithm performs pseudo-random walks over the elliptic curve group using a
 
 ---
 
-### Algorithm Complexity
+## Algorithm Complexity
 
 The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group. Given secp256k1, this translates to approximately O(2^128), as predicted by the birthday paradox for random walks over a finite group.
 
-#### Prerequisites
+## Prerequisites
 
 - g++
 - build-essential
