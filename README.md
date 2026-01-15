@@ -7,7 +7,14 @@
 
 ## Description
 
-This repository contains an implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve. The objective is to recover the scalar � from the relation �, where � is the curve generator and � is a public point. The algorithm performs pseudo-random walks over the elliptic curve group using an iteration function �, maintaining representations of the form �. A collision between two identical group elements with different coefficient pairs yields a solvable linear congruence modulo the group order. To enable efficient collision detection and parallelization, the implementation uses distinguished points stored in a table. Multiple independent walkers traverse the group along different paths until a collision is found. The expected time complexity of the algorithm is �, which for secp256k1 corresponds to approximately � group operations. The program requires as input a public key represented as a point on the secp256k1 curve.
+Segue o texto revisado, usando apenas caracteres ASCII e formatação compatível com um README do GitHub:
+
+
+---
+
+ This repository contains an implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve. The objective is to recover the scalar k from the relation Q = k * G, where G is the curve generator and Q is a public point. The algorithm performs pseudo-random walks over the elliptic curve group using an iteration function f, maintaining representations of the form X = a * G + b * Q. A collision between two identical group elements with different coefficient pairs yields a solvable linear congruence module the group order. To enable efficient collision detection and parallelization, the implementation uses distinguished points stored in a table. Multiple independent walkers traverse the group along different paths until a collision is found. The program requires as input a public key represented as a point on the secp256k1 curve.
+
+---
 
 ## Algorithm Complexity
 
