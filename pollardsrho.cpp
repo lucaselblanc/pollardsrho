@@ -129,27 +129,30 @@ void init_secp256k1() {
 }
 
 cpp_int random_mod_n(const cpp_int& N, std::mt19937_64& rng) {
-    cpp_int r = 0;
+    cpp_int r;
+    cpp_int limit = (cpp_int(1) << 256) - ((cpp_int(1) << 256) % N);
 
-    for (int i = 0; i < 4; i++) {
-        r <<= 64;
-        r |= cpp_int(rng());
-    }
+    do {
+        r = 0;
+        for (int i = 0; i < 4; i++) {
+            r <<= 64;
+            r |= cpp_int(rng());
+        }
+    } while (r >= limit);
 
-    r %= N;
-    return r;
+    return r % N;
 }
 
-uint256_t cppint_to_uint256(const cpp_int& r) {
-    uint256_t result{};
-    cpp_int tmp = r;
+uint256_t cppint_to_uint256(const cpp_int& v) {
+    uint256_t out{};
+    cpp_int tmp = v;
 
-    for (int i = 3; i >= 0; i--) {
-        result.limbs[i] = static_cast<uint64_t>(tmp & 0xFFFFFFFFFFFFFFFFULL);
+    for (int i = 0; i < 4; i++) {
+        out.limbs[i] = static_cast<uint64_t>(tmp & cpp_int(0xFFFFFFFFFFFFFFFFULL));
         tmp >>= 64;
     }
 
-    return result;
+    return out;
 }
 
 uint256_t sub_uint256(const uint256_t& a, const uint256_t& b) {
@@ -276,7 +279,7 @@ bool DP(const ECPointJacobian& P, int LSB) {
     return (P.X[3] & ((1ULL << LSB) - 1)) == 0;
 }
 
-uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool test_mode) {
+uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool test_mode) {
 
     std::atomic<bool> search_in_progress(true);
 
@@ -312,8 +315,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     }
     H.infinity = target_affine.infinity;
 
-    unsigned long long tested_keys = 0;
-    uint256_t current_coeff{};
+    unsigned long long total_iters = 0;
 
     uint256_t min_scalar{}, max_scalar{};
     {
@@ -337,57 +339,46 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
     std::cout << "min_range: " << uint_256_to_hex(min_scalar) << std::endl;
     std::cout << "max_range: " << uint_256_to_hex(max_scalar) << std::endl;
 
-    struct HareState {
+    struct WalkState {
         ECPointJacobian R;
         uint256_t a, b;
         Buffers* buffers;
     };
 
-    std::unordered_map<uint64_t, HareState> dp_table;
-    std::vector<HareState> hares_state(hares);
+    std::unordered_map<uint64_t, WalkState> dp_table;
+    std::vector<WalkState> walkers_state(walkers);
 
     std::mt19937_64 rng(std::random_device{}());
 
-    for (int i = 0; i < hares; i++) {
+    for (int i = 0; i < walkers; i++) {
 
-        hares_state[i].buffers = new Buffers();
-        hares_state[i].a = cppint_to_uint256(random_mod_n(N_, rng));
-        hares_state[i].b = cppint_to_uint256(random_mod_n(N_, rng));
+        walkers_state[i].buffers = new Buffers();
+        walkers_state[i].a = cppint_to_uint256(random_mod_n(N_, rng));
+        walkers_state[i].b = cppint_to_uint256(random_mod_n(N_, rng));
 
         uint64_t a_arr[4], b_arr[4];
-        uint256_to_uint64_array(a_arr, hares_state[i].a);
-        uint256_to_uint64_array(b_arr, hares_state[i].b);
+        uint256_to_uint64_array(a_arr, walkers_state[i].a);
+        uint256_to_uint64_array(b_arr, walkers_state[i].b);
 
         ECPointJacobian Ra{}, Rb{};
 
         #ifdef __CUDACC__
-        cudaMemcpy(hares_state[i].buffers->d_k, a_arr, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
-        scalarMultJacobian(hares_state[i].buffers->d_R,
-                           hares_state[i].buffers->d_k,
-                           key_range,
-                           windowSize);
-        cudaMemcpy(&Ra, hares_state[i].buffers->d_R,
-                   sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
-
-        cudaMemcpy(hares_state[i].buffers->d_G, &H,
-                   sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
-        cudaMemcpy(hares_state[i].buffers->d_k, b_arr,
-                   sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
-        scalarMultJacobian(hares_state[i].buffers->d_R,
-                           hares_state[i].buffers->d_k,
-                           key_range,
-                           windowSize);
-        cudaMemcpy(&Rb, hares_state[i].buffers->d_R,
-                   sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+        cudaMemcpy(walkers_state[i].buffers->d_k, a_arr, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
+        scalarMultJacobian(walkers_state[i].buffers->d_R, walkers_state[i].buffers->d_k, key_range, windowSize);
+        cudaMemcpy(&Ra, walkers_state[i].buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+        cudaMemcpy(walkers_state[i].buffers->d_G, &H, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+        cudaMemcpy(walkers_state[i].buffers->d_k, b_arr, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
+        scalarMultJacobian(walkers_state[i].buffers->d_R, walkers_state[i].buffers->d_k, key_range, windowSize);
+        cudaMemcpy(&Rb, walkers_state[i].buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
         #else
         scalarMultJacobian(&Ra, a_arr, key_range, windowSize);
         scalarMultJacobian(&Rb, b_arr, key_range, windowSize);
         #endif
-        pointAddJacobian(&hares_state[i].R, &Ra, &Rb);
+        pointAddJacobian(&walkers_state[i].R, &Ra, &Rb);
     }
 
     auto last_print = std::chrono::steady_clock::now();
-    HareState* h = nullptr;
+    WalkState* w = nullptr;
 
     if (test_mode) {
         ECPointJacobian INIT_JUMP{};
@@ -398,28 +389,25 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
         uint256_to_uint64_array(jump_arr, jump);
         scalarMultJacobian(&INIT_JUMP, jump_arr, key_range, windowSize);
 
-        for (int i = 0; i < hares; i++) {
+        for (int i = 0; i < walkers; i++) {
 
-            h = &hares_state[i];
+            w = &walkers_state[i];
 
-            h->b = add_uint256(h->b, jump);
-            if (compare_uint256(h->b, N) >= 0) h->b = sub_uint256(h->b, N);
+            w->b = add_uint256(w->b, jump);
+            if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
 
-            pointAddJacobian(&h->R, &h->R, &INIT_JUMP);
+            pointAddJacobian(&w->R, &w->R, &INIT_JUMP);
         }
     }
 
     uint256_t k{};
 
-    uint256_t range = sub_uint256(max_scalar, min_scalar);
-    uint256_t normalized_range = add_uint256(range, uint256_from_uint32(1));
-
     while (search_in_progress.load()) {
-        for (int i = 0; i < hares; i++) {
+        for (int i = 0; i < walkers; i++) {
 
-            tested_keys++;
+            total_iters++;
 
-            h = &hares_state[i];
+            w = &walkers_state[i];
 
             auto pointsEqual = [](const ECPointJacobian& A, const ECPointJacobian& B) -> bool {
                 if (A.infinity != B.infinity) return false;
@@ -432,41 +420,31 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
                 return true;
             };
 
-            f(h->R, h->a, h->b, *h->buffers);
+            f(w->R, w->a, w->b, *w->buffers);
 
-            if (compare_uint256(h->a, N) >= 0) h->a = sub_uint256(h->a, N);
-            if (compare_uint256(h->b, N) >= 0) h->b = sub_uint256(h->b, N);
+            if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
+            if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
+            if (!DP(w->R, 5)) continue;
 
-            current_coeff = h->a;
-
-            if (!DP(h->R, 5)) continue;
-
-            uint64_t hash = hashed_dp(h->R);
+            uint64_t hash = hashed_dp(w->R);
 
             if (!dp_table.count(hash)) {
-                dp_table[hash] = *h;
+                dp_table[hash] = *w;
                 continue;
             }
 
             auto& other = dp_table[hash];
 
-            if (!pointsEqual(h->R, other.R)) continue;
+            if (!pointsEqual(w->R, other.R)) continue;
 
-            uint256_t diff_coeff_a =
-                (compare_uint256(h->a, other.a) >= 0)
-                    ? sub_uint256(h->a, other.a)
-                    : sub_uint256(N, sub_uint256(other.a, h->a));
-
-            uint256_t diff_coeff_b =
-                (compare_uint256(other.b, h->b) >= 0)
-                    ? sub_uint256(other.b, h->b)
-                    : sub_uint256(N, sub_uint256(h->b, other.b));
+            uint256_t diff_coeff_a = (compare_uint256(w->a, other.a) >= 0) ? sub_uint256(w->a, other.a) : sub_uint256(N, sub_uint256(other.a, w->a));
+            uint256_t diff_coeff_b = (compare_uint256(other.b, w->b) >= 0) ? sub_uint256(other.b, w->b) : sub_uint256(N, sub_uint256(w->b, other.b));
 
             std::cout << "\033[32mCollision found!\033[0m" << std::endl;
             std::cout << "Difference of the coefficient a: " << uint_256_to_hex(diff_coeff_a) << std::endl;
             std::cout << "Difference of the coefficient b: " << uint_256_to_hex(diff_coeff_b) << std::endl;
-            std::cout << "Scalar Coefficient a (Non-Key): " << uint_256_to_hex(h->a) << std::endl;
-            std::cout << "Scalar Coefficient b (Non-Key): " << uint_256_to_hex(h->b) << std::endl;
+            std::cout << "Scalar Coefficient a (Non-Key): " << uint_256_to_hex(w->a) << std::endl;
+            std::cout << "Scalar Coefficient b (Non-Key): " << uint_256_to_hex(w->b) << std::endl;
 
             uint256_t inv_diff_coeff_b = almostinverse(diff_coeff_b, N);
 
@@ -486,8 +464,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int hares, bool tes
 
         auto now = std::chrono::steady_clock::now();
         if (now - last_print >= std::chrono::seconds(10)) {
-            std::cout << "\rScalar Coefficient a (Non-Key): " << uint_256_to_hex(current_coeff) << std::endl;
-            std::cout << "\rTotal Iterations: " << tested_keys << std::endl;
+            std::cout << "\rScalar Coefficient a (Non-Key): " << uint_256_to_hex(w->a) << std::endl;
+            std::cout << "\rScalar Coefficient b (Non-Key): " << uint_256_to_hex(w->b) << std::endl;
+            std::cout << "\rTotal Iterations: " << total_iters << std::endl;
             last_print = now;
         }
     }
@@ -529,5 +508,4 @@ int main(int argc, char* argv[]) {
     std::cout << "Chave privada encontrada: " << uint_256_to_hex(found_key) << std::endl;
 
     return 0;
-
 }
