@@ -5,17 +5,19 @@
 ![CUDA](https://img.shields.io/badge/arch-gpu%20&%20cpu-orange)
 ![Linux](https://img.shields.io/badge/platform-Linux-white)
 
-## Description
+### Description
 
 ---
 
- This repository contains an implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve. The objective is to recover the scalar k from the relation Q = k * G, where G is the curve generator and Q is a public point. The algorithm performs pseudo-random walks over the elliptic curve group using an iteration function f that partitions the state space into three subsets, maintaining representations of the form X = a * G + b * Q. A collision between two identical group elements with different coefficient pairs yields a solvable linear congruence modulo the group order. To enable efficient collision detection and parallelization, the implementation uses distinguished points stored in a table. Multiple independent walkers traverse the group along different paths until a collision is found. To run, this software requires as input a bitcoin public key.
+This repository contains an implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve. The objective is to recover the scalar k from the relation Q = k * G, where G is the curve generator and Q is a public point.
+
+The algorithm performs pseudo-random walks over the elliptic curve group using an iteration function `f` that partitions the state space into three subsets, maintaining representations of the form `X = a * G + b * Q`. A collision between two identical group elements with different coefficient pairs yields a solvable linear congruence modulo the group order. To enable efficient collision detection and parallelization, the implementation uses distinguished points stored in a table. Multiple independent walkers traverse the group along different paths until a collision is found. To run, this software requires as input a Bitcoin public key.
 
 ---
 
-## Algorithm Complexity
+### Algorithm Complexity
 
- The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group. Given secp256k1, this translates to approximately O(2^128), as predicted by the birthday paradox for random walks over a finite group.
+The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group. Given secp256k1, this translates to approximately O(2^128), as predicted by the birthday paradox for random walks over a finite group.
 
 #### Prerequisites
 
