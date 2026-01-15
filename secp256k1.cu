@@ -249,7 +249,7 @@ __host__ __device__ void modMulMontP(uint64_t *result, const uint64_t *a, const 
     montgomeryReduceP(result, high, low);
 }
 
-__host__ __device__ void modSqrtMontP(uint64_t *out, const uint64_t *in) {
+__host__ __device__ void modSqrMontP(uint64_t *out, const uint64_t *in) {
     modMulMontP(out, in, in);
 }
 
@@ -284,7 +284,7 @@ __host__ __device__ void modExpMontP(uint64_t *res, const uint64_t *base, const 
 
     for (int word = 3; word >= 0; word--) {
         for (int bit = 63; bit >= 0; bit--) {
-            modSqrtMontP(res, res);
+            modSqrMontP(res, res);
 
             if ((exp[word] >> bit) & 1ULL) {
                 modMulMontP(res, res, acc);
@@ -331,93 +331,104 @@ __host__ __device__ int jacobianIsInfinity(const ECPointJacobian *point) {
 }
 
 __host__ __device__ void jacobianToAffine(ECPoint *aff, const ECPointJacobian *jac) {
+
     if (jacobianIsInfinity(jac)) {
-        for (int i = 0; i < 4; i++) aff->x[i] = aff->y[i] = 0;
+        for (int i = 0; i < 4; i++)
+            aff->x[i] = aff->y[i] = 0;
         aff->infinity = 1;
         return;
     }
 
-    uint64_t zInv[4], zInv2[4];
+    uint64_t zInv[4];
+    uint64_t zInv2[4];
+    uint64_t zInv3[4];
 
     modExpMontP(zInv, jac->Z, P_CONST_MINUS_2);
-    modSqrtMontP(zInv2, zInv);
+    modMulMontP(zInv2, zInv, zInv);
+    modMulMontP(zInv3, zInv2, zInv);
     modMulMontP(aff->x, jac->X, zInv2);
     fromMontgomeryP(aff->x, aff->x);
-
-    uint64_t X3[4], aX[4], rhs[4];
-    modSqrtMontP(X3, aff->x);
-    modMulMontP(X3, X3, aff->x);
-    modMulMontP(aX, aff->x, ZERO_MONT);
-    modAddP(rhs, X3, aX);
-    modAddP(rhs, rhs, SEVEN_MONT);
-
-    sqrtModP(aff->y, rhs);
+    modMulMontP(aff->y, jac->Y, zInv3);
+    fromMontgomeryP(aff->y, aff->y);
 
     aff->infinity = 0;
 }
 
-__host__ __device__ void jacobianDouble(ECPointJacobian *result, const ECPointJacobian *point) {
-    if (jacobianIsInfinity(point)) {
-        jacobianSetInfinity(result);
+__host__ __device__ void jacobianDouble(ECPointJacobian *R, const ECPointJacobian *P) {
+    if (jacobianIsInfinity(P) ||
+        ((P->Y[0] | P->Y[1] | P->Y[2] | P->Y[3]) == 0)) {
+        jacobianSetInfinity(R);
         return;
     }
 
-    uint64_t ZZ[4], w[4], B[4];
+    uint64_t XX[4], YY[4], YYYY[4], S[4], M[4], T[4];
 
-    modSqrtMontP(result->X, point->X);
-    modSqrtMontP(ZZ, point->Z);
-    modAddP(w, result->X, result->X);
-    modAddP(w, w, result->X);
-    modMulMontP(B, point->X, ZZ);
-    modAddP(B, B, B);
-    modSqrtMontP(result->X, w);
-    modSubP(result->X, result->X, B);
-    modAddP(result->Z, point->X, point->Z);
-    modSqrtMontP(result->Z, result->Z);
-    modSubP(result->Z, result->Z, result->X);
-    modSubP(result->Z, result->Z, ZZ);
+    modMulMontP(XX, P->X, P->X);
+    modMulMontP(YY, P->Y, P->Y);
+    modMulMontP(YYYY, YY, YY);
+    modMulMontP(S, P->X, YY);
+    modAddP(S, S, S);
+    modAddP(S, S, S);
+    modAddP(M, XX, XX);
+    modAddP(M, M, XX);
+    modMulMontP(R->X, M, M);
+    modSubP(R->X, R->X, S);
+    modSubP(R->X, R->X, S);
+    modSubP(T, S, R->X);
+    modMulMontP(R->Y, M, T);
+    modAddP(YYYY, YYYY, YYYY);
+    modAddP(YYYY, YYYY, YYYY);
+    modAddP(YYYY, YYYY, YYYY);
+    modSubP(R->Y, R->Y, YYYY);
+    modMulMontP(R->Z, P->Y, P->Z);
+    modAddP(R->Z, R->Z, R->Z);
 
-    result->infinity = 0;
+    R->infinity = 0;
 }
 
-__host__ __device__ void jacobianAdd(ECPointJacobian *result, const ECPointJacobian *P, const ECPointJacobian *Q) {
-    if (jacobianIsInfinity(P)) {
-        *result = *Q;
-        return;
-    }
-    if (jacobianIsInfinity(Q)) {
-        *result = *P;
-        return;
-    }
+__host__ __device__ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) {
+    if (jacobianIsInfinity(P)) { *R = *Q; return; }
+    if (jacobianIsInfinity(Q)) { *R = *P; return; }
 
-    uint64_t Z1Z1[4], Z2Z2[4], U1[4], U2[4], H[4], I[4], J[4], V[4], Z1Z2[4];
+    uint64_t Z1Z1[4], Z2Z2[4], U1[4], U2[4];
+    uint64_t Z1Z1Z1[4], Z2Z2Z2[4], S1[4], S2[4];
+    uint64_t H[4], Rr[4], HH[4], HHH[4], V[4];
 
-    modSqrtMontP(Z1Z1, P->Z);
-    modSqrtMontP(Z2Z2, Q->Z);
+    modMulMontP(Z1Z1, P->Z, P->Z);
+    modMulMontP(Z2Z2, Q->Z, Q->Z);
     modMulMontP(U1, P->X, Z2Z2);
     modMulMontP(U2, Q->X, Z1Z1);
+    modMulMontP(Z1Z1Z1, Z1Z1, P->Z);
+    modMulMontP(Z2Z2Z2, Z2Z2, Q->Z);
+    modMulMontP(S1, P->Y, Z2Z2Z2);
+    modMulMontP(S2, Q->Y, Z1Z1Z1);
     modSubP(H, U2, U1);
+    modSubP(Rr, S2, S1);
 
-    uint64_t H_zero = H[0] | H[1] | H[2] | H[3];
-    if (H_zero == 0) {
-        jacobianDouble(result, P);
+    if ((H[0] | H[1] | H[2] | H[3]) == 0) {
+        if ((Rr[0] | Rr[1] | Rr[2] | Rr[3]) == 0) {
+            jacobianDouble(R, P);
+        } else {
+            jacobianSetInfinity(R);
+        }
         return;
     }
 
-    modAddP(I, H, H);
-    modSqrtMontP(I, I);
-    modMulMontP(J, H, I);
-    modMulMontP(V, U1, I);
-    modAddP(H, V, V);
-    modAddP(H, H, J);
-    modSubP(result->X, I, H);
-    modAddP(Z1Z2, P->Z, Q->Z);
-    modSqrtMontP(Z1Z2, Z1Z2);
-    modSubP(Z1Z2, Z1Z2, Z1Z1);
-    modSubP(Z1Z2, Z1Z2, Z2Z2);
-    modMulMontP(result->Z, Z1Z2, H);
+    modMulMontP(HH, H, H);
+    modMulMontP(HHH, HH, H);
+    modMulMontP(V, U1, HH);
+    modMulMontP(R->X, Rr, Rr);
+    modSubP(R->X, R->X, HHH);
+    modSubP(R->X, R->X, V);
+    modSubP(R->X, R->X, V);
+    modSubP(R->Y, V, R->X);
+    modMulMontP(R->Y, Rr, R->Y);
+    modMulMontP(S1, S1, HHH);
+    modSubP(R->Y, R->Y, S1);
+    modMulMontP(R->Z, P->Z, Q->Z);
+    modMulMontP(R->Z, R->Z, H);
 
-    result->infinity = 0;
+    R->infinity = 0;
 }
 
 __host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobian *P) {
@@ -434,14 +445,18 @@ __host__ __device__ void initPrecompG(int windowSize) {
     int dphi = (128 + windowSize - 1) / windowSize;
     int tableSize = (1 << windowSize) - 1;
 
-    uint64_t gxMont[4];
+    uint64_t gxMont[4], gyMont[4];
     toMontgomeryP(gxMont, GX_CONST);
+    toMontgomeryP(gyMont, GY_CONST);
 
     ECPointJacobian g, ge;
     for (int i = 0; i < 4; i++) {
         g.X[i] = gxMont[i];
+        g.Y[i] = gyMont[i];
         g.Z[i] = ONE_MONT[i];
+
         ge.X[i] = gxMont[i];
+        ge.Y[i] = gyMont[i];
         ge.Z[i] = ONE_MONT[i];
     }
 
