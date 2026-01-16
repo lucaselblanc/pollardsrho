@@ -171,8 +171,9 @@ uint256_t sub_uint256(const uint256_t& a, const uint256_t& b) {
 int compare_uint256(const uint256_t& a, const uint256_t& b) {
     for (int i = 3; i >= 0; i--) {
         if (a.limbs[i] > b.limbs[i]) return 1;
-        if (a.limbs[i] < b.limbs[i]) return -1;
-    } return 0;
+        if (a.limbs[i] < b.limbs[i]) return -1; 
+    }
+    return 0;
 }
 
 uint256_t uint256_from_uint32(uint32_t value) {
