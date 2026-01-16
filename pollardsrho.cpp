@@ -283,10 +283,15 @@ bool DP(const ECPointJacobian& P, int LSB) {
 uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool test_mode) {
 
     std::atomic<bool> search_in_progress(true);
+    std::atomic<unsigned long long> total_iters{0};
+    std::mutex k_mutex;
+    std::mutex dp_mutex;
+    std::mutex io_mutex;
 
     auto start_time = std::chrono::system_clock::now();
     auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
-    std::tm start_tm = *std::localtime(&start_time_t);
+    std::tm start_tm{};
+    localtime_r(&start_time_t, &start_tm);
 
     auto hex_to_bytes = [](const std::string& hex) -> std::vector<unsigned char> {
         std::vector<unsigned char> bytes(hex.size() / 2);
@@ -316,8 +321,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     }
     H.infinity = target_affine.infinity;
 
-    unsigned long long total_iters = 0;
-
+    uint256_t k{};
     uint256_t min_scalar{}, max_scalar{};
     {
         int limb_index = 3 - ((key_range - 1) / 64);
@@ -344,6 +348,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
         ECPointJacobian R;
         uint256_t a, b;
         Buffers* buffers;
+        uint32_t walk_id;
     };
 
     std::unordered_map<uint64_t, WalkState> dp_table;
@@ -352,10 +357,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     std::mt19937_64 rng(std::random_device{}());
 
     for (int i = 0; i < walkers; i++) {
-
         walkers_state[i].buffers = new Buffers();
         walkers_state[i].a = cppint_to_uint256(random_mod_n(N_, rng));
         walkers_state[i].b = cppint_to_uint256(random_mod_n(N_, rng));
+        walkers_state[i].walk_id = i;
 
         uint64_t a_arr[4], b_arr[4];
         uint256_to_uint64_array(a_arr, walkers_state[i].a);
@@ -364,118 +369,141 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
         ECPointJacobian Ra{}, Rb{};
 
         #ifdef __CUDACC__
-        cudaMemcpy(walkers_state[i].buffers->d_k, a_arr, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
-        scalarMultJacobian(walkers_state[i].buffers->d_R, walkers_state[i].buffers->d_k, key_range, windowSize);
-        cudaMemcpy(&Ra, walkers_state[i].buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
-        cudaMemcpy(walkers_state[i].buffers->d_G, &H, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
-        cudaMemcpy(walkers_state[i].buffers->d_k, b_arr, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
-        scalarMultJacobian(walkers_state[i].buffers->d_R, walkers_state[i].buffers->d_k, key_range, windowSize);
-        cudaMemcpy(&Rb, walkers_state[i].buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+            cudaMemcpy(walkers_state[i].buffers->d_k, a_arr, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
+            scalarMultJacobian(walkers_state[i].buffers->d_R, walkers_state[i].buffers->d_k, key_range, windowSize);
+            cudaMemcpy(&Ra, walkers_state[i].buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
+            cudaMemcpy(walkers_state[i].buffers->d_G, &H, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+            cudaMemcpy(walkers_state[i].buffers->d_k, b_arr, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
+            scalarMultJacobian(walkers_state[i].buffers->d_R, walkers_state[i].buffers->d_k, key_range, windowSize);
+            cudaMemcpy(&Rb, walkers_state[i].buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
         #else
-        scalarMultJacobian(&Ra, a_arr, key_range, windowSize);
-        scalarMultJacobian(&Rb, b_arr, key_range, windowSize);
+            scalarMultJacobian(&Ra, a_arr, key_range, windowSize);
+            scalarMultJacobian(&Rb, b_arr, key_range, windowSize);
         #endif
-        pointAddJacobian(&walkers_state[i].R, &Ra, &Rb);
+            pointAddJacobian(&walkers_state[i].R, &Ra, &Rb);
     }
 
     auto last_print = std::chrono::steady_clock::now();
-    WalkState* w = nullptr;
 
     if (test_mode) {
-    ECPointJacobian INIT_JUMP{};
-    uint256_t jump{};
+        ECPointJacobian INIT_JUMP{};
+        uint256_t jump{};
  
-    //Initial jump of 2^50% of the key range
-    int bit_index = key_range / 2;
-    int limb_index = 3 - (bit_index / 64);
-    int bit_in_limb = bit_index % 64;
+        //Initial jump of 2^(key_range/2) of the key range
+        int bit_index = key_range / 2;
+        int limb_index = 3 - (bit_index / 64);
+        int bit_in_limb = bit_index % 64;
 
-    jump.limbs[limb_index] = 1ULL << bit_in_limb;
+        jump.limbs[limb_index] = 1ULL << bit_in_limb;
 
-    uint64_t jump_arr[4];
-    uint256_to_uint64_array(jump_arr, jump);
-    scalarMultJacobian(&INIT_JUMP, jump_arr, key_range, windowSize);
+        uint64_t jump_arr[4];
+        uint256_to_uint64_array(jump_arr, jump);
+        scalarMultJacobian(&INIT_JUMP, jump_arr, key_range, windowSize);
 
-    for (int i = 0; i < walkers; i++) {
-        w = &walkers_state[i];
-
-        w->b = add_uint256(w->b, jump);
-        if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
-
-        pointAddJacobian(&w->R, &w->R, &INIT_JUMP);
-    }
-}
-
-    uint256_t k{};
-
-    while (search_in_progress.load()) {
         for (int i = 0; i < walkers; i++) {
+            WalkState* w = &walkers_state[i];
 
-            total_iters++;
-
-            w = &walkers_state[i];
-
-            auto pointsEqual = [](const ECPointJacobian& A, const ECPointJacobian& B) -> bool {
-                if (A.infinity != B.infinity) return false;
-                if (A.infinity) return true;
-
-                for (int i = 0; i < 4; i++) {
-                    if (A.X[i] != B.X[i]) return false;
-                    if (A.Z[i] != B.Z[i]) return false;
-                }
-                return true;
-            };
-
-            f(w->R, w->a, w->b, *w->buffers);
-
-            if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
+            w->b = add_uint256(w->b, jump);
             if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
-            if (!DP(w->R, 5)) continue;
 
-            uint64_t hash = hashed_dp(w->R);
-
-            if (!dp_table.count(hash)) {
-                dp_table[hash] = *w;
-                continue;
-            }
-
-            auto& other = dp_table[hash];
-
-            if (!pointsEqual(w->R, other.R)) continue;
-
-            uint256_t diff_coeff_a = (compare_uint256(w->a, other.a) >= 0) ? sub_uint256(w->a, other.a) : sub_uint256(N, sub_uint256(other.a, w->a));
-            uint256_t diff_coeff_b = (compare_uint256(other.b, w->b) >= 0) ? sub_uint256(other.b, w->b) : sub_uint256(N, sub_uint256(w->b, other.b));
-
-            std::cout << "\033[32mCollision found!\033[0m" << std::endl;
-            std::cout << "Difference of the coefficient a: " << uint_256_to_hex(diff_coeff_a) << std::endl;
-            std::cout << "Difference of the coefficient b: " << uint_256_to_hex(diff_coeff_b) << std::endl;
-            std::cout << "Scalar Coefficient a (Non-Key): " << uint_256_to_hex(w->a) << std::endl;
-            std::cout << "Scalar Coefficient b (Non-Key): " << uint_256_to_hex(w->b) << std::endl;
-
-            uint256_t inv_diff_coeff_b = almostinverse(diff_coeff_b, N);
-
-            uint64_t a_s[4], b_s[4], k_s[4];
-
-            uint256_to_uint64_array(a_s, diff_coeff_a);
-            uint256_to_uint64_array(b_s, inv_diff_coeff_b);
-
-            scalarMul(k_s, a_s, b_s);
-
-            for (int i = 0; i < 4; i++) {
-                k.limbs[i] = k_s[i];
-            }
-
-            search_in_progress.store(false);
-        }
-
-        auto now = std::chrono::steady_clock::now();
-        if (now - last_print >= std::chrono::seconds(10)) {
-            std::cout << "\rScalar Coefficient a (Non-Key): " << uint_256_to_hex(w->a) << std::endl;
-            std::cout << "\rScalar Coefficient b (Non-Key): " << uint_256_to_hex(w->b) << std::endl;
-            std::cout << "\rTotal Iterations: " << total_iters << std::endl;
-            last_print = now;
+            pointAddJacobian(&w->R, &w->R, &INIT_JUMP);
         }
     }
+
+    auto pointsEqual = [](const ECPointJacobian& A, const ECPointJacobian& B) -> bool {
+        if (A.infinity != B.infinity) return false;
+        if (A.infinity) return true;
+
+        for (int i = 0; i < 4; i++) {
+            if (A.X[i] != B.X[i]) return false;
+            if (A.Z[i] != B.Z[i]) return false;
+        }
+        return true;
+    };
+
+    auto worker = [&](int start, int end) {
+        while (search_in_progress.load(std::memory_order_acquire)) {
+            for (int i = start; i < end && search_in_progress.load(std::memory_order_acquire); i++) {
+                total_iters.fetch_add(1, std::memory_order_relaxed);
+
+                WalkState* w = &walkers_state[i];
+
+                f(w->R, w->a, w->b, *w->buffers);
+
+                if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
+                if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
+                if (!DP(w->R, 5)) continue;
+
+                uint64_t hash = hashed_dp(w->R);
+
+                {
+                    std::lock_guard<std::mutex> lock(dp_mutex);
+
+                    auto dp_entry = dp_table.find(hash);
+                    if (dp_entry == dp_table.end()) {
+                        WalkState wst = *w;
+                        wst.buffers = nullptr;
+                        dp_table.emplace(hash, wst);
+
+                        continue;
+                    }
+
+                    if (dp_entry->second.walk_id == w->walk_id) continue;
+                    if (!pointsEqual(w->R, dp_entry->second.R)) continue;
+
+                    uint256_t diff_coeff_a = (compare_uint256(w->a, dp_entry->second.a) >= 0) ? sub_uint256(w->a, dp_entry->second.a) : sub_uint256(N, sub_uint256(dp_entry->second.a, w->a));
+                    uint256_t diff_coeff_b = (compare_uint256(dp_entry->second.b, w->b) >= 0) ? sub_uint256(dp_entry->second.b, w->b) : sub_uint256(N, sub_uint256(w->b, dp_entry->second.b));
+                    uint256_t inv_diff_coeff_b = almostinverse(diff_coeff_b, N);
+
+                    std::cout << "\033[32mCollision found!\033[0m" << std::endl;
+                    std::cout << "Difference of the coefficient A: " << uint_256_to_hex(diff_coeff_a) << std::endl;
+                    std::cout << "Difference of the coefficient B: " << uint_256_to_hex(diff_coeff_b) << std::endl;
+                    std::cout << "Scalar Coefficient A (Non-Key): " << uint_256_to_hex(w->a) << std::endl;
+                    std::cout << "Scalar Coefficient B (Non-Key): " << uint_256_to_hex(w->b) << std::endl;
+
+                    uint64_t a_s[4], b_s[4], k_s[4];
+                    uint256_to_uint64_array(a_s, diff_coeff_a);
+                    uint256_to_uint64_array(b_s, inv_diff_coeff_b);
+
+                    scalarMul(k_s, a_s, b_s);
+                    std::lock_guard<std::mutex> lk(k_mutex);
+                    for (int j = 0; j < 4; j++) k.limbs[j] = k_s[j];
+                    search_in_progress.store(false, std::memory_order_release);
+                }
+            }
+        }
+    };
+
+    std::thread progress_thread([&]() {
+        while (search_in_progress.load(std::memory_order_acquire)) {
+            auto now = std::chrono::steady_clock::now();
+            if (now - last_print >= std::chrono::seconds(10)) {
+                std::lock_guard<std::mutex> lock(io_mutex);
+                std::cout << "\rTotal Iterations: " << total_iters.load() << std::endl;
+                last_print = now;
+            }
+        }
+    });
+
+    unsigned int threads_count = std::thread::hardware_concurrency();
+    if (threads_count == 0) threads_count = 2;
+    threads_count = std::min<unsigned int>(threads_count, walkers);
+
+    std::vector<std::thread> threads;
+    if (walkers == 0) return k;
+    int chunk = walkers / threads_count;
+
+    for (unsigned int t = 0; t < threads_count; t++) {
+        int start = t * chunk;
+        int end   = (t == threads_count - 1) ? walkers : start + chunk;
+        threads.emplace_back(worker, start, end);
+    }
+
+    for (auto& th : threads) th.join();
+    for (auto& w : walkers_state) delete w.buffers;
+
+    search_in_progress.store(false, std::memory_order_release);
+    progress_thread.join();
 
     auto end_time = std::chrono::system_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
