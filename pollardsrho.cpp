@@ -382,24 +382,29 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     WalkState* w = nullptr;
 
     if (test_mode) {
-        ECPointJacobian INIT_JUMP{};
-        uint256_t jump{};
-        jump.limbs[3] = 1ULL << (key_range / 2); //Initial jump of 2^50% of the key range
+    ECPointJacobian INIT_JUMP{};
+    uint256_t jump{};
+ 
+    //Initial jump of 2^50% of the key range
+    int bit_index = key_range / 2;
+    int limb_index = 3 - (bit_index / 64);
+    int bit_in_limb = bit_index % 64;
 
-        uint64_t jump_arr[4];
-        uint256_to_uint64_array(jump_arr, jump);
-        scalarMultJacobian(&INIT_JUMP, jump_arr, key_range, windowSize);
+    jump.limbs[limb_index] = 1ULL << bit_in_limb;
 
-        for (int i = 0; i < walkers; i++) {
+    uint64_t jump_arr[4];
+    uint256_to_uint64_array(jump_arr, jump);
+    scalarMultJacobian(&INIT_JUMP, jump_arr, key_range, windowSize);
 
-            w = &walkers_state[i];
+    for (int i = 0; i < walkers; i++) {
+        w = &walkers_state[i];
 
-            w->b = add_uint256(w->b, jump);
-            if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
+        w->b = add_uint256(w->b, jump);
+        if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
 
-            pointAddJacobian(&w->R, &w->R, &INIT_JUMP);
-        }
+        pointAddJacobian(&w->R, &w->R, &INIT_JUMP);
     }
+}
 
     uint256_t k{};
 
