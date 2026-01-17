@@ -501,8 +501,8 @@ __host__ __device__ void initPrecompG(int windowSize) {
     }
 }
 
-__host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint64_t *scalar, int nBits, int windowSize) {
-    int d = (nBits + windowSize - 1) / windowSize;
+__host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint64_t *scalar, int windowSize) {
+    int d = (128 + windowSize - 1) / windowSize;
 
     jacobianSetInfinity(result);
 
@@ -516,7 +516,7 @@ __host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint6
         int idx = 0;
         for (int row = 0; row < windowSize; row++) {
             int bitIndex = row * d + col;
-            if (bitIndex >= nBits) continue;
+            if (bitIndex >= 128) continue;
             int limb = bitIndex / 64;
             int shift = bitIndex % 64;
             uint64_t bit = (scalar[limb] >> shift) & 1ULL;
@@ -531,8 +531,8 @@ __host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint6
     }
 }
 
-__host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, const uint64_t *scalar, int nBits, int windowSize) {
-    int d = (nBits + windowSize - 1) / windowSize;
+__host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, const uint64_t *scalar, int windowSize) {
+    int d = (128 + windowSize - 1) / windowSize;
 
     jacobianSetInfinity(result);
 
@@ -546,7 +546,7 @@ __host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, const ui
         int idx = 0;
         for (int row = 0; row < windowSize; row++) {
             int bitIndex = row * d + col;
-            if (bitIndex >= nBits) continue;
+            if (bitIndex >= 128) continue;
             int limb = bitIndex / 64;
             int shift = bitIndex % 64;
             uint64_t bit = (scalar[limb] >> shift) & 1ULL;
@@ -668,19 +668,19 @@ __host__ __device__ void scalarSplitLambda(uint64_t r1[4], uint64_t r2[4], const
     scalarAdd(r1, t1, k);
 }
 
-__host__ __device__ void jacobianScalarMultGlv(ECPointJacobian *R, const uint64_t k[4], int nBits, int windowSize) {
+__host__ __device__ void jacobianScalarMultGlv(ECPointJacobian *R, const uint64_t k[4], int windowSize) {
     uint64_t r1[4], r2[4];
     scalarSplitLambda(r1, r2, k);
     ECPointJacobian P1, P2;
-    jacobianScalarMult(&P1, r1, nBits, windowSize);
-    jacobianScalarMultPhi(&P2, r2, nBits, windowSize);
+    jacobianScalarMult(&P1, r1, windowSize);
+    jacobianScalarMultPhi(&P2, r2, windowSize);
     jacobianAdd(R, &P1, &P2);
 }
 
 __host__ __device__ void pointInitJacobian(ECPointJacobian *P) { for (int i = 0; i < 4; i++) { P->X[i] = 0; P->Y[i] = 0; P->Z[i] = 0; } P->infinity = 1; }
 __host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) { jacobianAdd(R, P, Q); }
 __host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P) { jacobianDouble(R, P); }
-__host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int nBits, int windowSize) { jacobianScalarMultGlv(R, k, nBits, windowSize); }
+__host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int windowSize) { jacobianScalarMultGlv(R, k, windowSize); }
 __host__ __device__ void serializePublicKey(unsigned char *out, const ECPoint *publicKey) {
     unsigned char prefix = (publicKey->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
@@ -698,11 +698,11 @@ __host__ __device__ void serializePublicKey(unsigned char *out, const ECPoint *p
     }
 }
 
-__host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *PRIV_KEY, int nBits, int windowSize) {
+__host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *PRIV_KEY, int windowSize) {
     ECPoint pub;
     ECPointJacobian pub_jac;
 
-    jacobianScalarMultGlv(&pub_jac, PRIV_KEY, nBits, windowSize);
+    jacobianScalarMultGlv(&pub_jac, PRIV_KEY, windowSize);
     jacobianToAffine(&pub, &pub_jac);
     serializePublicKey(out, &pub);
 }
