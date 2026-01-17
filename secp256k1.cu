@@ -502,7 +502,6 @@ __host__ __device__ void initPrecompG(int windowSize) {
 }
 
 __host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint64_t *scalar, int nBits, int windowSize) {
-    nBits = 128;
     int d = (nBits + windowSize - 1) / windowSize;
 
     jacobianSetInfinity(result);
@@ -533,7 +532,6 @@ __host__ __device__ void jacobianScalarMult(ECPointJacobian *result, const uint6
 }
 
 __host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, const uint64_t *scalar, int nBits, int windowSize) {
-    nBits = 128;
     int d = (nBits + windowSize - 1) / windowSize;
 
     jacobianSetInfinity(result);
