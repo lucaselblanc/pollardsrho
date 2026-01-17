@@ -370,15 +370,15 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
 
         #ifdef __CUDACC__
             cudaMemcpy(walkers_state[i].buffers->d_k, a_arr, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
-            scalarMultJacobian(walkers_state[i].buffers->d_R, walkers_state[i].buffers->d_k, key_range, windowSize);
+            scalarMultJacobian(walkers_state[i].buffers->d_R, walkers_state[i].buffers->d_k, windowSize);
             cudaMemcpy(&Ra, walkers_state[i].buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
             cudaMemcpy(walkers_state[i].buffers->d_G, &H, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
             cudaMemcpy(walkers_state[i].buffers->d_k, b_arr, sizeof(uint64_t) * 4, cudaMemcpyHostToDevice);
-            scalarMultJacobian(walkers_state[i].buffers->d_R, walkers_state[i].buffers->d_k, key_range, windowSize);
+            scalarMultJacobian(walkers_state[i].buffers->d_R, walkers_state[i].buffers->d_k, windowSize);
             cudaMemcpy(&Rb, walkers_state[i].buffers->d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
         #else
-            scalarMultJacobian(&Ra, a_arr, key_range, windowSize);
-            scalarMultJacobian(&Rb, b_arr, key_range, windowSize);
+            scalarMultJacobian(&Ra, a_arr, windowSize);
+            scalarMultJacobian(&Rb, b_arr, windowSize);
         #endif
             pointAddJacobian(&walkers_state[i].R, &Ra, &Rb);
     }
@@ -398,7 +398,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
 
         uint64_t jump_arr[4];
         uint256_to_uint64_array(jump_arr, jump);
-        scalarMultJacobian(&INIT_JUMP, jump_arr, key_range, windowSize);
+        scalarMultJacobian(&INIT_JUMP, jump_arr, windowSize);
 
         for (int i = 0; i < walkers; i++) {
             WalkState* w = &walkers_state[i];
