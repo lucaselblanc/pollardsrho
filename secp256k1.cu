@@ -595,15 +595,59 @@ __host__ __device__ void scalarMul(uint64_t r[4], const uint64_t a[4], const uin
         uint64_t carry = 0;
         for (int j = 0; j < 4; j++) {
             uint128_t prod = (uint128_t)a[i] * b[j];
-            prod += t[i+j];
+            prod += t[i + j];
             prod += carry;
-            t[i+j] = (uint64_t)prod;
+            t[i + j] = (uint64_t)prod;
             carry = (uint64_t)(prod >> 64);
         }
-        t[i+4] = carry;
+        t[i + 4] += carry;
     }
 
-    scalarReduceN(r, t);
+    uint64_t n0 = N_CONST[0];
+    uint64_t n0inv = 1;
+    for (int i = 0; i < 6; i++) {
+        n0inv *= 2 - n0 * n0inv;
+    }
+    n0inv = ~n0inv + 1;
+
+    for (int i = 0; i < 4; i++) {
+        uint64_t m = t[i] * n0inv;
+
+        uint128_t carry = 0;
+        for (int j = 0; j < 4; j++) {
+            uint128_t prod = (uint128_t)m * N_CONST[j];
+            prod += t[i + j];
+            prod += carry;
+            t[i + j] = (uint64_t)prod;
+            carry = prod >> 64;
+        }
+
+        uint128_t acc = (uint128_t)t[i + 4] + carry;
+        t[i + 4] = (uint64_t)acc;
+
+        uint64_t c = (uint64_t)(acc >> 64);
+        if (c && (i + 5 < 8)) {
+            t[i + 5] += c;
+        }
+    }
+
+    uint64_t res[4];
+    for (int i = 0; i < 4; i++) {
+        res[i] = t[i + 4];
+    }
+
+    uint64_t borrow = 0;
+    uint64_t diff[4];
+    for (int i = 0; i < 4; i++) {
+        uint128_t sub = (uint128_t)res[i] - N_CONST[i] - borrow;
+        diff[i] = (uint64_t)sub;
+        borrow = (sub >> 127) & 1;
+    }
+
+    uint64_t mask = (uint64_t)0 - (uint64_t)(borrow == 0);
+    for (int i = 0; i < 4; i++) {
+        r[i] = (diff[i] & mask) | (res[i] & ~mask);
+    }
 }
 
 __host__ __device__ void scalarAdd(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
