@@ -193,7 +193,7 @@ __host__ __device__ void modAddP(uint64_t *result, const uint64_t *a, const uint
     bool ge = (bool)carry;
     if (!ge) {
         for (int i = 3; i >= 0; --i) {
-            if (result[i] > P_CONST[i]) { ge = true; break; }
+            if (result[i] >= P_CONST[i]) { ge = true; break; }
             if (result[i] < P_CONST[i]) { ge = false; break; }
         }
     }
