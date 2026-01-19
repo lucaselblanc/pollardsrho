@@ -171,7 +171,7 @@ uint256_t sub_uint256(const uint256_t& a, const uint256_t& b) {
 int compare_uint256(const uint256_t& a, const uint256_t& b) {
     for (int i = 3; i >= 0; i--) {
         if (a.limbs[i] > b.limbs[i]) return 1;
-        if (a.limbs[i] < b.limbs[i]) return -1; 
+        if (a.limbs[i] < b.limbs[i]) return -1;
     }
     return 0;
 }
@@ -220,15 +220,28 @@ struct Buffers {
     }
 };
 
+uint64_t hashed_dp(const ECPointJacobian& P) {
+    uint64_t h = 0x9e3779b97f4a7c15ULL;
+
+    for (int i = 0; i < 4; i++) {
+        h ^= P.X[i] + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        h ^= P.Y[i] + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        h ^= P.Z[i] + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+    }
+
+    return h;
+}
+
 void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
-    uint64_t x_low64 = R.X[3];
-    unsigned int op = static_cast<unsigned int>(x_low64 % 3);
+    uint64_t h = hashed_dp(R);
+    unsigned int op = static_cast<unsigned int>(h % 3);
 
     #ifdef __CUDACC__
         cudaMemcpy(buffers.d_R, &R, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
     #endif
 
     switch (op) {
+
         case 0:
         #ifdef __CUDACC__
             pointAddJacobian(buffers.d_R, buffers.d_R, buffers.d_G);
@@ -236,7 +249,8 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
             pointAddJacobian(&R, &R, &G);
         #endif
             a = add_uint256(a, uint256_from_uint32(1));
-            if (compare_uint256(a, N) >= 0) a = sub_uint256(a, N);
+            if (compare_uint256(a, N) >= 0)
+                a = sub_uint256(a, N);
             break;
 
         case 1:
@@ -246,7 +260,8 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
             pointAddJacobian(&R, &R, &H);
         #endif
             b = add_uint256(b, uint256_from_uint32(1));
-            if (compare_uint256(b, N) >= 0) b = sub_uint256(b, N);
+            if (compare_uint256(b, N) >= 0)
+                b = sub_uint256(b, N);
             break;
 
         default:
@@ -256,11 +271,13 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
             pointDoubleJacobian(&R, &R);
         #endif
             a = add_uint256(a, a);
-            if (compare_uint256(a, N) >= 0) a = sub_uint256(a, N);
+            if (compare_uint256(a, N) >= 0)
+                a = sub_uint256(a, N);
 
             b = add_uint256(b, b);
-            if (compare_uint256(b, N) >= 0) b = sub_uint256(b, N);
-        break;
+            if (compare_uint256(b, N) >= 0)
+                b = sub_uint256(b, N);
+            break;
     }
 
     #ifdef __CUDACC__
@@ -268,16 +285,9 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
     #endif
 }
 
-uint64_t hashed_dp(const ECPointJacobian& P) {
-    uint64_t h = 0;
-    for(int i = 0; i < 4; i++) {
-        h ^= P.X[i] + 0x9e3779b97f4a7c15 + (h << 6) + (h >> 2);
-    }
-    return h;
-}
-
 bool DP(const ECPointJacobian& P, int LSB) {
-    return (P.X[3] & ((1ULL << LSB) - 1)) == 0;
+    uint64_t h = hashed_dp(P);
+    return (h & ((1ULL << LSB) - 1)) == 0;
 }
 
 uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool test_mode) {
@@ -388,7 +398,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     if (test_mode) {
         ECPointJacobian INIT_JUMP{};
         uint256_t jump{};
- 
+
         //Initial jump of 2^(key_range/2) of the key range
         int bit_index = key_range / 2;
         int limb_index = 3 - (bit_index / 64);
@@ -411,14 +421,26 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     }
 
     auto pointsEqual = [](const ECPointJacobian& A, const ECPointJacobian& B) -> bool {
-        if (A.infinity != B.infinity) return false;
-        if (A.infinity) return true;
+   	if (A.infinity || B.infinity) return A.infinity && B.infinity;
 
-        for (int i = 0; i < 4; i++) {
-            if (A.X[i] != B.X[i]) return false;
-            if (A.Z[i] != B.Z[i]) return false;
-        }
-        return true;
+    	uint64_t Z1Z1[4], Z2Z2[4];
+    	uint64_t U1[4], U2[4];
+    	uint64_t Z1Z1Z1[4], Z2Z2Z2[4];
+    	uint64_t S1[4], S2[4];
+
+    	modMulMontP(Z1Z1, A.Z, A.Z);
+    	modMulMontP(Z2Z2, B.Z, B.Z);
+    	modMulMontP(U1, A.X, Z2Z2);
+    	modMulMontP(U2, B.X, Z1Z1);
+
+    	if (memcmp(U1, U2, sizeof(U1)) != 0) return false;
+
+    	modMulMontP(Z1Z1Z1, Z1Z1, A.Z);
+    	modMulMontP(Z2Z2Z2, Z2Z2, B.Z);
+    	modMulMontP(S1, A.Y, Z2Z2Z2);
+    	modMulMontP(S2, B.Y, Z1Z1Z1);
+
+    	return memcmp(S1, S2, sizeof(S1)) == 0;
     };
 
     auto worker = [&](int start, int end) {
@@ -432,7 +454,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
 
                 if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
                 if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
-                if (!DP(w->R, 5)) continue;
+                if (!DP(w->R, 8)) continue;
 
                 uint64_t hash = hashed_dp(w->R);
 
@@ -529,7 +551,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Press 'Ctrl \\' to Quit\n";
     std::cout << "Auto Window-Size for secp256k1: " << windowSize << std::endl;
 
-    uint256_t found_key = prho(pub_key_hex, key_range, 3, test_mode);
+    uint256_t found_key = prho(pub_key_hex, key_range, 8, test_mode);
 
     auto uint_256_to_hex = [](const uint256_t& value) -> std::string {
         std::ostringstream oss;
