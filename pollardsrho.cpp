@@ -33,6 +33,7 @@ ECPointJacobian G;
 ECPointJacobian H;
 
 const cpp_int N_("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
+const uint64_t P[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t GX = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
 const uint256_t GY = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
@@ -128,31 +129,45 @@ void init_secp256k1() {
     #endif
 }
 
-cpp_int random_mod_n(const cpp_int& N, std::mt19937_64& rng) {
-    cpp_int r;
-    cpp_int limit = (cpp_int(1) << 256) - ((cpp_int(1) << 256) % N);
+uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max_scalar, int key_range) {
+    std::mt19937_64 rng(std::random_device{}());
+    uint256_t r{};
+    uint256_t range{};
 
-    do {
-        r = 0;
-        for (int i = 0; i < 4; i++) {
-            r <<= 64;
-            r |= cpp_int(rng());
-        }
-    } while (r >= limit);
-
-    return r % N;
-}
-
-uint256_t cppint_to_uint256(const cpp_int& v) {
-    uint256_t out{};
-    cpp_int tmp = v;
-
-    for (int i = 0; i < 4; i++) {
-        out.limbs[i] = static_cast<uint64_t>(tmp & cpp_int(0xFFFFFFFFFFFFFFFFULL));
-        tmp >>= 64;
+    bool carry = false;
+    for (int i = 3; i >= 0; i--) {
+        uint64_t prev = max_scalar.limbs[i];
+        range.limbs[i] = max_scalar.limbs[i] - min_scalar.limbs[i] - (carry ? 1 : 0);
+        carry = (prev < min_scalar.limbs[i] + (carry ? 1 : 0));
     }
 
-    return out;
+    range.limbs[3] += 1;
+
+    auto greater_equal = [](const uint256_t& a, const uint256_t& b) -> bool {
+        for (int i = 0; i < 4; i++) {
+            if (a.limbs[i] > b.limbs[i]) return true;
+            if (a.limbs[i] < b.limbs[i]) return false;
+        }
+        return true;
+    };
+
+    do {
+        for (int i = 0; i < 4; i++) r.limbs[i] = rng();
+        int limb_index = 3 - key_range / 64;
+        int bit_in_limb = key_range % 64;
+        if (bit_in_limb) r.limbs[limb_index] &= (1ULL << bit_in_limb) - 1;
+        for (int i = 0; i < limb_index; i++) r.limbs[i] = 0;
+
+    } while (greater_equal(r, range));
+
+    carry = false;
+    for (int i = 3; i >= 0; i--) {
+        uint64_t prev = r.limbs[i];
+        r.limbs[i] += min_scalar.limbs[i] + (carry ? 1 : 0);
+        carry = (r.limbs[i] < prev);
+    }
+
+    return r;
 }
 
 uint256_t sub_uint256(const uint256_t& a, const uint256_t& b) {
@@ -191,6 +206,19 @@ uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
         carry = (sum < a.limbs[i] || (carry && sum == a.limbs[i])) ? 1 : 0;
         result.limbs[i] = sum;
     } return result;
+}
+
+std::string format_size_bytes(size_t bytes) {
+    const char* suffixes[] = { "B", "KB", "MB", "GB", "TB", "PB" };
+    size_t i = 0;
+    double size = static_cast<double>(bytes);
+    while (size >= 1024 && i < 5) {
+        size /= 1024;
+        ++i;
+    }
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2) << size << " " << suffixes[i];
+    return oss.str();
 }
 
 struct Buffers {
@@ -232,6 +260,11 @@ uint64_t hashed_dp(const ECPointJacobian& P) {
     return h;
 }
 
+bool DP(const ECPointJacobian& P, int LSB) {
+    uint64_t h = hashed_dp(P);
+    return (h & ((1ULL << LSB) - 1)) == 0;
+}
+
 void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
     uint64_t h = hashed_dp(R);
     unsigned int op = static_cast<unsigned int>(h % 3);
@@ -249,8 +282,7 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
             pointAddJacobian(&R, &R, &G);
         #endif
             a = add_uint256(a, uint256_from_uint32(1));
-            if (compare_uint256(a, N) >= 0)
-                a = sub_uint256(a, N);
+            if (compare_uint256(a, N) >= 0) a = sub_uint256(a, N);
             break;
 
         case 1:
@@ -260,8 +292,7 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
             pointAddJacobian(&R, &R, &H);
         #endif
             b = add_uint256(b, uint256_from_uint32(1));
-            if (compare_uint256(b, N) >= 0)
-                b = sub_uint256(b, N);
+            if (compare_uint256(b, N) >= 0) b = sub_uint256(b, N);
             break;
 
         default:
@@ -271,23 +302,16 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
             pointDoubleJacobian(&R, &R);
         #endif
             a = add_uint256(a, a);
-            if (compare_uint256(a, N) >= 0)
-                a = sub_uint256(a, N);
+            if (compare_uint256(a, N) >= 0) a = sub_uint256(a, N);
 
             b = add_uint256(b, b);
-            if (compare_uint256(b, N) >= 0)
-                b = sub_uint256(b, N);
+            if (compare_uint256(b, N) >= 0) b = sub_uint256(b, N);
             break;
     }
 
     #ifdef __CUDACC__
         cudaMemcpy(&R, buffers.d_R, sizeof(ECPointJacobian), cudaMemcpyDeviceToHost);
     #endif
-}
-
-bool DP(const ECPointJacobian& P, int LSB) {
-    uint64_t h = hashed_dp(P);
-    return (h & ((1ULL << LSB) - 1)) == 0;
 }
 
 uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool test_mode) {
@@ -364,12 +388,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     std::unordered_map<uint64_t, WalkState> dp_table;
     std::vector<WalkState> walkers_state(walkers);
 
-    std::mt19937_64 rng(std::random_device{}());
-
     for (int i = 0; i < walkers; i++) {
         walkers_state[i].buffers = new Buffers();
-        walkers_state[i].a = cppint_to_uint256(random_mod_n(N_, rng));
-        walkers_state[i].b = cppint_to_uint256(random_mod_n(N_, rng));
+        walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range);
+        walkers_state[i].b = rng_mersenne_twister(min_scalar, max_scalar, key_range);
         walkers_state[i].walk_id = i;
 
         uint64_t a_arr[4], b_arr[4];
@@ -399,7 +421,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
         ECPointJacobian INIT_JUMP{};
         uint256_t jump{};
 
-        //Initial jump of 2^(key_range/2) of the key range
+        // Initial jump of 2^(key_range/2)
         int bit_index = key_range / 2;
         int limb_index = 3 - (bit_index / 64);
         int bit_in_limb = bit_index % 64;
@@ -408,17 +430,23 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
 
         uint64_t jump_arr[4];
         uint256_to_uint64_array(jump_arr, jump);
+
+        ECPointJacobian TEMP_G = G;
+        G = H;
         scalarMultJacobian(&INIT_JUMP, jump_arr, windowSize);
+        G = TEMP_G;
 
         for (int i = 0; i < walkers; i++) {
             WalkState* w = &walkers_state[i];
-
             w->b = add_uint256(w->b, jump);
             if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
-
             pointAddJacobian(&w->R, &w->R, &INIT_JUMP);
         }
     }
+
+    std::cout << "Initial Scalars:" << std::endl << "\n";
+    std::cout << "a = " << uint_256_to_hex(walkers_state[0].a) << std::endl;
+    std::cout << "b = " << uint_256_to_hex(walkers_state[0].b) << std::endl;
 
     auto pointsEqual = [](const ECPointJacobian& A, const ECPointJacobian& B) -> bool {
    	if (A.infinity || B.infinity) return A.infinity && B.infinity;
@@ -466,7 +494,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
                         WalkState wst = *w;
                         wst.buffers = nullptr;
                         dp_table.emplace(hash, wst);
-
                         continue;
                     }
 
@@ -486,10 +513,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
                     uint64_t a_s[4], b_s[4], k_s[4];
                     uint256_to_uint64_array(a_s, diff_coeff_a);
                     uint256_to_uint64_array(b_s, inv_diff_coeff_b);
-
                     scalarMul(k_s, a_s, b_s);
+
                     std::lock_guard<std::mutex> lk(k_mutex);
-                    for (int j = 0; j < 4; j++) k.limbs[j] = k_s[j];
+                    for (int j = 0; j < 4; j++) { k.limbs[j] = k_s[j]; }
                     search_in_progress.store(false, std::memory_order_release);
                 }
             }
@@ -501,11 +528,22 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
             auto now = std::chrono::steady_clock::now();
             if (now - last_print >= std::chrono::seconds(10)) {
                 std::lock_guard<std::mutex> lock(io_mutex);
-                std::cout << "\rTotal Iterations: " << total_iters.load() << std::endl;
+
+                std::lock_guard<std::mutex> dp_lock(dp_mutex);
+                size_t dp_bytes = dp_table.size() * sizeof(WalkState);
+                std::string last_hash = dp_table.empty() ? "<empty>" : std::to_string(dp_table.begin()->first);
+
+                std::cout << "\rTotal Iterations: " << total_iters.load() << "\n"
+                << " DP table size: " << format_size_bytes(dp_bytes) << "\n"
+                << "\n Last DP hash: " << last_hash << "\n"
+                << " "
+                << std::flush;
+
                 last_print = now;
             }
         }
     });
+
 
     unsigned int threads_count = std::thread::hardware_concurrency();
     if (threads_count == 0) threads_count = 2;
