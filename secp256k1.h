@@ -10,8 +10,6 @@
  * Written by Lucas Leblanc              *
 ******************************************/
 
-/* --- AINDA EM TESTES --- */
-
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
@@ -50,15 +48,16 @@ typedef struct {
 
 uint256_t almostinverse(uint256_t base, uint256_t mod);
 
+__host__ __device__ void decompressPublicKey(ECPoint* out, const unsigned char compressed[33]);
+__host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *PRIV_KEY, int windowSize);
+__host__ __device__ void initPrecompG(int windowSize);
+__host__ __device__ void jacobianToAffine(ECPoint *aff, const ECPointJacobian *jac);
+__host__ __device__ void modMulMontP(uint64_t *result, const uint64_t *a, const uint64_t *b);
 __host__ __device__ void pointInitJacobian(ECPointJacobian *P);
 __host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q);
 __host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P);
 __host__ __device__ void scalarMultJacobian(ECPointJacobian *R, const uint64_t *k, int windowSize);
 __host__ __device__ void scalarMul(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]);
 __host__ __device__ void serializePublicKey(unsigned char *out, const ECPoint *publicKey);
-__host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *PRIV_KEY, int windowSize);
-__host__ __device__ void decompressPublicKey(ECPoint* out, const unsigned char compressed[33]);
-__host__ __device__ void jacobianToAffine(ECPoint *aff, const ECPointJacobian *jac);
-__host__ __device__ void initPrecompG(int windowSize);
 
 #endif /* EC_SECP256K1_H */
