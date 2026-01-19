@@ -10,6 +10,8 @@
  * Written by Lucas Leblanc              *
 ******************************************/
 
+/* --- AINDA EM TESTES --- */
+
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
@@ -53,6 +55,7 @@ __host__ __device__ void generatePublicKey(unsigned char *out, const uint64_t *P
 __host__ __device__ void initPrecompG(int windowSize);
 __host__ __device__ void jacobianToAffine(ECPoint *aff, const ECPointJacobian *jac);
 __host__ __device__ void modMulMontP(uint64_t *result, const uint64_t *a, const uint64_t *b);
+__host__ __device__ void modSubP(uint64_t *result, const uint64_t *a, const uint64_t *b);
 __host__ __device__ void pointInitJacobian(ECPointJacobian *P);
 __host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q);
 __host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P);
