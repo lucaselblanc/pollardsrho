@@ -444,10 +444,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
         }
     }
 
-    std::cout << "Initial Scalars:" << std::endl << "\n";
-    std::cout << "a = " << uint_256_to_hex(walkers_state[0].a) << std::endl;
-    std::cout << "b = " << uint_256_to_hex(walkers_state[0].b) << std::endl;
-
     auto pointsEqual = [](const ECPointJacobian& A, const ECPointJacobian& B) -> bool {
    	if (A.infinity || B.infinity) return A.infinity && B.infinity;
 
@@ -528,16 +524,15 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
             auto now = std::chrono::steady_clock::now();
             if (now - last_print >= std::chrono::seconds(10)) {
                 std::lock_guard<std::mutex> lock(io_mutex);
-
                 std::lock_guard<std::mutex> dp_lock(dp_mutex);
                 size_t dp_bytes = dp_table.size() * sizeof(WalkState);
                 std::string last_hash = dp_table.empty() ? "<empty>" : std::to_string(dp_table.begin()->first);
 
-                std::cout << "\rTotal Iterations: " << total_iters.load() << "\n"
-                << " DP table size: " << format_size_bytes(dp_bytes) << "\n"
-                << "\n Last DP hash: " << last_hash << "\n"
-                << " "
-                << std::flush;
+                std::cout << "\r\033[K"
+          	<< "Total Iterations: " << total_iters.load() << "\n"
+          	<< "DP table size: " << format_size_bytes(dp_bytes) << "\n"
+          	<< "Last DP hash: " << last_hash
+          	<< std::flush;
 
                 last_print = now;
             }
@@ -589,7 +584,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Press 'Ctrl \\' to Quit\n";
     std::cout << "Auto Window-Size for secp256k1: " << windowSize << std::endl;
 
-    uint256_t found_key = prho(pub_key_hex, key_range, 8, test_mode);
+    uint256_t found_key = prho(pub_key_hex, key_range, 16, test_mode);
 
     auto uint_256_to_hex = [](const uint256_t& value) -> std::string {
         std::ostringstream oss;
