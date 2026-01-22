@@ -219,28 +219,25 @@ bool DP(const ECPointJacobian& P, int DP_BITS) {
 }
 
 void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
+    //Teske 2^k Method
     uint64_t h = hashed_dp(R);
-    uint32_t idx = h & 0xF;
 
-    static const uint32_t CA[16] = {
-        1, 3, 5, 7, 11, 13, 17, 19,
-        23, 29, 31, 37, 41, 43, 47, 53
-    };
+    constexpr uint32_t S = 32;
 
-    static const uint32_t CB[16] = {
-        2, 4, 6, 10, 14, 18, 22, 26,
-        30, 34, 38, 42, 46, 50, 54, 58
-    };
+    uint32_t partition = h & (S - 1);
+    uint32_t pc_idx = (h >> 6) & ((1U << windowSize) - 1);
+    uint32_t add_a = 1 + ((h >> 16) & 0x7F);
+    uint32_t add_b = 1 + ((h >> 24) & 0x7F);
 
-    uint32_t pc_idx = (h >> 4) & ((1U << windowSize) - 1);
-
-    if (idx < 8) {
+    if (partition < S / 2) {
         pointAddJacobian(&R, &R, &preCompG[pc_idx]);
-        a = add_uint256(a, uint256_from_uint32(CA[idx]));
+
+        a = add_uint256(a, uint256_from_uint32(add_a));
         if (compare_uint256(a, N) >= 0) a = sub_uint256(a, N);
     } else {
         pointAddJacobian(&R, &R, &H);
-        b = add_uint256(b, uint256_from_uint32(CB[idx]));
+
+        b = add_uint256(b, uint256_from_uint32(add_b));
         if (compare_uint256(b, N) >= 0) b = sub_uint256(b, N);
     }
 }
