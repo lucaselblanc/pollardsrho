@@ -229,15 +229,25 @@ void f(ECPointJacobian& R, uint256_t& a, uint256_t& b, Buffers& buffers) {
     uint32_t add_a = 1 + ((h >> 16) & 0x7F);
     uint32_t add_b = 1 + ((h >> 24) & 0x7F);
 
-    if (partition < S / 2) {
+    if (partition < S / 3) {
         pointAddJacobian(&R, &R, &preCompG[pc_idx]);
 
         a = add_uint256(a, uint256_from_uint32(add_a));
         if (compare_uint256(a, N) >= 0) a = sub_uint256(a, N);
-    } else {
+    } 
+    else if (partition < 2 * S / 3) {
         pointAddJacobian(&R, &R, &H);
 
         b = add_uint256(b, uint256_from_uint32(add_b));
+        if (compare_uint256(b, N) >= 0) b = sub_uint256(b, N);
+    } 
+    else {
+        pointDoubleJacobian(&R, &R);
+
+        a = add_uint256(a, a);
+        if (compare_uint256(a, N) >= 0) a = sub_uint256(a, N);
+
+        b = add_uint256(b, b);
         if (compare_uint256(b, N) >= 0) b = sub_uint256(b, N);
     }
 }
