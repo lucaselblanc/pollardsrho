@@ -361,25 +361,27 @@ __host__ __device__ void jacobianDouble(ECPointJacobian *R, const ECPointJacobia
         return;
     }
 
-    uint64_t XX[4], YY[4], YYYY[4], S[4], M[4], T[4];
+    uint64_t A[4], B[4], C[4];
+    uint64_t D[4], E[4], F[4];
+    uint64_t tmp[4];
 
-    modMulMontP(XX, P->X, P->X);
-    modMulMontP(YY, P->Y, P->Y);
-    modMulMontP(YYYY, YY, YY);
-    modMulMontP(S, P->X, YY);
-    modAddP(S, S, S);
-    modAddP(S, S, S);
-    modAddP(M, XX, XX);
-    modAddP(M, M, XX);
-    modMulMontP(R->X, M, M);
-    modSubP(R->X, R->X, S);
-    modSubP(R->X, R->X, S);
-    modSubP(T, S, R->X);
-    modMulMontP(R->Y, M, T);
-    modAddP(YYYY, YYYY, YYYY);
-    modAddP(YYYY, YYYY, YYYY);
-    modAddP(YYYY, YYYY, YYYY);
-    modSubP(R->Y, R->Y, YYYY);
+    modMulMontP(A, P->X, P->X);
+    modMulMontP(B, P->Y, P->Y);
+    modMulMontP(C, B, B);
+    modMulMontP(D, P->X, B);
+    modAddP(D, D, D);
+    modAddP(D, D, D);
+    modAddP(E, A, A);
+    modAddP(E, E, A);
+    modMulMontP(F, E, E);
+    modSubP(R->X, F, D);
+    modSubP(R->X, R->X, D);
+    modSubP(tmp, D, R->X);
+    modMulMontP(R->Y, E, tmp);
+    modAddP(C, C, C);
+    modAddP(C, C, C);
+    modAddP(C, C, C);
+    modSubP(R->Y, R->Y, C);
     modMulMontP(R->Z, P->Y, P->Z);
     modAddP(R->Z, R->Z, R->Z);
 
@@ -390,23 +392,25 @@ __host__ __device__ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *
     if (jacobianIsInfinity(P)) { *R = *Q; return; }
     if (jacobianIsInfinity(Q)) { *R = *P; return; }
 
-    uint64_t Z1Z1[4], Z2Z2[4], U1[4], U2[4];
-    uint64_t Z1Z1Z1[4], Z2Z2Z2[4], S1[4], S2[4];
-    uint64_t H[4], Rr[4], HH[4], HHH[4], V[4];
+    uint64_t Z1Z1[4], Z2Z2[4];
+    uint64_t U1[4], U2[4];
+    uint64_t S1[4], S2[4];
+    uint64_t H[4], HH[4], HHH[4];
+    uint64_t r[4], V[4];
 
     modMulMontP(Z1Z1, P->Z, P->Z);
     modMulMontP(Z2Z2, Q->Z, Q->Z);
     modMulMontP(U1, P->X, Z2Z2);
     modMulMontP(U2, Q->X, Z1Z1);
-    modMulMontP(Z1Z1Z1, Z1Z1, P->Z);
-    modMulMontP(Z2Z2Z2, Z2Z2, Q->Z);
-    modMulMontP(S1, P->Y, Z2Z2Z2);
-    modMulMontP(S2, Q->Y, Z1Z1Z1);
+    modMulMontP(S1, P->Z, Z2Z2);
+    modMulMontP(S1, S1, P->Y);
+    modMulMontP(S2, Q->Z, Z1Z1);
+    modMulMontP(S2, S2, Q->Y);
     modSubP(H, U2, U1);
-    modSubP(Rr, S2, S1);
+    modSubP(r, S2, S1);
 
     if ((H[0] | H[1] | H[2] | H[3]) == 0) {
-        if ((Rr[0] | Rr[1] | Rr[2] | Rr[3]) == 0) {
+        if ((r[0] | r[1] | r[2] | r[3]) == 0) {
             jacobianDouble(R, P);
         } else {
             jacobianSetInfinity(R);
@@ -417,15 +421,18 @@ __host__ __device__ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *
     modMulMontP(HH, H, H);
     modMulMontP(HHH, HH, H);
     modMulMontP(V, U1, HH);
-    modMulMontP(R->X, Rr, Rr);
+    modMulMontP(R->X, r, r);
     modSubP(R->X, R->X, HHH);
     modSubP(R->X, R->X, V);
     modSubP(R->X, R->X, V);
     modSubP(R->Y, V, R->X);
-    modMulMontP(R->Y, Rr, R->Y);
+    modMulMontP(R->Y, R->Y, r);
     modMulMontP(S1, S1, HHH);
     modSubP(R->Y, R->Y, S1);
-    modMulMontP(R->Z, P->Z, Q->Z);
+    modAddP(R->Z, P->Z, Q->Z);
+    modMulMontP(R->Z, R->Z, R->Z);
+    modSubP(R->Z, R->Z, Z1Z1);
+    modSubP(R->Z, R->Z, Z2Z2);
     modMulMontP(R->Z, R->Z, H);
 
     R->infinity = 0;
