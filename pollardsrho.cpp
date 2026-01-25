@@ -115,13 +115,6 @@ void init_secp256k1() {
         G.Z[i] = (i == 3) ? 1 : 0;
     }
     G.infinity = 0;
-
-    for (int i = 0; i < 4; i++) {
-        H.X[i] = gx_arr[i];
-        H.Y[i] = gy_arr[i];
-        H.Z[i] = (i == 3) ? 1 : 0;
-    }
-    H.infinity = 1;
 }
 
 uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max_scalar, int key_range, std::mt19937_64& rng) {
