@@ -128,7 +128,7 @@ BigInt recip2(BigInt g, BigInt f) {
 uint256_t almostinverse(uint256_t base, uint256_t mod) {
     auto uint256_to_bigint = [](const uint256_t& v) -> BigInt {
         BigInt r = 0;
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 3; i >= 0; --i) { 
             r <<= 64;
             r += BigInt(v.limbs[i]);
         }
@@ -138,7 +138,7 @@ uint256_t almostinverse(uint256_t base, uint256_t mod) {
     auto bigint_to_uint256 = [](BigInt v) -> uint256_t {
         uint256_t r{};
         BigInt mask = (BigInt(1) << 64) - 1;
-        for (int i = 3; i >= 0; --i) {
+        for (int i = 0; i < 4; ++i) { 
             r.limbs[i] = static_cast<uint64_t>(v & mask);
             v >>= 64;
         }
@@ -158,8 +158,20 @@ uint256_t almostinverse(uint256_t base, uint256_t mod) {
         return uint256_t{};
     }
 
-    if ((inv * g) % f != 1) {
+    BigInt check = (inv * g) % f;
+
+    if (check == f - 1) {
+        inv = f - inv;
+        check = (inv * g) % f;
+    }
+
+    if (check != 1) {
+        std::cout << "Critical Failure: Inversion failed. Product mod f is -> " << check.str() << std::endl;
         return uint256_t{};
+    }
+    else
+    {
+        std::cout << "Valid Inverse: " << check.str() << std::endl;
     }
 
     inv %= f;
