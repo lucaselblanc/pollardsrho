@@ -26,6 +26,8 @@
 #include <mutex>
 #include <cstring>
 
+const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
+const uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint64_t P[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 
@@ -219,6 +221,63 @@ bool DP(const uint64_t* affine_x, int DP_BITS) {
     return (affine_x[0] & ((1ULL << DP_BITS) - 1)) == 0;
 }
 
+void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count) {
+    if (count <= 0) return;
+    std::vector<uint64_t[4]> scratch_prefix(count);
+    std::vector<uint64_t[4]> scratch_inv(count); 
+
+    if (jacobianIsInfinity(&jac_in[0])) {
+        memcpy(scratch_prefix[0], ONE_MONT, 32);
+    } else {
+        memcpy(scratch_prefix[0], jac_in[0].Z, 32);
+    }
+
+    for (int i = 1; i < count; i++) {
+        if (jacobianIsInfinity(&jac_in[i])) {
+            memcpy(scratch_prefix[i], scratch_prefix[i-1], 32);
+        } else {
+            modMulMontP(scratch_prefix[i], scratch_prefix[i-1], jac_in[i].Z);
+        }
+    }
+
+    uint64_t total_inv[4];
+    modExpMontP(total_inv, scratch_prefix[count-1], P_CONST_MINUS_2);
+
+    uint64_t current_inv[4];
+    memcpy(current_inv, total_inv, 32);
+
+    for (int i = count - 1; i > 0; i--) {
+        if (jacobianIsInfinity(&jac_in[i])) {
+            continue;
+        }
+
+        modMulMontP(scratch_inv[i], current_inv, scratch_prefix[i-1]);
+        modMulMontP(current_inv, current_inv, jac_in[i].Z);
+    }
+
+    if (!jacobianIsInfinity(&jac_in[0])) {
+        memcpy(scratch_inv[0], current_inv, 32);
+    }
+
+    for (int i = 0; i < count; i++) {
+        if (jacobianIsInfinity(&jac_in[i])) {
+            aff_out[i].infinity = 1;
+            memset(aff_out[i].x, 0, 32);
+            memset(aff_out[i].y, 0, 32);
+            continue;
+        }
+
+        uint64_t z2[4];
+        uint64_t x_mont[4];
+
+        modMulMontP(z2, scratch_inv[i], scratch_inv[i]);
+        modMulMontP(x_mont, jac_in[i].X, z2);
+        fromMontgomeryP(aff_out[i].x, x_mont);
+
+        aff_out[i].infinity = 0;
+    }
+}
+
 uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool test_mode) {
     std::atomic<bool> search_in_progress(true);
     std::atomic<unsigned long long> total_iters{0};
@@ -230,7 +289,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
 
-    const int LOCAL_NUM_STEPS = 16;
+    const int DP_BITS = 8;
+    const int LOCAL_NUM_STEPS = 16; //sweet spot, increasing this doesn't bring any advantages.
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
 
@@ -248,6 +308,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     std::cout << "Started at: " << std::put_time(&start_tm, "%H:%M:%S") << std::endl;
     if(test_mode) { std::cout << "Test Mode: True" << std::endl; }
     else          { std::cout << "Test Mode: False" << std::endl; }
+    std::cout << "DP BITS: " << DP_BITS << std::endl;
     std::cout << "Key Range: " << key_range << std::endl;
     std::cout << "Min Range: " << uint256_to_hex(min_scalar) << std::endl;
     std::cout << "Max Range: " << uint256_to_hex(max_scalar) << std::endl;
@@ -264,9 +325,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
         uint256_t b;
     };
     std::vector<StepLocal> localStepTable(LOCAL_NUM_STEPS);
+    std::mt19937_64 salt(time(NULL));
     for (int i = 0; i < LOCAL_NUM_STEPS; i++) {
-        localStepTable[i].a = { (uint64_t)i + 123, 0, 0, 0 };
-        localStepTable[i].b = { (uint64_t)i + 456, 0, 0, 0 };
+        localStepTable[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, salt);
+        localStepTable[i].b = rng_mersenne_twister(min_scalar, max_scalar, key_range, salt);
         uint64_t a_tmp[4], b_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
         uint256_to_uint64_array(b_tmp, localStepTable[i].b);
@@ -291,8 +353,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
         walkers_state[i].buffers = new Buffers();
         walkers_state[i].buffers->scalarStepsG = sharedScalarStepsG.data();
         walkers_state[i].buffers->scalarStepsH = sharedScalarStepsH.data();
-        walkers_state[i].a = { (uint64_t)rand() % 1000000, 0, 0, 0 };
-        walkers_state[i].b = { (uint64_t)rand() % 1000000, 0, 0, 0 };
+        walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
+        walkers_state[i].b = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
         walkers_state[i].walk_id = i;
 
         uint64_t a_arr[4], b_arr[4];
@@ -358,40 +420,71 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     }
 
     auto worker = [&](int id_start, int id_end) {
-        while (search_in_progress.load(std::memory_order_acquire)) {
-            for (int i = id_start; i < id_end; i++) {
-                WalkState* w = &walkers_state[i];
-                total_iters.fetch_add(1, std::memory_order_relaxed);
+        int local_count = id_end - id_start;
 
+        std::vector<ECPointJacobian> jac_batch(local_count);
+        std::vector<ECPointAffine> aff_batch(local_count);
+
+        while (search_in_progress.load(std::memory_order_acquire)) {
+            for (int i = 0; i < local_count; i++) {
+                WalkState* w = &walkers_state[id_start + i];
+                total_iters.fetch_add(1, std::memory_order_relaxed);
                 uint32_t step_idx = (w->R.X[0] ^ w->R.X[1]) % LOCAL_NUM_STEPS;
                 pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
                 scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
                 if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
                 scalarAdd(w->b.limbs, w->b.limbs, localStepTable[step_idx].b.limbs);
                 if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
-                ECPointAffine aff;
-                jacobianToAffine(&aff, &w->R);
+                jac_batch[i] = w->R;
+            }
 
-                if (!DP(aff.x, 8)) continue;
+            batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count);
 
-                uint64_t table_idx = aff.x[0]; 
+            for (int i = 0; i < local_count; i++) {
+                if (!DP(aff_batch[i].x, DP_BITS)) continue;
+
+                WalkState* w = &walkers_state[id_start + i];
+                uint64_t table_idx = aff_batch[i].x[0]; 
+
                 std::lock_guard<std::mutex> lock(dp_mutex);
                 auto& dps = dp_table[table_idx];
 
                 for (const auto& entry : dps) {
                     if (entry.walk_id == w->walk_id) continue;
-                    if (memcmp(aff.x, entry.x, 32) == 0) {
-                        std::cout << "\n\n\033[32m[SUCCESS!] Collision Found!\033[0m" << std::endl;
+
+                    if (memcmp(aff_batch[i].x, entry.x, 32) == 0) {
+                        if (compare_uint256(w->a, entry.a) == 0 && compare_uint256(w->b, entry.b) == 0) continue;
+
                         uint256_t da, db, inv_db;
-                        if (compare_uint256(w->a, entry.a) >= 0) da = sub_uint256(w->a, entry.a);
-                        else da = sub_uint256(N, sub_uint256(entry.a, w->a));
-                        if (compare_uint256(entry.b, w->b) >= 0) db = sub_uint256(entry.b, w->b);
-                        else db = sub_uint256(N, sub_uint256(w->b, entry.b));
+
+                        if (compare_uint256(w->a, entry.a) >= 0) {
+                            da = sub_uint256(w->a, entry.a);
+                        }
+                        else {
+                            da = sub_uint256(N, sub_uint256(entry.a, w->a));
+                        }
+
+                        if (compare_uint256(entry.b, w->b) >= 0) {
+                            db = sub_uint256(entry.b, w->b);
+                        }
+                        else {
+                            db = sub_uint256(N, sub_uint256(w->b, entry.b));
+                        }
+
                         if (!scalarIsZero(db.limbs)) {
+                            auto valid_key = [&](uint64_t* k_limbs) -> bool {
+                                unsigned char test_pub[33];
+                                generatePublicKey(preCompG, preCompGphi, test_pub, k_limbs, windowSize);
+                                return memcmp(test_pub, target_pubkey.data(), 33) == 0;
+                            };
+
                             inv_db = almostinverse(db, N);
                             uint64_t res_k[4];
                             scalarMul(res_k, da.limbs, inv_db.limbs);
                             memcpy(k.limbs, res_k, 32);
+
+                            if(!valid_key(k.limbs)){ continue; };
+
                             search_in_progress.store(false, std::memory_order_release);
                             return;
                         }
@@ -399,7 +492,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
                 }
 
                 DPEntry new_entry;
-                memcpy(new_entry.x, aff.x, 32);
+                memcpy(new_entry.x, aff_batch[i].x, 32);
                 new_entry.a = w->a;
                 new_entry.b = w->b;
                 new_entry.walk_id = w->walk_id;
@@ -431,21 +524,20 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
         }
     });
 
-    unsigned int threads_count = std::thread::hardware_concurrency();
-    if (threads_count == 0) threads_count = 2;
-    threads_count = std::min<unsigned int>(threads_count, walkers);
-
     std::vector<std::thread> threads;
     if (walkers == 0) {
         search_in_progress.store(false);
         progress_thread.join();
         return k;
     }
-    int chunk = walkers / threads_count;
+    unsigned int cores = std::thread::hardware_concurrency();
+    if (cores == 0) cores = 2;
+    cores = std::min<unsigned int>(cores, walkers);
+    int chunk = walkers / cores;
 
-    for (unsigned int t = 0; t < threads_count; t++) {
+    for (unsigned int t = 0; t < cores; t++) {
         int start = t * chunk;
-        int end   = (t == threads_count - 1) ? walkers : start + chunk;
+        int end   = (t == cores - 1) ? walkers : start + chunk;
         threads.emplace_back(worker, start, end);
     }
 
@@ -469,9 +561,9 @@ void save_key(const std::string& pub_key_hex, const uint256_t& priv_key) {
     if (outfile.is_open()) {
         outfile << pub_key_hex << " : " << uint256_to_hex(priv_key) << "\n";
         outfile.close();
-        std::cout << "\033[34m[INFO] Chave salva com sucesso em DISCRETE_LOGS_SOLVED\033[0m" << std::endl;
+        std::cout << "\033[34m[INFO!] Chave salva com sucesso em DISCRETE_LOGS_SOLVED\033[0m" << std::endl;
     } else {
-        std::cerr << "\033[31m[ERROR] Nao foi possivel abrir o arquivo para salvar a chave!\033[0m" << std::endl;
+        std::cerr << "\033[31m[ERROR!] Nao foi possivel abrir o arquivo para salvar a chave!\033[0m" << std::endl;
     }
 }
 
@@ -491,7 +583,27 @@ int main(int argc, char* argv[]) {
     std::cout << "Press 'Ctrl \\' to Quit\n";
     std::cout << "Auto Window-Size for secp256k1: " << windowSize << std::endl;
 
-    uint256_t found_key = prho(pub_key_hex, key_range, 512, test_mode);
+    unsigned int cores = std::thread::hardware_concurrency();
+    int walkers = (cores <= 8) ? 2048 : 4096;
+    uint256_t found_key = prho(pub_key_hex, key_range, walkers, test_mode);
+
+    std::cout << "\n\n\033[32m[SUCCESS!] Collision Found!\033[0m" << std::endl;
+
+    unsigned char test_pub[33];
+    auto target_pubkey = hex_to_bytes(pub_key_hex);
+    generatePublicKey(preCompG, preCompGphi, test_pub, found_key.limbs, windowSize);
+
+    if (memcmp(test_pub, target_pubkey.data(), 33) != 0) {
+        std::cout << "\033[31m[ERROR!] Incorrect Public Key:\033[0m" << std::endl;
+        for (int i = 0; i < 33; i++) printf("%02x", test_pub[i]);
+        std::cout << std::dec << std::endl;
+    }
+    else
+    {
+        std::cout << "\033[32m[SUCCESS!] Public Key Match:\033[0m" << std::endl;
+        for (int i = 0; i < 33; i++) printf("%02x", test_pub[i]);
+        std::cout << std::dec << std::endl;
+    }
 
     save_key(pub_key_hex, found_key);
 
