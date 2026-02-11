@@ -169,10 +169,6 @@ uint256_t almostinverse(uint256_t base, uint256_t mod) {
         std::cout << "Critical Failure: Inversion failed. Product mod f is -> " << check.str() << std::endl;
         return uint256_t{};
     }
-    else
-    {
-        std::cout << "Valid Inverse: " << check.str() << std::endl;
-    }
 
     inv %= f;
     if (inv < 0) inv += f;
