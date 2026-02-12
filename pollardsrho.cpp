@@ -113,7 +113,7 @@ void getfcw() {
         try { //Adjust the table to fit in the processor's L2/L3 cache (more fast), avoiding jumping to RAM.
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
 
-            if (L == 2)
+            if (L == 3)
             {
                 size_t maxPoints = size / 128;
                 if (maxPoints == 0) continue;
@@ -217,6 +217,17 @@ uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max
     return add_uint256(r, min_scalar);
 }
 
+uint32_t get_step_idx(const uint64_t* x) {
+    //MurmurHash3<Avalanche constants>
+    uint64_t h = x[0] ^ (x[1] << 1) ^ (x[2] << 2) ^ (x[3] << 3);
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdLLU;
+    h ^= h >> 33;
+    h *= 0xc4ceb9fe1a85ec53LLU;
+    h ^= h >> 33;
+    return (uint32_t)h % 32;
+}
+
 bool DP(const uint64_t* affine_x, int DP_BITS) {
     return (affine_x[0] & ((1ULL << DP_BITS) - 1)) == 0;
 }
@@ -281,7 +292,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
 uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool test_mode) {
     std::atomic<bool> search_in_progress(true);
     std::atomic<unsigned long long> total_iters{0};
-    std::mutex dp_mutex;
+    std::mutex dp_mutexes[32];
     uint256_t k{};
 
     auto start_time = std::chrono::system_clock::now();
@@ -290,7 +301,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     localtime_r(&start_time_t, &start_tm);
 
     const int DP_BITS = 8;
-    const int LOCAL_NUM_STEPS = 16; //sweet spot, increasing this doesn't bring any advantages.
+    const int LOCAL_NUM_STEPS = 32; //sweet spot, increasing this doesn't bring any advantages.
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
 
@@ -329,6 +340,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
     for (int i = 0; i < LOCAL_NUM_STEPS; i++) {
         localStepTable[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, salt);
         localStepTable[i].b = rng_mersenne_twister(min_scalar, max_scalar, key_range, salt);
+
         uint64_t a_tmp[4], b_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
         uint256_to_uint64_array(b_tmp, localStepTable[i].b);
@@ -429,7 +441,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
             for (int i = 0; i < local_count; i++) {
                 WalkState* w = &walkers_state[id_start + i];
                 total_iters.fetch_add(1, std::memory_order_relaxed);
-                uint32_t step_idx = (w->R.X[0] ^ w->R.X[1]) % LOCAL_NUM_STEPS;
+                uint32_t step_idx = get_step_idx(aff_batch[i].x);
                 pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
                 scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
                 if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
@@ -446,11 +458,14 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers, bool t
                 WalkState* w = &walkers_state[id_start + i];
                 uint64_t table_idx = aff_batch[i].x[0]; 
 
-                std::lock_guard<std::mutex> lock(dp_mutex);
+                std::lock_guard<std::mutex> lock(dp_mutexes[table_idx % 32]);
                 auto& dps = dp_table[table_idx];
 
                 for (const auto& entry : dps) {
-                    if (entry.walk_id == w->walk_id) continue;
+                    if (entry.walk_id == w->walk_id){
+                        std::cout << "A walker hit himself in a cycle: " << w->walk_id << std::endl;
+                        continue;
+                    }
 
                     if (memcmp(aff_batch[i].x, entry.x, 32) == 0) {
                         if (compare_uint256(w->a, entry.a) == 0 && compare_uint256(w->b, entry.b) == 0) continue;
