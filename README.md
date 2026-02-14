@@ -18,6 +18,12 @@ The algorithm executes high-speed pseudo-random walks over the secp256k1 group u
 
 ---
 
+## Distinguished Points (DP)
+
+The Distinguished Points strategy is a memory-saving filter. Instead of storing every step of the walk (which would crash your RAM), the algorithm only saves points that satisfy a specific condition: the first d bits of the X-coordinate must be zero. When two walkers hit the same DP, a collision is found and the private key is recovered. ​The Trade-off: More DP bits = Less RAM used, but slower collision detection. Fewer DP bits = Faster detection, but higher RAM consumption.
+
+---
+
 ## Algorithm Complexity
 
 The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group. Given secp256k1, this translates to approximately O(2^128), as predicted by the birthday paradox for random walks over a finite group.
