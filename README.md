@@ -54,26 +54,26 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O
 
 4. Run the program:
     ```bash
-    ~/pollardsrho$ ./pollardsrho <compressed public key> <key range>
+    ~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <dp bits>
     ```
 
-    Replace `<compressed public key>` with the point \(G\) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \(k\).
+    Replace `<compressed public key>` with the point \(G\) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \(k\), and set the distinguished points bits `<dp bits>`.
 
     Example usage:
     ```bash
-    ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135
+    ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135 30
     ```
 
 ## Commands
 
-- `~/pollardsrho$ ./pollardsrho <compressed public key> <key range>`: Starts the search for the private key corresponding to the given public key.
-- `~/pollardsrho$ ./pollardsrho <compressed public key> <key range> --t`: Start the search with a large initial jump of 2^50% of the key range to the second group of hares.
+- `~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <dp bits>`: Starts the search for the private key corresponding to the given public key.
 
 ## External Libraries Used
 
 <cuda.h>
 <cuda_runtime.h>
 "secp256k1.h"
+"parallel_hashmap/phmap.h"
 
 ## Contributing
 
