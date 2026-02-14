@@ -7,15 +7,15 @@
 
 ## Description
 
----
+-
 
 This repository contains an implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve. The objective is to recover the scalar k from the relation H = k * G, where G is the curve generator and H is a public point.
 
----
+-
 
-The algorithm executes high-speed pseudo-random walks over the elliptic curve group using an r-adding walk iteration function. Instead of simple partitioning, it utilizes a table of 2048 pre-computed steps and a `MurmurHash3-based avalanche` function to determine state transitions, maintaining the algebraic representation `R = a * G + b * H`.
+The algorithm executes high-speed pseudo-random walks over the elliptic curve group using an r-adding walk iteration function. It utilizes a table of 2048 pre-computed steps and a `MurmurHash3-based avalanche` function to determine state transitions, maintaining the algebraic representation `R = a * G + b * H`.
 
----
+-
 
  When two independent walkers encounter the same group element (a collision) with distinct coefficient pairs `(a, b)`, it yields a linear congruence modulo the group order `N`, allowing for the immediate recovery of the private key. To maximize throughput and enable massive parallelization, the implementation employs a Distinguished Points (DP) strategy, where only points meeting a specific bit-mask criteria are stored in a high-concurrency hash map. This allows multiple CPU threads to traverse different paths simultaneously with minimal memory overhead. The system is specifically tuned for the secp256k1 curve and requires a Bitcoin public key as the target.
 
