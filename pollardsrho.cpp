@@ -218,7 +218,7 @@ uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max
     return add_uint256(r, min_scalar);
 }
 
-uint32_t get_step_idx(const uint64_t* x) {
+uint32_t get_step_idx(const uint64_t* x, uint32_t N_STEPS) {
     //MurmurHash3<Avalanche constants>
     uint64_t h = x[0] ^ (x[1] << 1) ^ (x[2] << 2) ^ (x[3] << 3);
     h ^= h >> 33;
@@ -226,7 +226,7 @@ uint32_t get_step_idx(const uint64_t* x) {
     h ^= h >> 33;
     h *= 0xc4ceb9fe1a85ec53LLU;
     h ^= h >> 33;
-    return (uint32_t)h % 32;
+    return (uint32_t)(h % N_STEPS);
 }
 
 bool DP(const uint64_t* affine_x, int DP_BITS) {
@@ -290,18 +290,19 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
     }
 }
 
-uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers) {
+uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) {
     std::atomic<bool> search_in_progress(true);
     std::atomic<unsigned long long> total_iters{0};
     uint256_t k{};
 
+    auto cores = std::thread::hardware_concurrency();
     auto start_time = std::chrono::system_clock::now();
     auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
 
-    const int DP_BITS = 10;
-    const int N_STEPS = 32; //sweet spot, increasing this doesn't bring any advantages.
+    const int WALKERS = (cores <= 8) ? 2048 : 4096;
+    const int N_STEPS = 2048;
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
 
@@ -321,6 +322,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers) {
     std::cout << "Key Range: " << key_range << std::endl;
     std::cout << "Min Range: " << uint256_to_hex(min_scalar) << std::endl;
     std::cout << "Max Range: " << uint256_to_hex(max_scalar) << std::endl;
+    std::cout << "\n\n";
 
     ECPointAffine target_affine{};
     ECPointJacobian target_affine_jac{};
@@ -336,9 +338,18 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers) {
 
     std::vector<StepLocal> localStepTable(N_STEPS);
     std::mt19937_64 salt(time(NULL));
+
+    int stepSize = (key_range & 1) ? (key_range + 1) / 2 : key_range / 2;
+
+    uint256_t step_min = {0, 0, 0, 0};
+    uint256_t step_max = {0, 0, 0, 0};
+
+    int limb_idx = (stepSize - 1) / 64;
+    step_max.limbs[limb_idx] = 1ULL << ((stepSize - 1) % 64);
+
     for (int i = 0; i < N_STEPS; i++) {
-        localStepTable[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, salt);
-        localStepTable[i].b = rng_mersenne_twister(min_scalar, max_scalar, key_range, salt);
+        localStepTable[i].a = rng_mersenne_twister(step_min, step_max, stepSize, salt);
+        localStepTable[i].b = rng_mersenne_twister(step_min, step_max, stepSize, salt);
 
         uint64_t a_tmp[4], b_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
@@ -353,13 +364,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers) {
     }
 
     phmap::parallel_flat_hash_map<uint64_t, std::vector<DPEntry>> dp_table;
-    std::vector<WalkState> walkers_state(walkers);
+    std::vector<WalkState> walkers_state(WALKERS);
     std::vector<uint64_t> sharedScalarStepsG((1ULL << windowSize) * 4);
     std::vector<uint64_t> sharedScalarStepsH((1ULL << windowSize) * 4);
     initScalarSteps(sharedScalarStepsG.data(), windowSize);
     initScalarSteps(sharedScalarStepsH.data(), windowSize);
 
-    for (int i = 0; i < walkers; i++) {
+    for (int i = 0; i < WALKERS; i++) {
         walkers_state[i].rng.seed(time(NULL) + i);
         walkers_state[i].buffers = new Buffers();
         walkers_state[i].buffers->scalarStepsG = sharedScalarStepsG.data();
@@ -395,7 +406,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers) {
 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
-                    uint32_t step_idx = get_step_idx(aff_batch[i].x); 
+                    uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
                     pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
                     scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
                     if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
@@ -420,7 +431,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers) {
                                 auto& dps = bucket.second;
                                 for (const auto& entry : dps) {
                                     if (memcmp(aff_batch[i].x, entry.x, 32) == 0) {
-                                        if (entry.walk_id != w->walk_id) {
+                                        bool same_state = (compare_uint256(w->a, entry.a) == 0) && (compare_uint256(w->b, entry.b) == 0);
+                                        if (!same_state) {
                                             found_dp = entry;
                                             cl = true;
                                         }
@@ -428,10 +440,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers) {
                                     }
                                 }
 
-                                DPEntry new_entry;
-                                memcpy(new_entry.x, aff_batch[i].x, 32);
-                                new_entry.a = w->a; new_entry.b = w->b; new_entry.walk_id = w->walk_id;
-                                dps.push_back(new_entry);
+                                if(!cl)
+                                {
+                                    DPEntry new_entry;
+                                    memcpy(new_entry.x, aff_batch[i].x, 32);
+                                    new_entry.a = w->a; new_entry.b = w->b; new_entry.walk_id = w->walk_id;
+                                    dps.push_back(new_entry);
+                                }
                             },
                             [&](auto bucket) {
                                 DPEntry entry;
@@ -488,7 +503,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers) {
                 long double prob = 1.0L - expl(-x);
                 prob *= 100.0L;
 
-                std::cout << "\n" << "\n" << "\r\033[2A\033[J"
+                std::cout << "\033[2A\r\033[J"
                 << "Total Iterations: " << total_iters.load() << "\n"
                 << "Collision Probability: "
                 << std::fixed << std::setprecision(8)
@@ -502,19 +517,19 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int walkers) {
     });
 
     std::vector<std::thread> threads;
-    if (walkers == 0) {
+    if (WALKERS == 0) {
         search_in_progress.store(false, std::memory_order_release);
         progress_thread.join();
         return k;
     }
-    unsigned int cores = std::thread::hardware_concurrency();
+
     if (cores == 0) cores = 2;
-    cores = std::min<unsigned int>(cores, walkers);
-    int chunk = walkers / cores;
+    cores = std::min<unsigned int>(cores, WALKERS);
+    int chunk = WALKERS / cores;
 
     for (unsigned int t = 0; t < cores; t++) {
         int start = t * chunk;
-        int end   = (t == cores - 1) ? walkers : start + chunk;
+        int end   = (t == cores - 1) ? WALKERS : start + chunk;
         threads.emplace_back(worker, start, end);
     }
 
@@ -556,8 +571,8 @@ void save_key(const std::string& pub_key_hex, const uint256_t& priv_key) {
 
 int main(int argc, char* argv[]) {
 
-    if (argc < 3 || argc > 3) {
-        std::cerr << "Uso: " << argv[0] << " <Compressed Public Key> <Key Range>" << std::endl;
+    if (argc != 4) {
+        std::cerr << "Uso: " << argv[0] << " <Compressed Public Key(Hex)> <Key Range(int)> <DP Bits(int)>" << std::endl;
         return 1;
     }
 
@@ -565,13 +580,12 @@ int main(int argc, char* argv[]) {
 
     std::string pub_key_hex(argv[1]);
     int key_range = std::stoi(argv[2]);
+    int dp = std::stoi(argv[3]);
 
-    std::cout << "Press 'Ctrl \\' to Quit\n";
+    std::cout << "Press 'Ctrl Z' to Quit\n";
     std::cout << "Auto Window-Size for secp256k1: " << windowSize << std::endl;
 
-    unsigned int cores = std::thread::hardware_concurrency();
-    int walkers = (cores <= 8) ? 2048 : 4096;
-    uint256_t found_key = prho(pub_key_hex, key_range, walkers);
+    uint256_t found_key = prho(pub_key_hex, key_range, dp);
 
     std::cout << "\n\n\033[32m[SUCCESS!] Collision Found!\033[0m" << std::endl;
 
@@ -593,6 +607,6 @@ int main(int argc, char* argv[]) {
 
     save_key(pub_key_hex, found_key);
 
-    std::cout << "Chave privada encontrada: " << uint256_to_hex(found_key) << std::endl;
+    std::cout << "Private key found: " << uint256_to_hex(found_key) << std::endl;
     return 0;
 }
