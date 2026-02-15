@@ -22,6 +22,29 @@ The algorithm executes high-speed pseudo-random walks over the secp256k1 group u
 
 The Distinguished Points strategy is a memory-saving filter. Instead of storing every step of the walk (which would crash your RAM), the algorithm only saves points that satisfy a specific condition: the first d bits of the X-coordinate must be zero. When two walkers hit the same DP, a collision is found and the private key is recovered. ​The Trade-off: More DP bits = Less RAM used, but slower collision detection. Fewer DP bits = Faster detection, but higher RAM consumption.
 
+Theoretical Calculus:
+
+```
+int dp = (key_range / 2.0) - math.log2(RAM_BYTES / 128);
+```
+
+Simple Abstraction:
+
+```
+int dp = math.floor(key_range / 2.0);
+```
+
+```
+k2 = 1
+k4 = 2
+k8 = 4
+k16 = 8
+k32 = 16
+k64 = 32
+k128 = 64
+K256 = 128
+```
+
 ---
 
 ## Algorithm Complexity
