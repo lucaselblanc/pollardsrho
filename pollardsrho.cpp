@@ -24,6 +24,7 @@
 #include <atomic>
 #include <chrono>
 #include <ctime>
+#include <cmath>
 #include <mutex>
 #include <cstring>
 
@@ -571,8 +572,8 @@ void save_key(const std::string& pub_key_hex, const uint256_t& priv_key) {
 
 int main(int argc, char* argv[]) {
 
-    if (argc != 4) {
-        std::cerr << "Uso: " << argv[0] << " <Compressed Public Key(Hex)> <Key Range(int)> <DP Bits(int)>" << std::endl;
+    if (argc < 3) {
+        std::cerr << "Uso: " << argv[0] << " <Compressed Public Key(Hex)> <Key Range(int)>" << std::endl;
         return 1;
     }
 
@@ -580,7 +581,20 @@ int main(int argc, char* argv[]) {
 
     std::string pub_key_hex(argv[1]);
     int key_range = std::stoi(argv[2]);
-    int dp = std::stoi(argv[3]);
+    int dp = 0;
+
+    if (argc >= 4) {
+        try {
+            dp = std::stoi(argv[3]);
+        } catch (...) {
+            dp = 0;
+        }
+    }
+
+    if (dp <= 0) {
+        std::cerr << "Setting DP automatically..." << std::endl;
+        dp = (int)std::floor(key_range / 2.0);
+    }
 
     std::cout << "Press 'Ctrl Z' to Quit\n";
     std::cout << "Auto Window-Size for secp256k1: " << windowSize << std::endl;
