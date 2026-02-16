@@ -237,7 +237,7 @@ bool DP(const uint64_t* affine_x, int DP_BITS) {
 void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count) {
     if (count <= 0) return;
     std::vector<uint64_t[4]> scratch_prefix(count);
-    std::vector<uint64_t[4]> scratch_inv(count); 
+    std::vector<uint64_t[4]> scratch_inv(count);
 
     if (jacobianIsInfinity(&jac_in[0])) {
         memcpy(scratch_prefix[0], ONE_MONT, 32);
@@ -309,7 +309,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
 
     uint256_t min_scalar{}, max_scalar{};
     {
-        int limb_index = (key_range - 1) / 64; 
+        int limb_index = (key_range - 1) / 64;
         int bit_in_limb = (key_range - 1) % 64;
         min_scalar.limbs[limb_index] = 1ULL << bit_in_limb;
         for (int i = 0; i < limb_index; i++) {
@@ -338,19 +338,16 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
     };
 
     std::vector<StepLocal> localStepTable(N_STEPS);
-    std::mt19937_64 salt(time(NULL));
+    std::mt19937_64 salt(target_affine.x[0]);
 
-    int stepSize = (key_range & 1) ? (key_range + 1) / 2 : key_range / 2;
+   uint64_t stepSize = 1ULL << (key_range / 2 - 1);
 
     uint256_t step_min = {0, 0, 0, 0};
-    uint256_t step_max = {0, 0, 0, 0};
-
-    int limb_idx = (stepSize - 1) / 64;
-    step_max.limbs[limb_idx] = 1ULL << ((stepSize - 1) % 64);
+    uint256_t step_max = {stepSize, 0, 0, 0};
 
     for (int i = 0; i < N_STEPS; i++) {
-        localStepTable[i].a = rng_mersenne_twister(step_min, step_max, stepSize, salt);
-        localStepTable[i].b = rng_mersenne_twister(step_min, step_max, stepSize, salt);
+        localStepTable[i].a = rng_mersenne_twister(step_min, step_max, key_range / 2, salt);
+        localStepTable[i].b = rng_mersenne_twister(step_min, step_max, key_range / 2, salt);
 
         uint64_t a_tmp[4], b_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
@@ -372,7 +369,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
     initScalarSteps(sharedScalarStepsH.data(), windowSize);
 
     for (int i = 0; i < WALKERS; i++) {
-        walkers_state[i].rng.seed(time(NULL) + i);
+        walkers_state[i].rng.seed(std::random_device{}() ^ (uint64_t)i);
         walkers_state[i].buffers = new Buffers();
         walkers_state[i].buffers->scalarStepsG = sharedScalarStepsG.data();
         walkers_state[i].buffers->scalarStepsH = sharedScalarStepsH.data();
@@ -544,7 +541,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
     for (auto& w : walkers_state) {
         if (w.buffers != nullptr) {
             delete w.buffers;
-            w.buffers = nullptr; 
+            w.buffers = nullptr;
         }
     }
 
