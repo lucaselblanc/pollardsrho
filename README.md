@@ -14,7 +14,7 @@ This repository contains an implementation of Pollard’s Rho algorithm for solv
 The algorithm executes high-speed pseudo-random walks over the secp256k1 group using an R-adding walk iteration function. It utilizes a table of 2048 pre-computed steps and a MurmurHash3-based avalanche function to determine state transitions, maintaining the algebraic representation `R = a * G + b * H`. The scalars are probabilistically distributed within a specific key range, optimizing the collision search for O(√K) complexity rather than the full O(√N).
 
 
- When two independent walkers encounter the same group element (a collision) with distinct coefficient pairs `(a, b)`, it yields a linear congruence modulo the group order `N`, allowing for the immediate recovery of the private key. To maximize throughput and enable massive parallelization, the implementation employs a Distinguished Points (DP) strategy, where only points meeting a specific bit-mask criteria are stored in a high-concurrency hash map. This allows multiple CPU threads to traverse different paths simultaneously with minimal memory overhead. The system is specifically tuned for the secp256k1 curve and requires a Bitcoin public key as the target.
+ When two independent walkers encounter the same group element (a collision) with distinct coefficient pairs `(a, b)`, it yields a linear congruence modulo the group order `N`, allowing for the immediate recovery of the private key with the calculation of d through mod inversion. To maximize throughput and enable massive parallelization, the implementation employs a Distinguished Points (DP) strategy, where only points meeting a specific bit-mask criteria are stored in a high-concurrency hash map. This allows multiple CPU threads to traverse different paths simultaneously with minimal memory overhead. The system is specifically tuned for the secp256k1 curve and requires a Bitcoin public key as the target.
 
 ---
 
@@ -49,7 +49,7 @@ K256 = 128
 
 ## Algorithm Complexity
 
-The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group. Given secp256k1, this translates to approximately O(2^128), as predicted by the birthday paradox for random walks over a finite group.
+The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution is restricted to √k. Given secp256k1, this translates to approximately O(2^sqrtN), as predicted by the birthday paradox for random walks over a finite group.
 
 ## Prerequisites
 
@@ -86,14 +86,14 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O
 
 4. Run the program:
     ```bash
-    ~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <dp bits>
+    ~/pollardsrho$ ./pollardsrho <compressed public key(hex)> <key range(int)> <OPTIONAL DP(int)>
     ```
 
-    Replace `<compressed public key>` with the point \(G\) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \(k\), and set the distinguished points bits `<dp bits>`.
+    Replace `<compressed public key>` with the point \(G\) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \(k\).
 
     Example usage:
     ```bash
-    ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135 30
+    ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135
     ```
 
 ## Commands
