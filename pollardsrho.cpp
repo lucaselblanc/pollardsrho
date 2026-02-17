@@ -13,8 +13,7 @@
 /* --- AINDA EM TESTES --- */
 
 #include "secp256k1.h"
-#include "parallel_hashmap/phmap.h"
-#include <unordered_map>
+#include "parallel_hashmap/phmap.h"
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -25,7 +24,6 @@
 #include <chrono>
 #include <ctime>
 #include <cmath>
-#include <mutex>
 #include <cstring>
 
 const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
