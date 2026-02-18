@@ -13,7 +13,7 @@
 /* --- AINDA EM TESTES --- */
 
 #include "secp256k1.h"
-#include "parallel_hashmap/phmap.h"
+#include "parallel_hashmap/phmap.h"
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -405,8 +405,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
                     uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
                     pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
                     scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
-                    if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
                     scalarAdd(w->b.limbs, w->b.limbs, localStepTable[step_idx].b.limbs);
+                    if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
                     if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
                     jac_batch[i] = w->R;
                 }
@@ -617,5 +617,18 @@ int main(int argc, char* argv[]) {
     save_key(pub_key_hex, found_key);
 
     std::cout << "Private key found: " << uint256_to_hex(found_key) << std::endl;
+
+    double key_val = 0;
+    for (int i = 0; i < 4; i++) {
+        key_val += (double)found_key.limbs[i] * std::pow(2.0, i * 64);
+    }
+
+    double range_start = std::pow(2.0, key_range - 1);
+    double range_end = std::pow(2.0, key_range);
+    double relative_pos = (key_val - range_start) / (range_end - range_start);
+    double percentage = relative_pos * 100.0;
+
+    std::cout << "% of the Range: " << std::fixed << std::setprecision(2) << percentage << "%" << std::endl;
+
     return 0;
 }
