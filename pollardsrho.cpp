@@ -338,7 +338,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
     std::vector<StepLocal> localStepTable(N_STEPS);
     std::mt19937_64 salt(target_affine.x[0]);
 
-   uint64_t stepSize = 1ULL << (key_range / 2 - 1);
+   uint64_t stepSize = 1ULL << (key_range / 2);
 
     uint256_t step_min = {0, 0, 0, 0};
     uint256_t step_max = {stepSize, 0, 0, 0};
