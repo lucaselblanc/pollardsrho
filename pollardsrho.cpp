@@ -28,7 +28,6 @@
 
 const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
 const uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-const uint64_t P[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 
 struct Buffers {
@@ -465,7 +464,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
                                 inv_db = almostinverse(db, N);
                                 uint64_t res_k[4];
                                 scalarMul(res_k, da.limbs, inv_db.limbs);
-
                                 unsigned char test_pub[33];
                                 generatePublicKey(preCompG, preCompGphi, test_pub, res_k, windowSize);
                                 if (memcmp(test_pub, target_pubkey.data(), 33) == 0) {
@@ -632,6 +630,13 @@ int main(int argc, char* argv[]) {
 
     std::cout << "% of the Range: " << std::fixed << std::setprecision(2) << percentage << "%" << std::endl;
 
+    delete[] preCompG;
+    delete[] preCompGphi;
+    delete[] preCompH;
+    delete[] preCompHphi;
+    delete[] jacNorm;
+    delete[] jacNormH;
+    delete[] jacEndo;
+    delete[] jacEndoH;
     return 0;
-
 }
