@@ -300,8 +300,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
 
-    //const int WALKERS = (cores <= 8) ? 2048 : 4096;
-    const int WALKERS = 2048;
+    const int WALKERS = (cores <= 8) ? 2048 : 4096;
     const int N_STEPS = 2048;
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
