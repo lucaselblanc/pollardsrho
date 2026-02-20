@@ -338,10 +338,12 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
     std::vector<StepLocal> localStepTable(N_STEPS);
     std::mt19937_64 salt(target_affine.x[0]);
 
-   uint64_t stepSize = 1ULL << (key_range / 2);
+    uint256_t stepSize = {};
 
-    uint256_t step_min = {0, 0, 0, 0};
-    uint256_t step_max = {stepSize, 0, 0, 0};
+    stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
+
+    uint256_t step_min = {};
+    uint256_t step_max = stepSize;
 
     for (int i = 0; i < N_STEPS; i++) {
         localStepTable[i].a = rng_mersenne_twister(step_min, step_max, key_range / 2, salt);
