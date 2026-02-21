@@ -31,28 +31,25 @@ const uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFU
 const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 
 struct Buffers {
-    ECPointJacobian* d_R;
-    ECPointJacobian* d_G;
-    ECPointJacobian* d_H;
-    uint64_t* d_k;
     uint64_t* scalarStepsG;
     uint64_t* scalarStepsH;
 };
 
 struct WalkState {
-    ECPointJacobian R;
     uint256_t a, b;
+    std::mt19937_64 rng;
+    ECPointJacobian R;
     Buffers* buffers;
     uint32_t walk_id;
-    bool negate;
-    std::mt19937_64 rng;
+    uint64_t snapshot_x[4];
+    uint64_t snapshot_steps;
 };
 
 struct DPEntry {
-    uint64_t x[4];
     uint256_t a;
     uint256_t b;
-    int walk_id;
+    uint32_t walk_id;
+    uint64_t x[4];
 };
 
 int windowSize = 16; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
@@ -147,17 +144,16 @@ void initScalarSteps(uint64_t* steps, int windowSize) {
 }
 
 void init_secp256k1() {
-
     getfcw();
 
     preCompG = new ECPointJacobian[1ULL << windowSize];
     preCompGphi = new ECPointJacobian[1ULL << windowSize];
     preCompH = new ECPointJacobian[1ULL << windowSize];
-    preCompHphi = new ECPointJacobian[1ULL << windowSize];
-    jacNorm = new ECPointJacobian[windowSize];
-    jacNormH = new ECPointJacobian[windowSize];
-    jacEndo = new ECPointJacobian[windowSize];
-    jacEndoH = new ECPointJacobian[windowSize];
+    preCompHphi = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1
+    jacNorm = new ECPointJacobian[windowSize]; //internal use in secp256k1
+    jacNormH = new ECPointJacobian[windowSize]; //internal use in secp256k1
+    jacEndo = new ECPointJacobian[windowSize]; //internal use in secp256k1
+    jacEndoH = new ECPointJacobian[windowSize]; //internal use in secp256k1
 
     initPreCompG(windowSize);
 }
@@ -375,6 +371,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
         walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
         walkers_state[i].b = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
         walkers_state[i].walk_id = i;
+        walkers_state[i].snapshot_steps = 0;
+        memset(walkers_state[i].snapshot_x, 0, 32);
 
         uint64_t a_arr[4], b_arr[4];
         uint256_to_uint64_array(a_arr, walkers_state[i].a);
@@ -396,6 +394,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
             for (int i = 0; i < local_count; i++) {
                 jac_batch[i] = walkers_state[id_start + i].R;
             }
+
             batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count);
 
             while (search_in_progress.load(std::memory_order_acquire)) {
@@ -415,11 +414,40 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
                 batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count);
 
                 for (int i = 0; i < local_count; i++) {
-                    if (!DP(aff_batch[i].x, DP_BITS)) continue;
-                    try {
-                        WalkState* w = &walkers_state[id_start + i];
-                        uint64_t table_idx = aff_batch[i].x[0];
+                    WalkState* w = &walkers_state[id_start + i];
+                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0) {
+                        w->a = rng_mersenne_twister(min_scalar, max_scalar, key_range, w->rng);
+                        w->b = rng_mersenne_twister(min_scalar, max_scalar, key_range, w->rng);
 
+                        uint64_t a_arr[4], b_arr[4];
+                        uint256_to_uint64_array(a_arr, w->a);
+                        uint256_to_uint64_array(b_arr, w->b);
+
+                        ECPointJacobian Ra, Rb;
+                        jacobianScalarMult(&Ra, preCompG, a_arr, windowSize);
+                        jacobianScalarMult(&Rb, preCompH, b_arr, windowSize);
+                        pointAddJacobian(&w->R, &Ra, &Rb);
+
+                        w->snapshot_steps = 0;
+                        memset(w->snapshot_x, 0, 32);
+                        ECPointAffine aff_respawn;
+                        jacobianToAffine(&aff_respawn, &w->R);
+                        memcpy(aff_batch[i].x, aff_respawn.x, 32);
+                        std::cout << "\033[33mWarning: Self-Collision Cycle Detected!\033[0m" << std::endl;
+                        std::cout << "\033[33mThe walker " << w->walk_id << " was killed by hitting his own tail!\033[0m" << std::endl;
+                        continue;
+                    }
+
+                    w->snapshot_steps++;
+                    if (w->snapshot_steps >= 1024) {
+                        memcpy(w->snapshot_x, aff_batch[i].x, 32);
+                        w->snapshot_steps = 0;
+                    }
+
+                    if (!DP(aff_batch[i].x, DP_BITS)) continue;
+                    w->snapshot_steps = 0;
+                    try {
+                        uint64_t table_idx = aff_batch[i].x[0];
                         DPEntry found_dp;
                         bool cl = false;
 
