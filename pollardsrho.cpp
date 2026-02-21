@@ -439,9 +439,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
                     }
 
                     w->snapshot_steps++;
-                    if (w->snapshot_steps >= 1024) {
+                    if ((w->snapshot_steps & (w->snapshot_steps - 1)) == 0)
                         memcpy(w->snapshot_x, aff_batch[i].x, 32);
-                        w->snapshot_steps = 0;
                     }
 
                     if (!DP(aff_batch[i].x, DP_BITS)) continue;
