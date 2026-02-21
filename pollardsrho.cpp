@@ -48,8 +48,7 @@ struct WalkState {
 struct DPEntry {
     uint256_t a;
     uint256_t b;
-    uint32_t walk_id;
-    uint64_t x[4];
+    uint64_t x;
 };
 
 int windowSize = 16; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
@@ -447,15 +446,14 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
                     if (!DP(aff_batch[i].x, DP_BITS)) continue;
                     w->snapshot_steps = 0;
                     try {
-                        uint64_t table_idx = aff_batch[i].x[0];
                         DPEntry found_dp;
                         bool cl = false;
 
-                        dp_table.lazy_emplace_l(table_idx,
+                        dp_table.lazy_emplace_l(aff_batch[i].x[0],
                             [&](auto& bucket) {
                                 auto& dps = bucket.second;
                                 for (const auto& entry : dps) {
-                                    if (memcmp(aff_batch[i].x, entry.x, 32) == 0) {
+                                    if (entry.x == aff_batch[i].x[1]) {
                                         bool same_state = (compare_uint256(w->a, entry.a) == 0) && (compare_uint256(w->b, entry.b) == 0);
                                         if (!same_state) {
                                             found_dp = entry;
@@ -468,16 +466,16 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
                                 if(!cl)
                                 {
                                     DPEntry new_entry;
-                                    memcpy(new_entry.x, aff_batch[i].x, 32);
-                                    new_entry.a = w->a; new_entry.b = w->b; new_entry.walk_id = w->walk_id;
+                                    new_entry.x = aff_batch[i].x[1];
+                                    new_entry.a = w->a; new_entry.b = w->b;
                                     dps.push_back(new_entry);
                                 }
                             },
                             [&](auto bucket) {
                                 DPEntry entry;
-                                memcpy(entry.x, aff_batch[i].x, 32);
-                                entry.a = w->a; entry.b = w->b; entry.walk_id = w->walk_id;
-                                bucket(table_idx, std::vector<DPEntry>{entry});
+                                entry.x = aff_batch[i].x[1];
+                                entry.a = w->a; entry.b = w->b;
+                                bucket(aff_batch[i].x[0], std::vector<DPEntry>{entry});
                             }
                         );
 
