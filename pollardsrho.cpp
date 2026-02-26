@@ -21,6 +21,7 @@
 #include <random>
 #include <thread>
 #include <atomic>
+#include <mutex>
 #include <chrono>
 #include <ctime>
 #include <cmath>
@@ -43,6 +44,18 @@ struct WalkState {
     uint32_t walk_id;
     uint64_t snapshot_x[4];
     uint64_t snapshot_steps;
+};
+
+struct MurmurHash3 {
+    //MurmurHash3<Avalanche constants>
+    size_t operator()(uint64_t x) const {
+        x ^= x >> 33;
+        x *= 0xff51afd7ed558ccdULL;
+        x ^= x >> 33;
+        x *= 0xc4ceb9fe1a85ec53ULL;
+        x ^= x >> 33;
+        return x;
+    }
 };
 
 struct DPEntry {
@@ -212,56 +225,47 @@ uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max
 }
 
 uint32_t get_step_idx(const uint64_t* x, uint32_t N_STEPS) {
-    //MurmurHash3<Avalanche constants>
-    uint64_t h = x[0] ^ (x[1] << 1) ^ (x[2] << 2) ^ (x[3] << 3);
-    h ^= h >> 33;
-    h *= 0xff51afd7ed558ccdLLU;
-    h ^= h >> 33;
-    h *= 0xc4ceb9fe1a85ec53LLU;
-    h ^= h >> 33;
-    return (uint32_t)(h % N_STEPS);
+    uint64_t combined = x[0] ^ (x[1] << 1) ^ (x[2] << 2) ^ (x[3] << 3);
+    MurmurHash3 hasher;
+    return static_cast<uint32_t>(hasher(combined) % N_STEPS);
 }
 
 bool DP(const uint64_t* affine_x, int DP_BITS) {
     return (affine_x[0] & ((1ULL << DP_BITS) - 1)) == 0;
 }
 
-void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count) {
+void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count, uint64_t* scratch_prefix, uint64_t* scratch_inv) {
     if (count <= 0) return;
-    std::vector<uint64_t[4]> scratch_prefix(count);
-    std::vector<uint64_t[4]> scratch_inv(count);
 
     if (jacobianIsInfinity(&jac_in[0])) {
-        memcpy(scratch_prefix[0], ONE_MONT, 32);
+        memcpy(&scratch_prefix[0], ONE_MONT, 32);
     } else {
-        memcpy(scratch_prefix[0], jac_in[0].Z, 32);
+        memcpy(&scratch_prefix[0], jac_in[0].Z, 32);
     }
 
     for (int i = 1; i < count; i++) {
         if (jacobianIsInfinity(&jac_in[i])) {
-            memcpy(scratch_prefix[i], scratch_prefix[i-1], 32);
+            memcpy(&scratch_prefix[i * 4], &scratch_prefix[(i-1) * 4], 32);
         } else {
-            modMulMontP(scratch_prefix[i], scratch_prefix[i-1], jac_in[i].Z);
+            modMulMontP(&scratch_prefix[i * 4], &scratch_prefix[(i-1) * 4], jac_in[i].Z);
         }
     }
 
     uint64_t total_inv[4];
-    modExpMontP(total_inv, scratch_prefix[count-1], P_CONST_MINUS_2);
+    modExpMontP(total_inv, &scratch_prefix[(count-1) * 4], P_CONST_MINUS_2);
 
     uint64_t current_inv[4];
     memcpy(current_inv, total_inv, 32);
 
     for (int i = count - 1; i > 0; i--) {
-        if (jacobianIsInfinity(&jac_in[i])) {
-            continue;
-        }
+        if (jacobianIsInfinity(&jac_in[i])) continue;
 
-        modMulMontP(scratch_inv[i], current_inv, scratch_prefix[i-1]);
+        modMulMontP(&scratch_inv[i * 4], current_inv, &scratch_prefix[(i-1) * 4]);
         modMulMontP(current_inv, current_inv, jac_in[i].Z);
     }
 
     if (!jacobianIsInfinity(&jac_in[0])) {
-        memcpy(scratch_inv[0], current_inv, 32);
+        memcpy(&scratch_inv[0], current_inv, 32);
     }
 
     for (int i = 0; i < count; i++) {
@@ -271,14 +275,11 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
             memset(aff_out[i].y, 0, 32);
             continue;
         }
-
         uint64_t z2[4];
         uint64_t x_mont[4];
-
-        modMulMontP(z2, scratch_inv[i], scratch_inv[i]);
+        modMulMontP(z2, &scratch_inv[i * 4], &scratch_inv[i * 4]);
         modMulMontP(x_mont, jac_in[i].X, z2);
         fromMontgomeryP(aff_out[i].x, x_mont);
-
         aff_out[i].infinity = 0;
     }
 }
@@ -355,7 +356,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
         affineToJacobian(&localStepTable[i].point, &aff_step);
     }
 
-    phmap::parallel_flat_hash_map<uint64_t, std::vector<DPEntry>> dp_table;
+    phmap::parallel_flat_hash_map<uint64_t,
+    std::vector<DPEntry>, MurmurHash3,
+    phmap::priv::hash_default_eq<uint64_t>,
+    std::allocator<std::pair<const uint64_t,
+    std::vector<DPEntry>>>, 4,
+    std::mutex > dp_table;
+
     std::vector<WalkState> walkers_state(WALKERS);
     std::vector<uint64_t> sharedScalarStepsG((1ULL << windowSize) * 4);
     std::vector<uint64_t> sharedScalarStepsH((1ULL << windowSize) * 4);
@@ -390,11 +397,14 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
             std::vector<ECPointJacobian> jac_batch(local_count);
             std::vector<ECPointAffine> aff_batch(local_count);
 
+            std::vector<uint64_t> scratch_prefix(local_count * 4);
+            std::vector<uint64_t> scratch_inv(local_count * 4);
+
             for (int i = 0; i < local_count; i++) {
                 jac_batch[i] = walkers_state[id_start + i].R;
             }
 
-            batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count);
+            batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
 
             while (search_in_progress.load(std::memory_order_acquire)) {
                 total_iters.fetch_add(local_count, std::memory_order_relaxed);
@@ -410,7 +420,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
                     jac_batch[i] = w->R;
                 }
 
-                batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count);
+                batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
