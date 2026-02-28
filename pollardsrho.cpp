@@ -28,8 +28,9 @@
 #include <cstring>
 
 const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-const uint64_t P_CONST_MINUS_2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+const uint64_t SUB_P2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
+const uint256_t P = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 
 struct Buffers {
     uint64_t* scalarStepsG;
@@ -42,8 +43,10 @@ struct WalkState {
     ECPointJacobian R;
     Buffers* buffers;
     uint32_t walk_id;
-    uint64_t snapshot_x[4];
     uint64_t snapshot_steps;
+    uint64_t snapshot_x[4];
+    uint64_t prev_x1[4];
+    uint64_t prev_x2[4];
 };
 
 struct MurmurHash3 {
@@ -252,7 +255,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
     }
 
     uint64_t total_inv[4];
-    modExpMontP(total_inv, &scratch_prefix[(count-1) * 4], P_CONST_MINUS_2);
+    modExpMontP(total_inv, &scratch_prefix[(count-1) * 4], SUB_P2);
 
     uint64_t current_inv[4];
     memcpy(current_inv, total_inv, 32);
@@ -284,7 +287,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
     }
 }
 
-uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) {
+uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, bool NEGATION_MAP) {
     std::atomic<bool> search_in_progress(true);
     std::atomic<unsigned long long> total_iters{0};
     uint256_t k{};
@@ -313,6 +316,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
 
     std::cout << "Started at: " << std::put_time(&start_tm, "%H:%M:%S") << std::endl;
     std::cout << "DP BITS: " << DP_BITS << std::endl;
+    NEGATION_MAP == 0 ? std::cout << "NEGATION MAP = false" << std::endl : std::cout << "NEGATION MAP = true" << std::endl;
     std::cout << "Key Range: " << key_range << std::endl;
     std::cout << "Min Range: " << uint256_to_hex(min_scalar) << std::endl;
     std::cout << "Max Range: " << uint256_to_hex(max_scalar) << std::endl;
@@ -380,6 +384,11 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
         walkers_state[i].snapshot_steps = 0;
         memset(walkers_state[i].snapshot_x, 0, 32);
 
+        if(NEGATION_MAP) {
+            memset(walkers_state[i].prev_x1, 0, 32);
+            memset(walkers_state[i].prev_x2, 0, 32);
+        }
+
         uint64_t a_arr[4], b_arr[4];
         uint256_to_uint64_array(a_arr, walkers_state[i].a);
         uint256_to_uint64_array(b_arr, walkers_state[i].b);
@@ -411,6 +420,12 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
+
+                    if(NEGATION_MAP) {
+                        memcpy(w->prev_x2, w->prev_x1, 32);
+                        memcpy(w->prev_x1, aff_batch[i].x, 32);
+                    }
+
                     uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
                     pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
                     scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
@@ -424,7 +439,31 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS) 
 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
-                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0) {
+
+                    if(NEGATION_MAP) {
+                        if (aff_batch[i].infinity == 0) {
+                            uint256_t y_val;
+                            memcpy(y_val.limbs, aff_batch[i].y, 32);
+                            uint256_t p_minus_y = sub_uint256(P, y_val);
+
+                            if (compare_uint256(y_val, p_minus_y) > 0) {
+                                memcpy(aff_batch[i].y, p_minus_y.limbs, 32);
+
+                                if ((w->a.limbs[0] | w->a.limbs[1] | w->a.limbs[2] | w->a.limbs[3]) != 0) { w->a = sub_uint256(N, w->a); }
+                                if ((w->b.limbs[0] | w->b.limbs[1] | w->b.limbs[2] | w->b.limbs[3]) != 0) { w->b = sub_uint256(N, w->b); }
+
+                                uint256_t jac_y;
+                                memcpy(jac_y.limbs, w->R.Y, 32);
+                                uint256_t p_minus_jac_y = sub_uint256(P, jac_y);
+                                memcpy(w->R.Y, p_minus_jac_y.limbs, 32);
+                                jac_batch[i] = w->R;
+                            }
+                        }
+                    }
+
+                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 ||
+                       (NEGATION_MAP ? (memcmp(aff_batch[i].x, w->prev_x1, 32) == 0 ||
+                        memcmp(aff_batch[i].x, w->prev_x2, 32) == 0) : false)) {
                         w->a = rng_mersenne_twister(min_scalar, max_scalar, key_range, w->rng);
                         w->b = rng_mersenne_twister(min_scalar, max_scalar, key_range, w->rng);
 
@@ -613,12 +652,18 @@ int main(int argc, char* argv[]) {
     std::string pub_key_hex(argv[1]);
     int key_range = std::stoi(argv[2]);
     int dp = 0;
+    bool NEGATION_MAP = false;
 
     if (argc >= 4) {
         try {
             dp = std::stoi(argv[3]);
+            if (argc >= 5) {
+                if (std::string(argv[4]) == "NEGATION_MAP_TRUE") {
+                    NEGATION_MAP = true;
+                }
+            }
         } catch (...) {
-            dp = 0;
+            std::cerr << "\033[31m[!] Unknown error parsing arguments!\033[0m" << std::endl;
         }
     }
 
@@ -630,7 +675,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Press 'Ctrl Z' to Quit\n";
     std::cout << "Auto Window-Size for secp256k1: " << windowSize << std::endl;
 
-    uint256_t found_key = prho(pub_key_hex, key_range, dp);
+    uint256_t found_key = prho(pub_key_hex, key_range, dp, NEGATION_MAP);
 
     std::cout << "\n\n\033[32m[SUCCESS!] Collision Found!\033[0m" << std::endl;
 
