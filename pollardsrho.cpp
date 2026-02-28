@@ -1,6 +1,6 @@
 /******************************************************************************************************
  * This file is part of the Pollard's Rho distribution: (https://github.com/lucaselblanc/pollardsrho) *
- * Copyright (c) 2024, 2025 Lucas Leblanc.                                                            *
+ * Copyright (c) 2024, 2026 Lucas Leblanc.                                                            *
  * Distributed under the MIT software license, see the accompanying.                                  *
  * file COPYING or https://www.opensource.org/licenses/mit-license.php.                               *
  ******************************************************************************************************/
