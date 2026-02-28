@@ -1,6 +1,6 @@
 /*********************************************************************************************************
  * This file is part of the Almost Inverse distribution: (https://github.com/lucaselblanc/almostinverse) *
- * Copyright (c) 2024, 2025 Lucas Leblanc.                                                               *
+ * Copyright (c) 2024, 2026 Lucas Leblanc.                                                               *
  * Distributed under the MIT software license, see the accompanying.                                     *
  * file COPYING or https://www.opensource.org/licenses/mit-license.php.                                  *
  *********************************************************************************************************/
