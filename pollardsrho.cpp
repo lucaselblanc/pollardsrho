@@ -15,6 +15,7 @@
 #include "secp256k1.h"
 #include "parallel_hashmap/phmap.h"
 #include <fstream>
+#include <unistd.h>
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -67,6 +68,12 @@ struct DPEntry {
     uint64_t x;
 };
 
+size_t ram_size() {
+    long pages = sysconf(_SC_PHYS_PAGES);
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    return (size_t)pages * page_size;
+}
+
 int windowSize = 16; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
 
 void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
@@ -101,6 +108,8 @@ std::vector<unsigned char> hex_to_bytes(const std::string& hex) {
 
 void getfcw() {
     int w = 4;
+    size_t l2Size = 0;
+    size_t l3Size = 0;
     for (int idx = 0;; idx++) {
         std::ifstream levelFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/level");
         if (!levelFile.is_open()) break;
@@ -123,14 +132,8 @@ void getfcw() {
 
         try { //Adjust the table to fit in the processor's L2/L3 cache (more fast), avoiding jumping to RAM.
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
-
-            if (L == 3)
-            {
-                size_t maxPoints = size / 128;
-                if (maxPoints == 0) continue;
-                w = static_cast<int>(std::floor(std::log2(maxPoints)));
-                break;
-            }
+            if (L == 2) l2Size = size;
+            if (L == 3) l3Size = size;
         }
         catch(const std::invalid_argument& e) {
             std::cout << "Warning: " << e.what() << std::endl;
@@ -139,6 +142,19 @@ void getfcw() {
         catch(const std::out_of_range& e) {
             std::cout << "Warning: " << e.what() << std::endl;
             continue;
+        }
+    }
+
+    size_t lSize = 0;
+
+    if (l2Size > 0) lSize = l2Size;
+    else if (l3Size > 0) lSize = l3Size;
+
+    if (lSize > 0)
+    {
+        size_t maxPoints = lSize / 128;
+        if (maxPoints > 0) {
+            w = static_cast<int>(std::floor(std::log2(maxPoints)));
         }
     }
 
@@ -298,28 +314,44 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
 
-    const int WALKERS = (cores <= 8) ? 2048 : 4096;
+    const int WALKERS = []() {
+        size_t ram = ram_size() / (1024 * 1024 * 1024);
+        if (ram >= 32) return 8192;
+        if (ram >= 16) return 4096;
+        if (ram >= 8)  return 2048;
+        if (ram <= 4)  return 1024;
+        return 512;
+    }();
+
     const int N_STEPS = 2048;
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
-
     uint256_t min_scalar{}, max_scalar{};
+    uint256_t mns{}, mxs{};
     {
-        int limb_index = (key_range - 1) / 64;
-        int bit_in_limb = (key_range - 1) % 64;
-        min_scalar.limbs[limb_index] = 1ULL << bit_in_limb;
-        for (int i = 0; i < limb_index; i++) {
+        int limb_idx = key_range / 64;
+        int bit_idx  = key_range % 64;
+        min_scalar.limbs[limb_idx] = 1ULL << bit_idx;
+        for (int i = 0; i < limb_idx; i++) {
             max_scalar.limbs[i] = 0xFFFFFFFFFFFFFFFFULL;
         }
-        max_scalar.limbs[limb_index] = (1ULL << (bit_in_limb + 1)) - 1;
+        max_scalar.limbs[limb_idx] = (bit_idx == 63) ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << (bit_idx + 1)) - 1;
+        int mns_limb = (key_range - 1) / 64;
+        int mns_bit  = (key_range - 1) % 64;
+        mns.limbs[mns_limb] = 1ULL << mns_bit;
+        for (int i = 0; i <= limb_idx; i++) {
+            mxs.limbs[i] = max_scalar.limbs[i];
+        }
+        mxs.limbs[limb_idx] >>= 1; 
     }
 
     std::cout << "Started at: " << std::put_time(&start_tm, "%H:%M:%S") << std::endl;
+    std::cout << "WALKERS: " << WALKERS << std::endl;
     std::cout << "DP BITS: " << DP_BITS << std::endl;
     NEGATION_MAP == 0 ? std::cout << "NEGATION MAP = false" << std::endl : std::cout << "NEGATION MAP = true" << std::endl;
-    std::cout << "Key Range: " << key_range << std::endl;
-    std::cout << "Min Range: " << uint256_to_hex(min_scalar) << std::endl;
-    std::cout << "Max Range: " << uint256_to_hex(max_scalar) << std::endl;
+    std::cout << "Key Range: " << (key_range) << std::endl;
+    std::cout << "Min Range: " << uint256_to_hex(mns) << std::endl;
+    std::cout << "Max Range: " << uint256_to_hex(mxs) << std::endl;
     std::cout << "\n\n";
 
     ECPointAffine target_affine{};
@@ -634,7 +666,7 @@ void save_key(const std::string& pub_key_hex, const uint256_t& priv_key) {
     if (outfile.is_open()) {
         outfile << pub_key_hex << " : " << uint256_to_hex(priv_key) << "\n";
         outfile.close();
-        std::cout << "\033[34m[INFO!] Chave salva com sucesso em DISCRETE_LOGS_SOLVED\033[0m" << std::endl;
+        std::cout << "\033[35m[INFO!] Chave salva com sucesso em DISCRETE_LOGS_SOLVED\033[0m" << std::endl;
     } else {
         std::cerr << "\033[31m[ERROR!] Nao foi possivel abrir o arquivo para salvar a chave!\033[0m" << std::endl;
     }
