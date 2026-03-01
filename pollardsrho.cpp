@@ -132,7 +132,7 @@ void getfcw() {
 
         try { //Adjust the table to fit in the processor's L2/L3 cache (more fast), avoiding jumping to RAM.
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
-            //if (L == 2) l2Size = size;
+            if (L == 2) l2Size = size;
             if (L == 3) l3Size = size;
         }
         catch(const std::invalid_argument& e) {
