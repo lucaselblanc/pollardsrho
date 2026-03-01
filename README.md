@@ -49,14 +49,11 @@ K256 = 128
 
 ## Algorithm Complexity
 
-The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution is restricted to √k. Given secp256k1, this translates to approximately O(2^sqrtN), as predicted by the birthday paradox for random walks over a finite group.
+The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the initial steps is restricted to √k, subsequently encompassing the entire group in √n. Given secp256k1, this translates to approximately O(2^sqrtN), as predicted by the birthday paradox for random walks over a finite group.
 
 ## Prerequisites
 
 - g++
-- build-essential
-- nvidia-cuda-runtime-13-0
-- nvidia-cuda-toolkit-13-0
 - boost/multiprecision/cpp_int.hpp
 
 ---
@@ -71,10 +68,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O
 2. Install the necessary libraries:
     ```bash
     sudo apt-get update
-    sudo apt-get upgrade
     sudo apt install build-essential g++ -y
-    sudo apt install nvidia-cuda-runtime-13-0 -y
-    sudo apt install nvidia-cuda-toolkit-13-0 -y
     sudo apt install libboost-dev -y
     ```
 
@@ -99,16 +93,14 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O
 ## Commands
 
    The random walk begins using the public point of the compressed public key as the parameter H, the target private key range for initializing the initial probability space, and the optional distinguished points parameter, which will be calculated automatically if not defined:
-    ```bash
+        ```bash
     ~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <dp bits>
-    ```
-
----
+        ```
     
     It is possible to enable point negation activating the flag **NEGATION_MAP_TRUE** to increase efficiency in √2 = 1.41x, however there is a risk of short 2-step loops. The implementation detects short and long loops automatically through Brent's algorithm, although this is rarer for Pollard's rho algorithm and more frequent in Kangaroo Lambda:
-    ```bash
+        ```bash
     ~/pollardsrho$ ./pollardsrho 036ea839d22847ee1dce3bfc5b11f6cf785b0682db58c35b63d1342eb221c3490c 24 8 NEGATION_MAP_TRUE
-    ```
+        ```
 
 
 ## External Libraries Used
