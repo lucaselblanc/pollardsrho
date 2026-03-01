@@ -96,9 +96,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O
 
     ~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <dp bits>
 
-### Negation Map
-
-    It is possible to enable point negation activating the flag __NEGATION_MAP_TRUE__ to increase efficiency in ~1.41x √n, however there is a risk of short 2-step loops. The implementation detects short and long loops automatically through Brent's algorithm, although this is rarer for Pollard's rho algorithm and more frequent in Kangaroo Lambda:
+#### Negation Map: it is possible to enable point negation activating the flag **NEGATION_MAP_TRUE** to increase efficiency in ~1.41x √n, however there is a risk of short 2-step loops. The implementation detects short and long loops automatically through Brent's algorithm, although this is rarer for Pollard's rho algorithm and more frequent in Kangaroo Lambda:
 
     ~/pollardsrho$ ./pollardsrho 036ea839d22847ee1dce3bfc5b11f6cf785b0682db58c35b63d1342eb221c3490c 24 8 NEGATION_MAP_TRUE
 
