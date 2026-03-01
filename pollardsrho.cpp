@@ -313,17 +313,17 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
-
+    
+    uint32_t N_STEPS;
     const int WALKERS = []() {
         size_t ram = ram_size() / (1024 * 1024 * 1024);
-        if (ram >= 32) return 8192;
-        if (ram >= 16) return 4096;
-        if (ram >= 8)  return 2048;
-        if (ram <= 4)  return 1024;
+        if (ram >= 32) { N_STEPS = 8192; return 8192; }
+        if (ram >= 16) { N_STEPS = 4096; return 4096; }
+        if (ram >= 8)  { N_STEPS = 2048; return 2048; }
+        if (ram <= 4)  { N_STEPS = 1024; return 1024; }
+        N_STEPS = 512;
         return 512;
     }();
-
-    const int N_STEPS = 2048;
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
     uint256_t min_scalar{}, max_scalar{};
