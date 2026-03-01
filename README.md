@@ -1,9 +1,9 @@
 # Pollard's Rho Algorithm for SECP256K1 Curve (Beta)
 
-![C++](https://img.shields.io/badge/language-C++-blue)
-![CUDA](https://img.shields.io/badge/language-CUDA-green)
-![CUDA](https://img.shields.io/badge/arch-gpu%20&%20cpu-orange)
-![Linux](https://img.shields.io/badge/platform-Linux-white)
+![C++](https://img.shields.io/badge/Language-C++-blue)
+![CUDA](https://img.shields.io/badge/Language-CUDA-green)
+![CUDA](https://img.shields.io/badge/Arch-GPU%20&%20CPU-orange)
+![Linux](https://img.shields.io/badge/Platform-Linux-white)
 
 ## Description
 
@@ -93,12 +93,17 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O
 ## Commands
 
    The random walk begins using the public point of the compressed public key as the parameter H, the target private key range for initializing the initial probability space, and the optional distinguished points parameter, which will be calculated automatically if not defined:
-
+    ```bash
     ~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <dp bits>
+    
+    ```
 
-#### Negation Map: it is possible to enable point negation activating the flag **NEGATION_MAP_TRUE** to increase efficiency in ~1.41x √n, however there is a risk of short 2-step loops. The implementation detects short and long loops automatically through Brent's algorithm, although this is rarer for Pollard's rho algorithm and more frequent in Kangaroo Lambda:
-
+#### Negation Map:
+   It is possible to enable point negation activating the flag **NEGATION_MAP_TRUE** to increase efficiency in ~1.41x √n, however there is a risk of short 2-step loops. The implementation detects short and long loops automatically through Brent's algorithm, although this is rarer for Pollard's rho algorithm and more frequent in Kangaroo Lambda:
+    ```bash
     ~/pollardsrho$ ./pollardsrho 036ea839d22847ee1dce3bfc5b11f6cf785b0682db58c35b63d1342eb221c3490c 24 8 NEGATION_MAP_TRUE
+    
+    ```
 
 ## External Libraries Used
 
