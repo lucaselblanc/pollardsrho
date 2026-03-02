@@ -322,7 +322,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
         return 1024;
     }();
 
-    const uint32_t N_STEPS = static_cast<uint32_t>(WALKERS);
+    const uint32_t N_STEPS = 2048;
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
     uint256_t min_scalar{}, max_scalar{};
