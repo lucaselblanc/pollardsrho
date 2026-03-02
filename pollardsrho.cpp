@@ -74,7 +74,7 @@ size_t ram_size() {
     return (size_t)pages * page_size;
 }
 
-int windowSize = 16; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
+int windowSize = 12; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
 
 void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
     out[0] = value.limbs[0];
