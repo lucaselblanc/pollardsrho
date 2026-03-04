@@ -106,7 +106,7 @@ std::vector<unsigned char> hex_to_bytes(const std::string& hex) {
     return bytes;
 }
 
-void getfcw() {
+void getfcw(int key_range) {
     int w = 4;
     size_t l2Size = 0;
     size_t l3Size = 0;
@@ -132,8 +132,12 @@ void getfcw() {
 
         try { //Adjust the table to fit in the processor's L2/L3 cache (more fast), avoiding jumping to RAM.
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
-            if (L == 2) l2Size = size;
-            if (L == 3) l3Size = size;
+            if(key_range >= 40) {
+                if (L == 2) l2Size = size;
+            }
+            else {
+                if (L == 3) l3Size = size;
+            }
         }
         catch(const std::invalid_argument& e) {
             std::cout << "Warning: " << e.what() << std::endl;
@@ -174,8 +178,8 @@ void initScalarSteps(uint64_t* steps, int windowSize) {
     }
 }
 
-void init_secp256k1() {
-    getfcw();
+void init_secp256k1(int key_range) {
+    getfcw(key_range);
 
     preCompG = new ECPointJacobian[1ULL << windowSize];
     preCompGphi = new ECPointJacobian[1ULL << windowSize];
@@ -678,7 +682,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    init_secp256k1();
+    init_secp256k1(std::stoi(argv[2]));
 
     std::string pub_key_hex(argv[1]);
     int key_range = std::stoi(argv[2]);
