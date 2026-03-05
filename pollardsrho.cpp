@@ -318,12 +318,11 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
     
-    const int WALKERS = [key_range]() {
+    const int WALKERS = []() {
         size_t ram = ram_size() / (1024 * 1024 * 1024);
-        if(key_range < 40) { return 4096; }
         if (ram >= 32) { return 8192; }
         if (ram >= 16) { return 4096; }
-        if (ram <= 8)  { return 2048; }
+        if (ram >= 8)  { return 2048; }
         return 1024;
     }();
 
@@ -400,7 +399,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     std::vector<DPEntry>, MurmurHash3,
     phmap::priv::hash_default_eq<uint64_t>,
     std::allocator<std::pair<const uint64_t,
-    std::vector<DPEntry>>>, 4,
+    std::vector<DPEntry>>>, 32,
     std::mutex > dp_table;
 
     std::vector<WalkState> walkers_state(WALKERS);
@@ -527,7 +526,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
                     if ((w->snapshot_steps & (w->snapshot_steps - 1)) == 0) {
                         memcpy(w->snapshot_x, aff_batch[i].x, 32);
                     }
-
+                    
                     if (!DP(aff_batch[i].x, DP_BITS)) continue;
                     w->snapshot_steps = 0;
                     try {
