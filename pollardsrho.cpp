@@ -318,7 +318,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
     
-    const int WALKERS = []() {
+    const int WALKERS = [key_range]() {
         size_t ram = ram_size() / (1024 * 1024 * 1024);
         if(key_range < 40) { return 2048; }
         if (ram >= 32) { return 8192; }
