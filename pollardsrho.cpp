@@ -395,10 +395,19 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
         affineToJacobian(&localStepTable[i].point, &aff_step);
     }
 
+    /*
     phmap::parallel_flat_hash_map<uint64_t,
     std::vector<DPEntry>, MurmurHash3,
     phmap::priv::hash_default_eq<uint64_t>,
     std::allocator<std::pair<const uint64_t,
+    std::vector<DPEntry>>>, 32,
+    std::mutex > dp_table;
+    */
+
+    phmap::parallel_flat_hash_map<uint64_t, 
+    std::vector<DPEntry>, MurmurHash3,
+    phmap::EqualTo<uint64_t>, 
+    phmap::Allocator<std::pair<const uint64_t,
     std::vector<DPEntry>>>, 32,
     std::mutex > dp_table;
 
