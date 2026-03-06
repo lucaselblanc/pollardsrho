@@ -320,7 +320,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     
     const int WALKERS = [key_range]() {
         size_t ram = ram_size() / (1024 * 1024 * 1024);
-        if (ram >= 32 && key_range >= 40) { return 8192; }
+        if (ram >= 32) { return 8192; }
         if (ram >= 16) { return 4096; }
         if (ram >= 8)  { return 2048; }
         return 1024;
