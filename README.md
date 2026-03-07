@@ -16,7 +16,7 @@ The algorithm executes high-speed pseudo-random walks over the secp256k1 group u
 
  When two independent walkers encounter the same group element (a collision) with distinct coefficient pairs `(a, b)`, it yields a linear congruence modulo the group order `N`, allowing for the immediate recovery of the private key with the calculation of d through mod inversion. To maximize throughput and enable massive parallelization, the implementation employs a Distinguished Points (DP) strategy, where only points meeting a specific bit-mask criteria are stored in a high-concurrency hash map. This allows multiple CPU threads to traverse different paths simultaneously with minimal memory overhead. The system is specifically tuned for the secp256k1 curve and requires a Bitcoin public key as the target.
 
----
+## ⠀
 
 ## Distinguished Points (DP)
 
@@ -53,7 +53,7 @@ K256 = 128
 
 For small ranges where collisions occur quickly, ```windowSize``` is calculated to have a larger table points that can occupy L3, since it is not necessary to extract the best performance for a collision that occurs in a few steps, with the use of a larger table, there are more points, reducing the chance of walkers entering short loops, because the entropy is greater. As the range increases, the walkers will have more space to explore, and it is at this point that the use of lower L2 latency is necessary. From >= 40 bits, ```windowSize``` starts to fit in L2, slightly overflowing into L3, which allows the ops/s speed to increase by ~50%, with less entropy of points in a much larger probability space, the path correlation of the walkers increases, and the state space of the transitions decreases, favoring the birthday paradox, as the trajectory of the walkers becomes more predictable.
 
----
+## ⠀
 
 ## Algorithm Complexity
 
@@ -64,7 +64,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O
 - g++
 - boost/multiprecision/cpp_int.hpp
 
----
+## ⠀
 
 ## Installation
 
@@ -131,7 +131,6 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## ⠀
----
 
 <p align="center">
   <a href="https://github.com/lucaselblanc">
