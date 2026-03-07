@@ -7,19 +7,19 @@
 
 ## Description
 
-This repository contains an implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve. The objective is to recover the scalar k from the relation H = k * G, where G is the curve generator and H is a public point.
+ This repository contains an implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve. The objective is to recover the scalar k from the relation H = k * G, where G is the curve generator and H is a public point.
 
-The algorithm executes high-speed pseudo-random walks over the secp256k1 group using an R-adding walk iteration function. It utilizes a table of 2048 pre-computed steps and a MurmurHash3-based avalanche function to determine state transitions, maintaining the algebraic representation `R = a * G + b * H`. The scalars are probabilistically distributed within a specific key range, optimizing the collision search for O(√K) complexity rather than the full O(√N).
+ The algorithm executes high-speed pseudo-random walks over the secp256k1 group using an R-adding walk iteration function. It utilizes a table of 2048 pre-computed steps and a MurmurHash3-based avalanche function to determine state transitions, maintaining the algebraic representation `R = a * G + b * H`. The scalars are initially probabilistically distributed within a specific ```key_range```, optimizing collision search for an initial probability distribution in O(√K) instead of the general distribution for the entire group O(√N), and as points are multiplied on the curve, walkers may eventually exceed ```key_range```, since the search in Pollard's rho algorithm is blind, and for the algorithm it does not matter in which scalar area the points actually are, as long as the walkers maintain their linear congruence relations for the group N.
 
  When two independent walkers encounter the same group element (a collision) with distinct coefficient pairs `(a, b)`, it yields a linear congruence modulo the group order `N`, allowing for the immediate recovery of the private key with the calculation of d through mod inversion. To maximize throughput and enable massive parallelization, the implementation employs a Distinguished Points (DP) strategy, where only points meeting a specific bit-mask criteria are stored in a high-concurrency hash map. This allows multiple CPU threads to traverse different paths simultaneously with minimal memory overhead. The system is specifically tuned for the secp256k1 curve and requires a Bitcoin public key as the target.
 
 ## Distinguished Points (DP)
 
-The Distinguished Points strategy is a memory-saving filter. Instead of storing every step of the walk (which would crash your RAM), the algorithm only saves points that satisfy a specific condition: the first d bits of the X-coordinate must be zero. When two walkers hit the same DP, a collision is found and the private key is recovered. ​The Trade-off: More DP bits = Less RAM used, but slower collision detection. Fewer DP bits = Faster detection, but higher RAM consumption.
+ The Distinguished Points strategy is a memory-saving filter. Instead of storing every step of the walk (which would crash your RAM), the algorithm only saves points that satisfy a specific condition: the first d bits of the X-coordinate must be zero. When two walkers hit the same DP, a collision is found and the private key is recovered. ​The Trade-off: More DP bits = Less RAM used, but slower collision detection. Fewer DP bits = Faster detection, but higher RAM consumption.
 
 #### Delay Of Distinguished Points
 
-When a walker begins traversing a path already explored by another walker, a collision will be delayed if the distinguished points filter condition is not met for both walkers. The delay will be overcome after the distinct points are recorded in the dp table. The higher the dp value, the greater the delay for a collision to be detected and recorded by the hashmap. To mitigate this, it would be necessary to disable the dp filter, but this would cause excessive RAM usage and would not be worth the effort. This delay is a necessary evil when using distinct points.
+ When a walker begins traversing a path already explored by another walker, a collision will be delayed if the distinguished points filter condition is not met for both walkers. The delay will be overcome after the distinct points are recorded in the dp table. The higher the dp value, the greater the delay for a collision to be detected and recorded by the hashmap. To mitigate this, it would be necessary to disable the dp filter, but this would cause excessive RAM usage and would not be worth the effort. This delay is a necessary evil when using distinct points.
 
 Theoretical Calculus:
 
@@ -46,11 +46,11 @@ K256 = 128
 
 ## Pre-Computed Points ```windowSize``` in L2/L3 Caches
 
-For small ranges where collisions occur quickly, ```windowSize``` is calculated to have a larger table points that can occupy L3, since it is not necessary to extract the best performance for a collision that occurs in a few steps, with the use of a larger table, there are more points, reducing the chance of walkers entering short loops, because the entropy is greater. As the range increases, the walkers will have more space to explore, and it is at this point that the use of lower L2 latency is necessary. From >= 40 bits, ```windowSize``` starts to fit in L2, slightly overflowing into L3, which allows the ops/s speed to increase by ~50%, with less entropy of points in a much larger probability space, the path correlation of the walkers increases, and the state space of the transitions decreases, favoring the birthday paradox, as the trajectory of the walkers becomes more predictable.
+ For small ranges where collisions occur quickly, ```windowSize``` is calculated to have a larger table points that can occupy L3, since it is not necessary to extract the best performance for a collision that occurs in a few steps, with the use of a larger table, there are more points, reducing the chance of walkers entering short loops, because the entropy is greater. As the range increases, the walkers will have more space to explore, and it is at this point that the use of lower L2 latency is necessary. From >= 40 bits, ```windowSize``` starts to fit in L2, slightly overflowing into L3, which allows the ops/s speed to increase by ~50%, with less entropy of points in a much larger probability space, the path correlation of the walkers increases, and the state space of the transitions decreases, favoring the birthday paradox, as the trajectory of the walkers becomes more predictable.
 
 ## Algorithm Complexity
 
-The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the initial steps is restricted to √k, subsequently encompassing the entire group in √n. Given secp256k1, this translates to approximately O(2^sqrtN), as predicted by the birthday paradox for random walks over a finite group.
+ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the initial steps is restricted to √k, subsequently encompassing the entire group in √n. Given secp256k1, this translates to approximately O(2^√N), as predicted by the birthday paradox for random walks over a finite group.
 
 ## Prerequisites
 
@@ -91,16 +91,26 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O
 
 ## Commands
 
-   The random walk begins using the public point of the compressed public key as the parameter H, the target private key range for initializing the initial probability space, and the optional distinguished points parameter, which will be calculated automatically if not defined:
+ The random walk begins using the public point of the compressed public key as the parameter H, the target private key range for initializing the initial probability space, and the optional distinguished points parameter, which will be calculated automatically if not defined:
 ```bash
 ~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <dp bits>
 ```
 
 #### Negation Map:
-   It is possible to enable point negation activating the flag **NEGATION_MAP_TRUE** to increase efficiency in ~1.41x √n, however there is a risk of short 2-step loops. The implementation detects short and long loops automatically through Brent's algorithm, although this is rarer for Pollard's rho algorithm and more frequent in Kangaroo Lambda:
+ It is possible to enable point negation activating the flag **NEGATION_MAP_TRUE** to increase efficiency in ~1.41x √n, however there is a risk of short 2-step loops. The implementation detects short and long loops automatically through Brent's algorithm, although this is rarer for Pollard's rho algorithm and more frequent in Kangaroo Lambda:
 ```bash
 ~/pollardsrho$ ./pollardsrho 036ea839d22847ee1dce3bfc5b11f6cf785b0682db58c35b63d1342eb221c3490c 24 8 NEGATION_MAP_TRUE 
 ```
+
+## Differences between Pollard's Rho and Pollard's Kangaroo/Lambda
+
+#### Pollard's Rho Algorithm (Probabilistic √N)
+
+ In the Pollard's Rho algorithm, it is assumed that we do not know the minimum-maximum scalar range in which the private key may lie, as the search is blind, this is useful when you have no prior knowledge of k, so the value of ```key_range``` can be any value >= 1. If you correctly guess the maximum range, you will eventually arrive at a solution, in the worst-case scenario in up to √K steps, following the birthday paradox on which the algorithm is based. The advantage of Pollard's Rho over Pollard's Kangaroo is the generality of the points, as the recovery of k does not depend on the distance between the two colliding walkers, but rather on the linear congruence relationship maintained between them. This algorithm rarely has problems with short or long loops due to its chaotic and completely pseudo-random walk, as there is no deterministic linearity dependency for a solution, The loops(fruitless cycles) occur due to this linearity combined with entropy density. The difference between the coefficients a and b is resolved through modular inversion and not with simple addition or subtraction as happens in Pollard's Kangaroo. Finally, any collision is valid for Pollard's Rho, which ends up being a huge advantage, due to the astronomically large group space of the secp256k1 curve, the program will never stop until a collision occurs, or it reaches the 256-bit limit, however, it is more likely that the operating system itself will terminate the process before reaching this limit, if the total number of operations exceeds √K, the probability of a useful collision occurring after that point is very low, but this is left to the solver's discretion.
+
+#### Pollard's Kangaroo/Lambda Algorithm (Probabilistic √K)
+ 
+ In Pollard's Kangaroo (lambda) algorithm, it is assumed that there is prior knowledge about k, the search is strictly limited to the ```key_range``` and will not go beyond it. Without the exact search range, the algorithm becomes impracticable, because the path taken by the domesticated kangaroo and the wild kangaroo is deterministic, and it is fully calculated using the average steps of √K, without the original range, the algorithm breaks. It's as if Pollard's Kangaroo were a more efficient version of the Baby Steps Giant Steps (BSGS) algorithm, the difference is that lambda does this in a more intelligent (no brute force) way, using the domesticated kangaroo to initiate the search by scattering traps/points along the path, which are saved in a table. Eventually, a wild kangaroo has a statistical chance of landing on one of these points left by the tame, causing a collision and solving k. Due to this determinism of the path, the recovery of k occurs through a simple addition or subtraction of the accumulated distance between tame and wild, however, this simplicity comes at a high price with the increase in internal loops where the kangaroo gets stuck on a path it has already visited, another bad scenario occurs when a wild kangaroo makes a very large jump and ends up never landing on any of the points left by the domesticated kangaroo, meaning the wild kangaroo never has a chance to resolve any future collisions, in this algorithm, the main concern will always be to get a kangaroo out of a loop when it gets stuck in one, and to normalize the average of the jumps to avoid overshooting. Both the rho and the kangaroo algorithms use distinguished points to reduce memory costs when saving points.
 
 ## External Libraries Used
 
