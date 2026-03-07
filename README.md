@@ -47,7 +47,7 @@ K256 = 128
 ## Pre-Computed Points ```windowSize``` in L2/L3 Caches
 
 For small ranges where collisions occur quickly, ```windowSize``` is calculated to have a larger table points that can occupy L3, since it is not necessary to extract the best performance for a collision that occurs in a few steps, with the use of a larger table, there are more points, reducing the chance of walkers entering short loops, because the entropy is greater. As the range increases, the walkers will have more space to explore, and it is at this point that the use of lower L2 latency is necessary. From >= 40 bits, ```windowSize``` starts to fit in L2, slightly overflowing into L3, which allows the ops/s speed to increase by ~50%, with less entropy of points in a much larger probability space, the path correlation of the walkers increases, and the state space of the transitions decreases, favoring the birthday paradox, as the trajectory of the walkers becomes more predictable.
-#### ⠀
+
 ## Algorithm Complexity
 
 The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the initial steps is restricted to √k, subsequently encompassing the entire group in √n. Given secp256k1, this translates to approximately O(2^sqrtN), as predicted by the birthday paradox for random walks over a finite group.
@@ -56,7 +56,7 @@ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O
 
 - g++
 - boost/multiprecision/cpp_int.hpp
-#### ⠀
+
 ## Installation
 
 1. Clone this repository:
@@ -120,7 +120,7 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-#### ⠀
+
 <p align="center">
   <a href="https://github.com/lucaselblanc">
     <img src="https://readme-typing-svg.demolab.com?font=Georgia&size=18&duration=2000&pause=100&multiline=true&width=500&height=80&lines=Lucas+Leblanc;Programmer+%7C+Student+%7C+Cyber+Security;+%7C+Android+%7C+Apps" alt="Typing SVG" />
