@@ -399,7 +399,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     std::vector<DPEntry>, MurmurHash3,
     phmap::priv::hash_default_eq<uint64_t>,
     std::allocator<std::pair<const uint64_t,
-    std::vector<DPEntry>>>, 5,
+    std::vector<DPEntry>>>, 8,
     std::mutex > dp_table;
 
     std::vector<WalkState> walkers_state(WALKERS);
