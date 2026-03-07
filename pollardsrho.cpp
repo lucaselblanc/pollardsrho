@@ -132,12 +132,16 @@ void getfcw(int key_range) {
 
         try { //Adjust the table to fit in the processor's L2/L3 cache (more fast), avoiding jumping to RAM.
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
+
+            if (L == 2) l2Size = size;
+            /*
             if(key_range >= 40) {
                 if (L == 2) l2Size = size;
             }
             else {
                 if (L == 3) l3Size = size;
             }
+            */
         }
         catch(const std::invalid_argument& e) {
             std::cout << "Warning: " << e.what() << std::endl;
@@ -320,7 +324,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     
     const int WALKERS = [key_range]() {
         size_t ram = ram_size() / (1024 * 1024 * 1024);
-        if (key_range < 40) { return 2048; }
+        if (key_range < 40) { return 4096; }
         if (ram >= 32) { return 8192; }
         if (ram >= 16) { return 4096; }
         if (ram >= 8)  { return 2048; }
