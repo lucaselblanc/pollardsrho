@@ -135,10 +135,10 @@ void getfcw(int key_range) {
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
             
             if(exp_steps < size) {
-                if (L == 3) l2Size = size;
+                if (L == 3) l3Size = size;
             }
             else {
-                if (L == 2) l3Size = size;
+                if (L == 2) l2Size = size;
             }
         }
         catch(const std::invalid_argument& e) {
