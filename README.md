@@ -52,7 +52,7 @@ K256 = 128
 
  The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the initial steps is restricted to √k, subsequently encompassing the entire group in √n. Given secp256k1, this translates to approximately O(2^√N), as predicted by the birthday paradox for random walks over a finite group.
 
-## Differences between Pollard's Rho and Pollard's Kangaroo/Lambda
+## Pollard's Rho vs Pollard's Kangaroo/Lambda
 
 #### Pollard's Rho Algorithm (Probabilistic √N)
 
