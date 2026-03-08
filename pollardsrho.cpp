@@ -132,16 +132,13 @@ void getfcw(int key_range) {
 
         try { //Adjust the table to fit in the processor's L2/L3 cache (more fast), avoiding jumping to RAM.
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
-
-            if (L == 2) l2Size = size;
-            /*
-            if(key_range >= 40) {
+            
+            if(key_range > 25) {
                 if (L == 2) l2Size = size;
             }
             else {
                 if (L == 3) l3Size = size;
             }
-            */
         }
         catch(const std::invalid_argument& e) {
             std::cout << "Warning: " << e.what() << std::endl;
