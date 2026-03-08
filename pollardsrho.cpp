@@ -108,6 +108,7 @@ std::vector<unsigned char> hex_to_bytes(const std::string& hex) {
 
 void getfcw(int key_range) {
     int w = 4;
+    double exp_steps = std::pow(2, key_range / 2.0);
     size_t l2Size = 0;
     size_t l3Size = 0;
     for (int idx = 0;; idx++) {
@@ -133,11 +134,11 @@ void getfcw(int key_range) {
         try { //Adjust the table to fit in the processor's L2/L3 cache (more fast), avoiding jumping to RAM.
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
             
-            if(key_range > 25) {
-                if (L == 2) l2Size = size;
+            if(exp_steps < size) {
+                if (L == 3) l2Size = size;
             }
             else {
-                if (L == 3) l3Size = size;
+                if (L == 2) l3Size = size;
             }
         }
         catch(const std::invalid_argument& e) {
