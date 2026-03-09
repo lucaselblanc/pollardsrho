@@ -320,6 +320,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
     
+    /*
     const int WALKERS = []() {
         size_t ram = ram_size() / (1024 * 1024 * 1024);
         if (ram >= 32) { return 8192; }
@@ -327,6 +328,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
         if (ram >= 8)  { return 2048; }
         return 1024;
     }();
+    */
+
+    size_t ram = ram_size() / (1024 * 1024 * 1024);
+    const uint64_t WALKERS = static_cast<uint64_t>(cores * 1024 * std::log2(ram + 1.0));
 
     const uint32_t N_STEPS = 2048;
 
