@@ -29,7 +29,7 @@
 #include <cstring>
 
 const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-const uint64_t SUB_P2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+const uint64_t SUB2_FP[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t P = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 
@@ -293,7 +293,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
     }
 
     uint64_t total_inv[4];
-    modExpMontP(total_inv, &scratch_prefix[(count - 1) * 4], SUB_P2);
+    modExpMontP(total_inv, &scratch_prefix[(count - 1) * 4], SUB2_FP);
     uint64_t current_inv[4];
     memcpy(current_inv, total_inv, 32);
 
