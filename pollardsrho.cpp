@@ -30,6 +30,8 @@
 
 const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
 const uint64_t SUB_P2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+//const uint64_t BETA[4] = { 0xC1396C28719501EEULL, 0x9CF0497512F58995ULL, 0x6E64479EAC3434E9ULL, 0x7AE96A2B657C0710ULL };
+//const uint64_t LAMBDA[4] = { 0xDF02967C1B23BD72ULL, 0x122E22EA20816678ULL, 0xA5261C028812645AULL, 0x5363AD4CC05C30E0ULL };
 const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t P = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 
@@ -67,6 +69,23 @@ struct DPEntry {
     uint256_t b;
     uint64_t x;
 };
+
+void loading_bar(uint64_t current, uint64_t total, const std::string& label) {
+    if (total == 0) return;
+    float percent = (float)current / total;
+    int barWidth = 40;
+    int pos = barWidth * percent;
+
+    std::cout << "\033[2A\r\033[J";
+
+    std::cout << label << "\n";
+    for (int i = 0; i < barWidth; ++i) {
+        if (i < pos) std::cout << "█";
+        else std::cout << "▒";
+    }
+
+    std::cout << " " << std::fixed << std::setprecision(1) << (percent * 100.0) << "%" << std::endl;
+}
 
 size_t ram_size() {
     long pages = sysconf(_SC_PHYS_PAGES);
@@ -133,7 +152,7 @@ void getfcw(int key_range) {
 
         try { //Adjust the table to fit in the processor's L2/L3 cache (more fast), avoiding jumping to RAM.
             size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
-            
+
             if(exp_steps < size) {
                 if (L == 3) l3Size = size;
             }
@@ -186,7 +205,7 @@ void init_secp256k1(int key_range) {
     preCompG = new ECPointJacobian[1ULL << windowSize];
     preCompGphi = new ECPointJacobian[1ULL << windowSize];
     preCompH = new ECPointJacobian[1ULL << windowSize];
-    preCompHphi = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1
+    preCompHphi = new ECPointJacobian[1ULL << windowSize];
     jacNorm = new ECPointJacobian[windowSize]; //internal use in secp256k1
     jacNormH = new ECPointJacobian[windowSize]; //internal use in secp256k1
     jacEndo = new ECPointJacobian[windowSize]; //internal use in secp256k1
@@ -249,8 +268,8 @@ uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max
     return add_uint256(r, min_scalar);
 }
 
-uint32_t get_step_idx(const uint64_t* x, uint32_t N_STEPS) {
-    uint64_t combined = x[0] ^ (x[1] << 1) ^ (x[2] << 2) ^ (x[3] << 3);
+uint32_t get_step_idx(const uint64_t* x, const uint64_t* y, uint32_t N_STEPS) {
+    uint64_t combined = (x[0] ^ y[0]) ^ ((x[1] ^ y[1]) << 1) ^ ((x[2] ^ y[2]) << 2) ^ ((x[3] ^ y[3]) << 3);
     MurmurHash3 hasher;
     return static_cast<uint32_t>(hasher(combined) % N_STEPS);
 }
@@ -261,7 +280,6 @@ bool DP(const uint64_t* affine_x, int DP_BITS) {
 
 void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count, uint64_t* scratch_prefix, uint64_t* scratch_inv) {
     if (count <= 0) return;
-
     if (jacobianIsInfinity(&jac_in[0])) {
         memcpy(&scratch_prefix[0], ONE_MONT, 32);
     } else {
@@ -270,22 +288,22 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
 
     for (int i = 1; i < count; i++) {
         if (jacobianIsInfinity(&jac_in[i])) {
-            memcpy(&scratch_prefix[i * 4], &scratch_prefix[(i-1) * 4], 32);
+            memcpy(&scratch_prefix[i * 4], &scratch_prefix[(i - 1) * 4], 32);
         } else {
-            modMulMontP(&scratch_prefix[i * 4], &scratch_prefix[(i-1) * 4], jac_in[i].Z);
+            modMulMontP(&scratch_prefix[i * 4], &scratch_prefix[(i - 1) * 4], jac_in[i].Z);
         }
     }
 
     uint64_t total_inv[4];
-    modExpMontP(total_inv, &scratch_prefix[(count-1) * 4], SUB_P2);
-
+    modExpMontP(total_inv, &scratch_prefix[(count - 1) * 4], SUB_P2);
     uint64_t current_inv[4];
     memcpy(current_inv, total_inv, 32);
 
     for (int i = count - 1; i > 0; i--) {
-        if (jacobianIsInfinity(&jac_in[i])) continue;
-
-        modMulMontP(&scratch_inv[i * 4], current_inv, &scratch_prefix[(i-1) * 4]);
+        if (jacobianIsInfinity(&jac_in[i])) {
+            continue; 
+        }
+        modMulMontP(&scratch_inv[i * 4], current_inv, &scratch_prefix[(i - 1) * 4]);
         modMulMontP(current_inv, current_inv, jac_in[i].Z);
     }
 
@@ -300,18 +318,25 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
             memset(aff_out[i].y, 0, 32);
             continue;
         }
-        uint64_t z2[4];
-        uint64_t x_mont[4];
-        modMulMontP(z2, &scratch_inv[i * 4], &scratch_inv[i * 4]);
-        modMulMontP(x_mont, jac_in[i].X, z2);
-        fromMontgomeryP(aff_out[i].x, x_mont);
+
+        uint64_t* z_inv = &scratch_inv[i * 4];
+        uint64_t z2[4], z3[4], tmp_mont[4];
+
+        modMulMontP(z2, z_inv, z_inv);
+        modMulMontP(z3, z2, z_inv);
+        modMulMontP(tmp_mont, jac_in[i].X, z2);
+        fromMontgomeryP(aff_out[i].x, tmp_mont);
+        modMulMontP(tmp_mont, jac_in[i].Y, z3);
+        fromMontgomeryP(aff_out[i].y, tmp_mont);
+
         aff_out[i].infinity = 0;
     }
 }
 
-uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, bool NEGATION_MAP) {
+uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, const int DP_BITS) {
     std::atomic<bool> search_in_progress(true);
     std::atomic<unsigned long long> total_iters{0};
+    std::atomic<unsigned long long> total_cycles{0};
     uint256_t k{};
 
     auto cores = std::thread::hardware_concurrency();
@@ -319,19 +344,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
-    
-    const int WALKERS = []() {
-        size_t ram = ram_size() / (1024 * 1024 * 1024);
-        if (ram >= 128) { return 32768; }
-        if (ram >= 64) { return 16384; }
-        if (ram >= 32) { return 8192; }
-        if (ram >= 16) { return 4096; }
-        if (ram >= 8) { return 2048; }
-        if (ram >= 4) { return 1024; }
-        if (ram >= 2) { return 512; }
-        if (ram >= 1) { return 256; }
-        return 1024;
-    }();
 
     const uint32_t N_STEPS = 2048;
 
@@ -358,11 +370,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     std::cout << "Started at: " << std::put_time(&start_tm, "%H:%M:%S") << std::endl;
     std::cout << "WALKERS: " << WALKERS << std::endl;
     std::cout << "DP BITS: " << DP_BITS << std::endl;
-    NEGATION_MAP == 0 ? std::cout << "NEGATION MAP = false" << std::endl : std::cout << "NEGATION MAP = true" << std::endl;
     std::cout << "Key Range: " << (key_range) << std::endl;
     std::cout << "Min Range: " << uint256_to_hex(mns) << std::endl;
     std::cout << "Max Range: " << uint256_to_hex(mxs) << std::endl;
-    std::cout << "\n\n";
+    std::cout << "\n\n\n\n";
 
     ECPointAffine target_affine{};
     ECPointJacobian target_affine_jac{};
@@ -394,8 +405,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
         uint256_to_uint64_array(b_tmp, localStepTable[i].b);
         ECPointJacobian aiG, biH;
-        jacobianScalarMult(&aiG, preCompG, a_tmp, windowSize);
-        jacobianScalarMult(&biH, preCompH, b_tmp, windowSize);
+        jacobianScalarMultGlv(&aiG, preCompG, preCompGphi, a_tmp, windowSize);
+        jacobianScalarMultGlv(&biH, preCompH, preCompHphi, b_tmp, windowSize);
         pointAddJacobian(&localStepTable[i].point, &aiG, &biH);
         ECPointAffine aff_step;
         jacobianToAffine(&aff_step, &localStepTable[i].point);
@@ -415,6 +426,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
     initScalarSteps(sharedScalarStepsG.data(), windowSize);
     initScalarSteps(sharedScalarStepsH.data(), windowSize);
 
+    std::string header = "\033[32m[!] Loading Walkers... \033[0m";
+
     for (int i = 0; i < WALKERS; i++) {
         walkers_state[i].rng.seed(std::random_device{}() ^ (uint64_t)i);
         walkers_state[i].buffers = new Buffers();
@@ -425,20 +438,21 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
         walkers_state[i].walk_id = i;
         walkers_state[i].snapshot_steps = 0;
         memset(walkers_state[i].snapshot_x, 0, 32);
-
-        if(NEGATION_MAP) {
-            memset(walkers_state[i].prev_x1, 0, 32);
-            memset(walkers_state[i].prev_x2, 0, 32);
-        }
+        memset(walkers_state[i].prev_x1, 0, 32);
+        memset(walkers_state[i].prev_x2, 0, 32);
 
         uint64_t a_arr[4], b_arr[4];
         uint256_to_uint64_array(a_arr, walkers_state[i].a);
         uint256_to_uint64_array(b_arr, walkers_state[i].b);
 
         ECPointJacobian Ra, Rb;
-        jacobianScalarMult(&Ra, preCompG, a_arr, windowSize);
-        jacobianScalarMult(&Rb, preCompH, b_arr, windowSize);
+        jacobianScalarMultGlv(&Ra, preCompG, preCompGphi, a_arr, windowSize);
+        jacobianScalarMultGlv(&Rb, preCompH, preCompHphi, b_arr, windowSize);
         pointAddJacobian(&walkers_state[i].R, &Ra, &Rb);
+
+        if (i % 32 == 0 || i == WALKERS - 1) {
+        	loading_bar(i + 1, WALKERS, header);
+        }
     }
 
     auto last_print = std::chrono::steady_clock::now();
@@ -447,7 +461,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
             int local_count = id_end - id_start;
             std::vector<ECPointJacobian> jac_batch(local_count);
             std::vector<ECPointAffine> aff_batch(local_count);
-
             std::vector<uint64_t> scratch_prefix(local_count * 4);
             std::vector<uint64_t> scratch_inv(local_count * 4);
 
@@ -463,12 +476,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
 
-                    if(NEGATION_MAP) {
-                        memcpy(w->prev_x2, w->prev_x1, 32);
-                        memcpy(w->prev_x1, aff_batch[i].x, 32);
-                    }
+                    memcpy(w->prev_x2, w->prev_x1, 32);
+                    memcpy(w->prev_x1, aff_batch[i].x, 32);
 
-                    uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
+                    uint32_t step_idx = get_step_idx(aff_batch[i].x, aff_batch[i].y, N_STEPS);
                     pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
                     scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
                     scalarAdd(w->b.limbs, w->b.limbs, localStepTable[step_idx].b.limbs);
@@ -482,50 +493,39 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
 
-                    if(NEGATION_MAP) {
-                        if (aff_batch[i].infinity == 0) {
-                            uint256_t y_val;
-                            memcpy(y_val.limbs, aff_batch[i].y, 32);
-                            uint256_t p_minus_y = sub_uint256(P, y_val);
+                    if (aff_batch[i].infinity == 0) {
+                        uint256_t y_val;
+                        memcpy(y_val.limbs, aff_batch[i].y, 32);
+                        uint256_t p_minus_y = sub_uint256(P, y_val);
 
-                            if (compare_uint256(y_val, p_minus_y) > 0) {
-                                memcpy(aff_batch[i].y, p_minus_y.limbs, 32);
-
-                                if ((w->a.limbs[0] | w->a.limbs[1] | w->a.limbs[2] | w->a.limbs[3]) != 0) { w->a = sub_uint256(N, w->a); }
-                                if ((w->b.limbs[0] | w->b.limbs[1] | w->b.limbs[2] | w->b.limbs[3]) != 0) { w->b = sub_uint256(N, w->b); }
-
-                                uint256_t jac_y;
-                                memcpy(jac_y.limbs, w->R.Y, 32);
-                                uint256_t p_minus_jac_y = sub_uint256(P, jac_y);
-                                memcpy(w->R.Y, p_minus_jac_y.limbs, 32);
-                                jac_batch[i] = w->R;
-                            }
+                        if (compare_uint256(y_val, p_minus_y) > 0) {
+                            modSubP(w->R.Y, P.limbs, w->R.Y);
+                            scalarNeg(w->a.limbs, w->a.limbs);
+                            scalarNeg(w->b.limbs, w->b.limbs);
+                            memcpy(aff_batch[i].y, p_minus_y.limbs, 32);
                         }
-                    }
 
-                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 ||
-                       (NEGATION_MAP ? (memcmp(aff_batch[i].x, w->prev_x1, 32) == 0 ||
-                        memcmp(aff_batch[i].x, w->prev_x2, 32) == 0) : false)) {
-                        w->a = rng_mersenne_twister(min_scalar, max_scalar, key_range, w->rng);
-                        w->b = rng_mersenne_twister(min_scalar, max_scalar, key_range, w->rng);
+                        if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 || (memcmp(aff_batch[i].x, w->prev_x1, 32) == 0 || memcmp(aff_batch[i].x, w->prev_x2, 32) == 0)) {
+                            uint32_t idx = std::uniform_int_distribution<uint32_t>(0, N_STEPS - 1)(w->rng);
+                            pointAddJacobian(&w->R, &w->R, &localStepTable[idx].point);
+                            scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
+                            scalarAdd(w->b.limbs, w->b.limbs, localStepTable[idx].b.limbs);
 
-                        uint64_t a_arr[4], b_arr[4];
-                        uint256_to_uint64_array(a_arr, w->a);
-                        uint256_to_uint64_array(b_arr, w->b);
+                            if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
+                            if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
 
-                        ECPointJacobian Ra, Rb;
-                        jacobianScalarMult(&Ra, preCompG, a_arr, windowSize);
-                        jacobianScalarMult(&Rb, preCompH, b_arr, windowSize);
-                        pointAddJacobian(&w->R, &Ra, &Rb);
+                            ECPointAffine aff_jump;
+                            jacobianToAffine(&aff_jump, &w->R);
+                            aff_batch[i] = aff_jump;
 
-                        w->snapshot_steps = 0;
-                        memset(w->snapshot_x, 0, 32);
-                        ECPointAffine aff_respawn;
-                        jacobianToAffine(&aff_respawn, &w->R);
-                        memcpy(aff_batch[i].x, aff_respawn.x, 32);
-                        std::cout << "\033[33mWarning: Self-Collision Cycle Detected!\033[0m" << std::endl;
-                        std::cout << "\033[33mThe walker " << w->walk_id << " was killed by hitting his own tail!\033[0m" << std::endl;
-                        continue;
+                            w->snapshot_steps = 0;
+                            memset(w->snapshot_x, 0xFF, 32);
+                            memset(w->prev_x1, 0xFE, 32);
+                            memset(w->prev_x2, 0xFD, 32);
+
+                            total_cycles.fetch_add(1, std::memory_order_relaxed);
+                            continue;
+                        }
                     }
 
                     w->snapshot_steps++;
@@ -533,7 +533,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
                     if ((w->snapshot_steps & (w->snapshot_steps - 1)) == 0) {
                         memcpy(w->snapshot_x, aff_batch[i].x, 32);
                     }
-                    
+
                     if (!DP(aff_batch[i].x, DP_BITS)) continue;
                     w->snapshot_steps = 0;
                     try {
@@ -616,9 +616,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int DP_BITS, 
                 long double prob = 1.0L - expl(-x);
                 prob *= 100.0L;
 
-                std::cout << "\033[2A\r\033[J"
-                << "Total Iterations: " << total_iters.load() << "\n"
-                << "Collision Probability: "
+                std::cout << "\033[3A\r"
+                << "\033[2KTotal Iterations: " << total_iters.load() << "\n"
+                << "\033[2KCycles Resolved:  " << total_cycles.load() << "\n"
+                << "\033[2KCollision Probability: "
                 << std::fixed << std::setprecision(8)
                 << (prob) << "...%\n"
                 << std::flush;
@@ -685,7 +686,7 @@ void save_key(const std::string& pub_key_hex, const uint256_t& priv_key) {
 int main(int argc, char* argv[]) {
 
     if (argc < 3) {
-        std::cerr << "Uso: " << argv[0] << " <Compressed Public Key(Hex)> <Key Range(int)>" << std::endl;
+        std::cerr << "Uso: " << argv[0] << " <Compressed Public Key(Hex)> <Key Range(int)> <Walkers(int)>" << std::endl;
         return 1;
     }
 
@@ -693,17 +694,12 @@ int main(int argc, char* argv[]) {
 
     std::string pub_key_hex(argv[1]);
     int key_range = std::stoi(argv[2]);
+    int walkers = std::stoi(argv[3]);
     int dp = 0;
-    bool NEGATION_MAP = false;
 
-    if (argc >= 4) {
+    if (argc >= 5) {
         try {
-            dp = std::stoi(argv[3]);
-            if (argc >= 5) {
-                if (std::string(argv[4]) == "NEGATION_MAP_TRUE") {
-                    NEGATION_MAP = true;
-                }
-            }
+            dp = std::stoi(argv[4]);
         } catch (...) {
             std::cerr << "\033[31m[!] Unknown error parsing arguments!\033[0m" << std::endl;
         }
@@ -717,7 +713,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Press 'Ctrl Z' to Quit\n";
     std::cout << "Auto Window-Size for secp256k1: " << windowSize << std::endl;
 
-    uint256_t found_key = prho(pub_key_hex, key_range, dp, NEGATION_MAP);
+    uint256_t found_key = prho(pub_key_hex, key_range, walkers, dp);
 
     std::cout << "\n\n\033[32m[SUCCESS!] Collision Found!\033[0m" << std::endl;
 
