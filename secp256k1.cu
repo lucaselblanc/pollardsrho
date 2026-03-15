@@ -424,12 +424,17 @@ __host__ __device__ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *
 }
 
 __host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobian *P) {
-    modMulMontP(R->X, P->X, BETA_P);
-    for (int i = 0; i < 4; i++) {
-        R->Y[i] = P->Y[i];
-        R->Z[i] = P->Z[i];
+    uint64_t beta_mont[4];
+    toMontgomeryP(beta_mont, BETA_P); 
+    modMulMontP(R->X, P->X, beta_mont);
+
+    if (R != P) {
+        for (int i = 0; i < 4; i++) {
+            R->Y[i] = P->Y[i];
+            R->Z[i] = P->Z[i];
+        }
+        R->infinity = P->infinity;
     }
-    R->infinity = P->infinity;
 }
 
 __host__ __device__ void initPreCompG(int windowSize) {
