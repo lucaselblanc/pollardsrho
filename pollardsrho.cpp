@@ -30,8 +30,6 @@
 
 const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
 const uint64_t SUB_P2[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-//const uint64_t BETA[4] = { 0xC1396C28719501EEULL, 0x9CF0497512F58995ULL, 0x6E64479EAC3434E9ULL, 0x7AE96A2B657C0710ULL };
-//const uint64_t LAMBDA[4] = { 0xDF02967C1B23BD72ULL, 0x122E22EA20816678ULL, 0xA5261C028812645AULL, 0x5363AD4CC05C30E0ULL };
 const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t P = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 
@@ -268,8 +266,8 @@ uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max
     return add_uint256(r, min_scalar);
 }
 
-uint32_t get_step_idx(const uint64_t* x, const uint64_t* y, uint32_t N_STEPS) {
-    uint64_t combined = (x[0] ^ y[0]) ^ ((x[1] ^ y[1]) << 1) ^ ((x[2] ^ y[2]) << 2) ^ ((x[3] ^ y[3]) << 3);
+uint32_t get_step_idx(const uint64_t* x, uint32_t N_STEPS) {
+    uint64_t combined = x[0] ^ (x[1] << 1) ^ (x[2] << 2) ^ (x[3] << 3);
     MurmurHash3 hasher;
     return static_cast<uint32_t>(hasher(combined) % N_STEPS);
 }
@@ -323,11 +321,11 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
         uint64_t z2[4], z3[4], tmp_mont[4];
 
         modMulMontP(z2, z_inv, z_inv);
-        modMulMontP(z3, z2, z_inv);
+        //modMulMontP(z3, z2, z_inv); //just for -p negation
         modMulMontP(tmp_mont, jac_in[i].X, z2);
         fromMontgomeryP(aff_out[i].x, tmp_mont);
-        modMulMontP(tmp_mont, jac_in[i].Y, z3);
-        fromMontgomeryP(aff_out[i].y, tmp_mont);
+        //modMulMontP(tmp_mont, jac_in[i].Y, z3); //just for -p negation
+        //fromMontgomeryP(aff_out[i].y, tmp_mont); //just for -p negation
 
         aff_out[i].infinity = 0;
     }
@@ -479,7 +477,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     memcpy(w->prev_x2, w->prev_x1, 32);
                     memcpy(w->prev_x1, aff_batch[i].x, 32);
 
-                    uint32_t step_idx = get_step_idx(aff_batch[i].x, aff_batch[i].y, N_STEPS);
+                    uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
                     pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
                     scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
                     scalarAdd(w->b.limbs, w->b.limbs, localStepTable[step_idx].b.limbs);
@@ -494,19 +492,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     WalkState* w = &walkers_state[id_start + i];
 
                     if (aff_batch[i].infinity == 0) {
-                        uint256_t y_val;
-                        memcpy(y_val.limbs, aff_batch[i].y, 32);
-                        uint256_t p_minus_y = sub_uint256(P, y_val);
-
-                        if (compare_uint256(y_val, p_minus_y) > 0) {
-                            modSubP(w->R.Y, P.limbs, w->R.Y);
-                            scalarNeg(w->a.limbs, w->a.limbs);
-                            scalarNeg(w->b.limbs, w->b.limbs);
-                            memcpy(aff_batch[i].y, p_minus_y.limbs, 32);
-                        }
-
                         if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 || (memcmp(aff_batch[i].x, w->prev_x1, 32) == 0 || memcmp(aff_batch[i].x, w->prev_x2, 32) == 0)) {
-                            uint32_t idx = std::uniform_int_distribution<uint32_t>(0, N_STEPS - 1)(w->rng);
+                            MurmurHash3 hasher;
+                            uint32_t idx = static_cast<uint32_t>(hasher(aff_batch[i].x[0] ^ 0xABCDEFULL) % N_STEPS);
                             pointAddJacobian(&w->R, &w->R, &localStepTable[idx].point);
                             scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
                             scalarAdd(w->b.limbs, w->b.limbs, localStepTable[idx].b.limbs);
@@ -612,13 +600,18 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             auto now = std::chrono::steady_clock::now();
             if (now - last_print >= std::chrono::seconds(10)) {
                 long double k_val = (long double)total_iters.load(std::memory_order_relaxed);
-                long double x = (k_val * k_val) / (2.0L * M);
-                long double prob = 1.0L - expl(-x);
+                long double x = (k_val * k_val) / (2.0L * M) / (WALKERS * (1 << DP_BITS));
+                long double d;
+
+                if (x <= 1.0L) { d = 0.0L; }
+                else { d = std::floor(std::log2(x)); }
+
+                long double prob = 1.0L - expl(-d);
                 prob *= 100.0L;
 
                 std::cout << "\033[3A\r"
                 << "\033[2KTotal Iterations: " << total_iters.load() << "\n"
-                << "\033[2KCycles Resolved:  " << total_cycles.load() << "\n"
+                << "\033[2KSelf-Collision Cycles:  " << total_cycles.load() << "\n"
                 << "\033[2KCollision Probability: "
                 << std::fixed << std::setprecision(8)
                 << (prob) << "...%\n"
