@@ -93,27 +93,21 @@ K256 = 128
 
 4. Run the program:
     ```bash
-    ~/pollardsrho$ ./pollardsrho <compressed public key(hex)> <key range(int)> <OPTIONAL DP(int)>
+    ~/pollardsrho$ ./pollardsrho <compressed public key(hex)> <key range(int)> <walkers(int)> <OPTIONAL DP(int)>
     ```
 
     Replace `<compressed public key>` with the point \(G\) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \(k\).
 
     Example usage:
     ```bash
-    ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135
+    ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135 1000000 20
     ```
 
 ## Commands
 
  The random walk begins using the public point of the compressed public key as the parameter H, the target private key range for initializing the initial probability space, and the optional distinguished points parameter, which will be calculated automatically if not defined:
 ```bash
-~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <dp bits>
-```
-
-#### Negation Map:
- It is possible to enable point negation activating the flag **NEGATION_MAP_TRUE** to increase efficiency in ~1.41x √n, however there is a risk of short 2-step loops. The implementation detects short and long loops automatically through Brent's algorithm, although this is rarer for Pollard's rho algorithm and more frequent in Kangaroo Lambda:
-```bash
-~/pollardsrho$ ./pollardsrho 036ea839d22847ee1dce3bfc5b11f6cf785b0682db58c35b63d1342eb221c3490c 24 8 NEGATION_MAP_TRUE 
+~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <walkers> <dp bits>
 ```
 
 ## External Libraries Used
