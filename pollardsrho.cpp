@@ -301,7 +301,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
 
     for (int i = count - 1; i > 0; i--) {
         if (jacobianIsInfinity(&jac_in[i])) {
-            continue; 
+            continue;
         }
         modMulMontP(&scratch_inv[i * 4], current_inv, &scratch_prefix[(i - 1) * 4]);
         modMulMontP(current_inv, current_inv, jac_in[i].Z);
@@ -364,7 +364,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         for (int i = 0; i <= limb_idx; i++) {
             mxs.limbs[i] = max_scalar.limbs[i];
         }
-        mxs.limbs[limb_idx] >>= 1; 
+        mxs.limbs[limb_idx] >>= 1;
     }
 
     std::cout << "Started at: " << std::put_time(&start_tm, "%H:%M:%S") << std::endl;
@@ -405,8 +405,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
         uint256_to_uint64_array(b_tmp, localStepTable[i].b);
         ECPointJacobian aiG, biH;
-        jacobianScalarMultGlv(&aiG, preCompG, preCompGphi, a_tmp, windowSize);
-        jacobianScalarMultGlv(&biH, preCompH, preCompHphi, b_tmp, windowSize);
+        jacobianScalarMultPhi(&aiG, preCompG, preCompGphi, a_tmp, windowSize);
+        jacobianScalarMultPhi(&biH, preCompH, preCompHphi, b_tmp, windowSize);
         pointAddJacobian(&localStepTable[i].point, &aiG, &biH);
         ECPointAffine aff_step;
         jacobianToAffine(&aff_step, &localStepTable[i].point);
@@ -446,8 +446,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         uint256_to_uint64_array(b_arr, walkers_state[i].b);
 
         ECPointJacobian Ra, Rb;
-        jacobianScalarMultGlv(&Ra, preCompG, preCompGphi, a_arr, windowSize);
-        jacobianScalarMultGlv(&Rb, preCompH, preCompHphi, b_arr, windowSize);
+        jacobianScalarMultPhi(&Ra, preCompG, preCompGphi, a_arr, windowSize);
+        jacobianScalarMultPhi(&Rb, preCompH, preCompHphi, b_arr, windowSize);
         pointAddJacobian(&walkers_state[i].R, &Ra, &Rb);
 
         if (i % 32 == 0 || i == WALKERS - 1) {
