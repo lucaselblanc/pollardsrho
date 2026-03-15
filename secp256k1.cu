@@ -723,13 +723,11 @@ __host__ __device__ void scalarSplitLambda(uint64_t r1[4], uint64_t r2[4], const
 
 __host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, ECPointJacobian *preCompTable, ECPointJacobian *preCompTablePhi, const uint64_t *scalar, int windowSize) {
     uint64_t r1[4], r2[4];
-
-    scalarSplitLambda(r1, r2, scalar);
-
     int d = (128 + windowSize - 1) / windowSize;
 
+    scalarSplitLambda(r1, r2, scalar);
     jacobianSetInfinity(result);
-
+
     for (int col = d - 1; col >= 0; col--) {
         if (!jacobianIsInfinity(result)) {
             jacobianDouble(result, result);
