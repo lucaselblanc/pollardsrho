@@ -425,7 +425,7 @@ __host__ __device__ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *
 
 __host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobian *P) {
     uint64_t beta_mont[4];
-    toMontgomeryP(beta_mont, BETA_P); 
+    toMontgomeryP(beta_mont, BETA_P);
     modMulMontP(R->X, P->X, beta_mont);
 
     if (R != P) {
@@ -438,7 +438,7 @@ __host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobi
 }
 
 __host__ __device__ void initPreCompG(int windowSize) {
-    int dnorm = (256 + windowSize - 1) / windowSize;
+    int dnorm = (128 + windowSize - 1) / windowSize;
     int dphi = (128 + windowSize - 1) / windowSize;
     int tableSize = (1 << windowSize) - 1;
 
@@ -498,7 +498,7 @@ __host__ __device__ void initPreCompG(int windowSize) {
 }
 
 __host__ __device__ void initPreCompH(const ECPointJacobian *h, int windowSize) {
-    int dnorm = (256 + windowSize - 1) / windowSize;
+    int dnorm = (128 + windowSize - 1) / windowSize;
     int dphi = (128 + windowSize - 1) / windowSize;
     int tableSize = (1 << windowSize) - 1;
 
@@ -549,64 +549,6 @@ __host__ __device__ void initPreCompH(const ECPointJacobian *h, int windowSize) 
                 jacobianAdd(&tmp, &preCompHphi[i - 1], &jacEndoH[j]);
                 preCompHphi[i - 1] = tmp;
             }
-        }
-    }
-}
-
-__host__ __device__ void jacobianScalarMult(ECPointJacobian *result, ECPointJacobian *preCompTable, const uint64_t *scalar, int windowSize) {
-    int d = (256 + windowSize - 1) / windowSize;
-
-    jacobianSetInfinity(result);
-
-    for (int col = d - 1; col >= 0; col--) {
-        if (!jacobianIsInfinity(result)) {
-            jacobianDouble(result, result);
-        }
-
-        int idx = 0;
-        for (int row = 0; row < windowSize; row++) {
-            int bitIndex = row * d + col;
-            if (bitIndex >= 256) continue;
-
-            int limb  = bitIndex / 64;
-            int shift = bitIndex % 64;
-            uint64_t bit = (scalar[limb] >> shift) & 1ULL;
-
-            idx |= (bit << row);
-        }
-
-        if (idx != 0) {
-            ECPointJacobian tmp;
-            jacobianAdd(&tmp, result, &preCompTable[idx - 1]);
-            *result = tmp;
-        }
-    }
-}
-
-__host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, ECPointJacobian *preCompTablePhi, const uint64_t *scalar, int windowSize) {
-    int d = (128 + windowSize - 1) / windowSize;
-
-    jacobianSetInfinity(result);
-
-    for (int col = d - 1; col >= 0; col--) {
-        if (!jacobianIsInfinity(result)) {
-            jacobianDouble(result, result);
-        }
-
-        int idx = 0;
-        for (int row = 0; row < windowSize; row++) {
-            int bitIndex = row * d + col;
-            if (bitIndex >= 128) continue;
-            int limb = bitIndex / 64;
-            int shift = bitIndex % 64;
-            uint64_t bit = (scalar[limb] >> shift) & 1ULL;
-            idx |= (bit << row);
-        }
-
-        if (idx != 0) {
-            ECPointJacobian tmp;
-            jacobianAdd(&tmp, result, &preCompTablePhi[idx - 1]);
-            *result = tmp;
         }
     }
 }
@@ -779,18 +721,53 @@ __host__ __device__ void scalarSplitLambda(uint64_t r1[4], uint64_t r2[4], const
     scalarAdd(r1, t1, k);
 }
 
-__host__ __device__ void jacobianScalarMultGlv(ECPointJacobian *R, ECPointJacobian *preCompTable, ECPointJacobian *preCompTablePhi, const uint64_t k[4], int windowSize) {
+__host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, ECPointJacobian *preCompTable, ECPointJacobian *preCompTablePhi, const uint64_t *scalar, int windowSize) {
     uint64_t r1[4], r2[4];
-    scalarSplitLambda(r1, r2, k);
-    ECPointJacobian P1, P2;
-    jacobianScalarMult(&P1, preCompTable, r1, windowSize);
-    jacobianScalarMultPhi(&P2, preCompTablePhi, r2, windowSize);
-    jacobianAdd(R, &P1, &P2);
+
+    scalarSplitLambda(r1, r2, scalar);
+
+    int d = (128 + windowSize - 1) / windowSize;
+
+    jacobianSetInfinity(result);
+
+    for (int col = d - 1; col >= 0; col--) {
+        if (!jacobianIsInfinity(result)) {
+            jacobianDouble(result, result);
+        }
+
+        int idx1 = 0;
+        int idx2 = 0;
+
+        for (int row = 0; row < windowSize; row++) {
+            int bitIndex = row * d + col;
+            if (bitIndex >= 128) continue;
+            
+            int limb = bitIndex / 64;
+            int shift = bitIndex % 64;
+            
+            uint64_t bit1 = (r1[limb] >> shift) & 1ULL;
+            uint64_t bit2 = (r2[limb] >> shift) & 1ULL;
+            
+            idx1 |= (bit1 << row);
+            idx2 |= (bit2 << row);
+        }
+
+        if (idx1 != 0) {
+            ECPointJacobian tmp;
+            jacobianAdd(&tmp, result, &preCompTable[idx1 - 1]);
+            *result = tmp;
+        }
+
+        if (idx2 != 0) {
+            ECPointJacobian tmp;
+            jacobianAdd(&tmp, result, &preCompTablePhi[idx2 - 1]);
+            *result = tmp;
+        }
+    }
 }
 
 __host__ __device__ void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q) { jacobianAdd(R, P, Q); }
 __host__ __device__ void pointDoubleJacobian(ECPointJacobian *R, const ECPointJacobian *P) { jacobianDouble(R, P); }
-__host__ __device__ void scalarMultJacobian(ECPointJacobian *R, ECPointJacobian *preCompTable, ECPointJacobian *preCompTablePhi, const uint64_t *k, int windowSize) { jacobianScalarMultGlv(R, preCompTable, preCompTablePhi, k, windowSize); }
 __host__ __device__ void serializePublicKey(unsigned char *out, const ECPointAffine *publicKey) {
     unsigned char prefix = (publicKey->y[0] & 1ULL) ? 0x03 : 0x02;
     out[0] = prefix;
@@ -812,7 +789,7 @@ __host__ __device__ void generatePublicKey(ECPointJacobian *preCompTable, ECPoin
     ECPointAffine pub;
     ECPointJacobian pub_jac;
 
-    jacobianScalarMultGlv(&pub_jac, preCompTable, preCompTablePhi, PRIV_KEY, windowSize);
+    jacobianScalarMultPhi(&pub_jac, preCompTable, preCompTablePhi, PRIV_KEY, windowSize);
     jacobianToAffine(&pub, &pub_jac);
     serializePublicKey(out, &pub);
 }
