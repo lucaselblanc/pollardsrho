@@ -91,7 +91,7 @@ size_t ram_size() {
     return (size_t)pages * page_size;
 }
 
-int windowSize = 13; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
+int windowSize = 12; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
 
 void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
     out[0] = value.limbs[0];
@@ -389,9 +389,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-
-    stepSize.limbs[(key_range / 3) / 64] = 1ULL << ((key_range / 3) % 64);
-    //stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
+
+    stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
 
     uint256_t step_min = {};
     uint256_t step_max = stepSize;
