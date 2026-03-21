@@ -10,16 +10,9 @@
  * Written by Lucas Leblanc              *
 ******************************************/
 
-/* --- AINDA EM TESTES DE OTIMIZAÇÃO --- */
-
 #include "secp256k1.h"
 #include <cuda_runtime.h>
 #include <cuda.h>
-#include <iostream>
-#include <stdio.h>
-#include <stdint.h>
-#include <thread>
-#include <chrono>
 
 #ifdef __CUDA_ARCH__
 __device__ __constant__ uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -739,13 +732,10 @@ __host__ __device__ void jacobianScalarMultPhi(ECPointJacobian *result, ECPointJ
         for (int row = 0; row < windowSize; row++) {
             int bitIndex = row * d + col;
             if (bitIndex >= 128) continue;
-            
             int limb = bitIndex / 64;
             int shift = bitIndex % 64;
-            
             uint64_t bit1 = (r1[limb] >> shift) & 1ULL;
             uint64_t bit2 = (r2[limb] >> shift) & 1ULL;
-            
             idx1 |= (bit1 << row);
             idx2 |= (bit2 << row);
         }
