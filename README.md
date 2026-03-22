@@ -7,24 +7,58 @@
 
 ## Description
 
- This repository contains an implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve. The objective is to recover the scalar k from the relation H = k * G, where G is the curve generator and H is a public point.
+ This repository contains a high-performance implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve.
+
+#### Legacy Version (ρ)
 
  The algorithm executes high-speed pseudo-random walks over the secp256k1 group using an R-adding walk iteration function. It utilizes a table of 2048 pre-computed steps and a MurmurHash3-based avalanche function to determine state transitions, maintaining the algebraic representation `R = a * G + b * H`. The scalars are initially probabilistically distributed within a specific ```key_range```, optimizing collision search for an initial probability distribution in O(√K) instead of the general distribution for the entire group O(√N), and as points are multiplied on the curve, walkers may eventually exceed ```key_range```, since the search in Pollard's rho algorithm is blind, and for the algorithm it does not matter in which scalar area the points actually are, as long as the walkers maintain their linear congruence relations for the group N.
 
  When two independent walkers encounter the same group element (a collision) with distinct coefficient pairs `(a, b)`, it yields a linear congruence modulo the group order `N`, allowing for the immediate recovery of the private key with the calculation of d through mod inversion. To maximize throughput and enable massive parallelization, the implementation employs a Distinguished Points (DP) strategy, where only points meeting a specific bit-mask criteria are stored in a high-concurrency hash map. This allows multiple CPU threads to traverse different paths simultaneously with minimal memory overhead. The system is specifically tuned for the secp256k1 curve and requires a Bitcoin public key as the target.
 
-## Distinguished Points (DP)
+#### Endomorphism Version (φ)
+
+ The current version (Main) introduces the use of equivalence classes of order 6, leveraging the efficient endomorphism (φ) and the negation map (-P) inherent to the secp256k1 curve. This optimization reduces the search space by a factor of √6 ~2.45, significantly accelerating collision detection compared to standard implementations, especially in larger ranges.
+
+## The Order-6 Equivalence Class
+
+ ​In the secp256k1 curve, for any point P=(x,y), we can efficiently compute five other points that share a mathematical relationship:
+
+- ​Negation: (x, -y)
+- ​Endomorphism (φ): (β x, y) and (β^2 x, y)
+- ​Combined: (β x, -y) and (β^2 x, -y)
+
+ The Endomorphism version utilizes a Canonical Representative Function (normalize_oeq6). Instead of walking through individual points, the algorithm walks through "sets" of 6 points. By always choosing the point with the smallest X-coordinate as the representative, we effectively shrink the "haystack" while looking for the same "needle".
+
+#### Scalar Decomposition with λ
+ 
+ Because we use the endomorphism (φ)(P) = λP, the scalar relation R = kG is tracked through a decomposed state:
+
+```R = (a1 + a2λ)G + (b1 + b2λ)H```
+
+ When a collision is found in the Distinguished Points table, the private key k is recovered by solving the linear congruence using the eigenvalue λ (mod n).
+
+## Technical Features
+
+#### Batch Jacobian-to-Affine (Montgomery Trick)
+
+ Inversions in finite fields are computationally expensive. Both versions utilize Batch Inversion, processing multiple walkers simultaneously. This allows the algorithm to perform only one modular inversion per batch, converting Jacobian coordinates to Affine at a fraction of the usual cost.
+
+#### Pre-Computed Points ```windowSize``` in L2/L3 Caches
+
+ For small ranges where collisions occur quickly, ```windowSize``` is calculated to have a larger table points that can occupy L3, since it is not necessary to extract the best performance for a collision that occurs in a few steps, with the use of a larger table, there are more points, reducing the chance of walkers entering short loops, because the entropy is greater. As the range increases, the walkers will have more space to explore, and it is at this point that the use of lower L2 latency is necessary. If expected steps > lSize, ```windowSize``` starts to fit in L2, slightly overflowing into L3, which allows the ops/s speed to increase by ~50%, with less entropy of points in a much larger probability space, the path correlation of the walkers increases, and the state space of the transitions decreases, favoring the birthday paradox, as the trajectory of the walkers becomes more predictable.
+
+#### Distinguished Points (DP)
 
  The Distinguished Points strategy is a memory-saving filter. Instead of storing every step of the walk (which would crash your RAM), the algorithm only saves points that satisfy a specific condition: the first d bits of the X-coordinate must be zero. When two walkers hit the same DP, a collision is found and the private key is recovered. ​The Trade-off: More DP bits = Less RAM used, but slower collision detection. Fewer DP bits = Faster detection, but higher RAM consumption.
 
 #### Delay Of Distinguished Points
 
- When a walker begins traversing a path already explored by another walker, a collision will be delayed if the distinguished points filter condition is not met for both walkers. The delay will be overcome after the distinct points are recorded in the dp table. The higher the dp value, the greater the delay for a collision to be detected and recorded by the hashmap. To mitigate this, it would be necessary to disable the dp filter, but this would cause excessive RAM usage and would not be worth the effort. This delay is a necessary evil when using distinct points.
+ When a walker begins traversing a path already explored by another walker, a collision will be delayed if the distinguished points filter condition is not met for both walkers. The delay will be overcome after the distinct points are recorded in the dp table. The higher the dp value, the greater the delay for a collision to be detected and recorded by the hashmap. To mitigate this, it would be necessary to disable the dp filter, but this would cause excessive RAM usage and would not be worth the effort, and would ruin the performance. This delay is a necessary evil when using distinct points.
 
 Theoretical Calculus:
 
 ```
-int dp = (key_range / 2.0) - math.log2(RAM_BYTES / 128);
+int dp = (key_range / 2.0) - math.log2(RAM_BYTES / POINT_BYTES);
 ```
 
 Simple Abstraction:
@@ -44,13 +78,24 @@ k128 = 64
 K256 = 128
 ```
 
-## Pre-Computed Points ```windowSize``` in L2/L3 Caches
+```
+int dp = math.sqrt(key_range);
+```
 
- For small ranges where collisions occur quickly, ```windowSize``` is calculated to have a larger table points that can occupy L3, since it is not necessary to extract the best performance for a collision that occurs in a few steps, with the use of a larger table, there are more points, reducing the chance of walkers entering short loops, because the entropy is greater. As the range increases, the walkers will have more space to explore, and it is at this point that the use of lower L2 latency is necessary. If expected steps > lSize, ```windowSize``` starts to fit in L2, slightly overflowing into L3, which allows the ops/s speed to increase by ~50%, with less entropy of points in a much larger probability space, the path correlation of the walkers increases, and the state space of the transitions decreases, favoring the birthday paradox, as the trajectory of the walkers becomes more predictable.
+```
+k2 ≈ 1
+k4 = 2
+k8 ≈ 3
+k16 ≈ 4
+k32 ≈ 6
+k64 = 8
+k128 ≈ 11
+K256 = 16
+```
 
 ## Algorithm Complexity
 
- The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the initial steps is restricted to √k, subsequently encompassing the entire group in √n. Given secp256k1, this translates to approximately O(2^√N), as predicted by the birthday paradox for random walks over a finite group.
+ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the initial steps is restricted to √k, subsequently encompassing the entire group in √n, the version with endomorphism keeps the probabilistic window restricted to the range, but remains non-deterministic. Given secp256k1, this translates to approximately O(2^√N), as predicted by the birthday paradox for random walks over a finite group.
 
 ## Pollard's Rho vs Pollard's Kangaroo/Lambda
 
