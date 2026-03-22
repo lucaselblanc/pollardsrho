@@ -36,6 +36,7 @@ constexpr uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL
 constexpr uint64_t SUB2_FP[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 constexpr uint64_t BETA_MONT[4] = { 0xACFAA7CF3D9205F3ULL, 0x03FDE1630E28013DULL, 0xF8E98978D02E3905ULL, 0x7A4A36AEBCBB3D53ULL };
 constexpr uint64_t HALF_P[4] = { 0xFFFFFFFF7FFFFE18ULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0x7FFFFFFFFFFFFFFFULL };
+constexpr uint64_t ZERO[4] = {0x0ULL, 0x0ULL, 0x0ULL, 0x0ULL};
 
 struct Buffers {
     uint64_t* scalarStepsG;
@@ -414,26 +415,20 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
 
     uint256_t min_scalar{}, max_scalar{};
-    uint256_t mns{}, mxs{};
     {
-        int limb_idx = key_range / 64;
-        int bit_idx  = key_range % 64;
-        min_scalar.limbs[limb_idx] = 1ULL << bit_idx;
-        for (int i = 0; i < limb_idx; i++) max_scalar.limbs[i] = 0xFFFFFFFFFFFFFFFFULL;
-        max_scalar.limbs[limb_idx] = (bit_idx == 63) ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << (bit_idx + 1)) - 1;
-        int mns_limb = (key_range - 1) / 64;
-        int mns_bit  = (key_range - 1) % 64;
-        mns.limbs[mns_limb] = 1ULL << mns_bit;
-        for (int i = 0; i <= limb_idx; i++) mxs.limbs[i] = max_scalar.limbs[i];
-        mxs.limbs[limb_idx] >>= 1;
+        int limb = (key_range - 1) / 64;
+        int bit  = (key_range - 1) % 64;
+        min_scalar.limbs[limb] = 1ULL << bit;
+        for (int i = 0; i < limb; i++) max_scalar.limbs[i] = ~0ULL;
+        max_scalar.limbs[limb] = (bit == 63) ? ~0ULL : (1ULL << (bit + 1)) - 1;
     }
 
     std::cout << "Started at: " << std::put_time(&start_tm, "%H:%M:%S") << std::endl;
     std::cout << "WALKERS: " << WALKERS << std::endl;
     std::cout << "DP BITS: " << DP_BITS << std::endl;
     std::cout << "Key Range: " << (key_range) << std::endl;
-    std::cout << "Min Range: " << uint256_to_hex(mns) << std::endl;
-    std::cout << "Max Range: " << uint256_to_hex(mxs) << std::endl;
+    std::cout << "Min Range: " << uint256_to_hex(min_scalar) << std::endl;
+    std::cout << "Max Range: " << uint256_to_hex(max_scalar) << std::endl;
     std::cout << "\n\n\n\n";
 
     ECPointAffine target_affine{};
@@ -441,6 +436,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     decompressPublicKey(&target_affine, target_pubkey.data());
     affineToJacobian(&target_affine_jac, &target_affine);
     initPreCompH(&target_affine_jac, windowSize);
+
+    ECPointJacobian G_OFFSET, H_OFFSET;
+    jacobianScalarMultPhi(&G_OFFSET, preCompG, preCompGphi, max_scalar.limbs, windowSize);
+    jacobianScalarMultPhi(&H_OFFSET, preCompH, preCompHphi, max_scalar.limbs, windowSize);
+
+    if (!jacobianIsInfinity(&G_OFFSET)) { modSubP(G_OFFSET.Y, ZERO, G_OFFSET.Y); }
+    if (!jacobianIsInfinity(&H_OFFSET)) { modSubP(H_OFFSET.Y, ZERO, H_OFFSET.Y); }
 
     struct StepLocal {
         ECPointJacobian point;
@@ -452,13 +454,11 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
 
     uint256_t stepSize = {};
     stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
-    uint256_t step_min = {};
-    uint256_t step_max = stepSize;
 
     for (int i = 0; i < N_STEPS; i++) {
-        localStepTable[i].a1 = rng_mersenne_twister(step_min, step_max, key_range / 2, salt);
+        localStepTable[i].a1 = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, salt);
         localStepTable[i].a2 = {0};
-        localStepTable[i].b1 = rng_mersenne_twister(step_min, step_max, key_range / 2, salt);
+        localStepTable[i].b1 = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, salt);
         localStepTable[i].b2 = {0};
 
         uint64_t a_tmp[4], b_tmp[4];
@@ -539,6 +539,15 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                 w->b1 = mod_add_N(w->b1, localStepTable[step_idx].b1);
                 w->b2 = mod_add_N(w->b2, localStepTable[step_idx].b2);
 
+                if (compare_uint256(w->a1, max_scalar) >= 0) {
+                    w->a1 = mod_sub_N(w->a1, max_scalar);
+                    pointAddJacobian(&w->R, &w->R, &G_OFFSET);
+                }
+                if (compare_uint256(w->b1, max_scalar) >= 0) {
+                    w->b1 = mod_sub_N(w->b1, max_scalar);
+                    pointAddJacobian(&w->R, &w->R, &H_OFFSET);
+                }
+
                 jac_batch[i] = w->R;
             }
 
@@ -563,6 +572,15 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     w->a2 = mod_add_N(w->a2, localStepTable[idx].a2);
                     w->b1 = mod_add_N(w->b1, localStepTable[idx].b1);
                     w->b2 = mod_add_N(w->b2, localStepTable[idx].b2);
+
+                    if (compare_uint256(w->a1, max_scalar) >= 0) {
+                        w->a1 = mod_sub_N(w->a1, max_scalar);
+                        pointAddJacobian(&w->R, &w->R, &G_OFFSET);
+                    }
+                    if (compare_uint256(w->b1, max_scalar) >= 0) {
+                        w->b1 = mod_sub_N(w->b1, max_scalar);
+                        pointAddJacobian(&w->R, &w->R, &H_OFFSET);
+                    }
 
                     ECPointAffine aff_jump;
                     jacobianToAffine(&aff_jump, &w->R);
