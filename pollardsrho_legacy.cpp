@@ -28,10 +28,11 @@
 #include <cmath>
 #include <cstring>
 
-const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-const uint64_t SUB2_FP[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 const uint256_t P = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+const uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
+const uint64_t SUB2_FP[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+constexpr uint64_t ZERO[4] = {0x0ULL, 0x0ULL, 0x0ULL, 0x0ULL};
 
 struct Buffers {
     uint64_t* scalarStepsG;
@@ -340,31 +341,22 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     const uint32_t N_STEPS = 2048;
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
+
     uint256_t min_scalar{}, max_scalar{};
-    uint256_t mns{}, mxs{};
     {
-        int limb_idx = key_range / 64;
-        int bit_idx  = key_range % 64;
-        min_scalar.limbs[limb_idx] = 1ULL << bit_idx;
-        for (int i = 0; i < limb_idx; i++) {
-            max_scalar.limbs[i] = 0xFFFFFFFFFFFFFFFFULL;
-        }
-        max_scalar.limbs[limb_idx] = (bit_idx == 63) ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << (bit_idx + 1)) - 1;
-        int mns_limb = (key_range - 1) / 64;
-        int mns_bit  = (key_range - 1) % 64;
-        mns.limbs[mns_limb] = 1ULL << mns_bit;
-        for (int i = 0; i <= limb_idx; i++) {
-            mxs.limbs[i] = max_scalar.limbs[i];
-        }
-        mxs.limbs[limb_idx] >>= 1;
+        int limb = (key_range - 1) / 64;
+        int bit  = (key_range - 1) % 64;
+        min_scalar.limbs[limb] = 1ULL << bit;
+        for (int i = 0; i < limb; i++) max_scalar.limbs[i] = ~0ULL;
+        max_scalar.limbs[limb] = (bit == 63) ? ~0ULL : (1ULL << (bit + 1)) - 1;
     }
 
     std::cout << "Started at: " << std::put_time(&start_tm, "%H:%M:%S") << std::endl;
     std::cout << "WALKERS: " << WALKERS << std::endl;
     std::cout << "DP BITS: " << DP_BITS << std::endl;
     std::cout << "Key Range: " << (key_range) << std::endl;
-    std::cout << "Min Range: " << uint256_to_hex(mns) << std::endl;
-    std::cout << "Max Range: " << uint256_to_hex(mxs) << std::endl;
+    std::cout << "Min Range: " << uint256_to_hex(min_scalar) << std::endl;
+    std::cout << "Max Range: " << uint256_to_hex(max_scalar) << std::endl;
     std::cout << "\n\n\n\n";
 
     ECPointAffine target_affine{};
@@ -383,16 +375,11 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-
-
     stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
 
-    uint256_t step_min = {};
-    uint256_t step_max = stepSize;
-
     for (int i = 0; i < N_STEPS; i++) {
-        localStepTable[i].a = rng_mersenne_twister(step_min, step_max, key_range / 2, salt);
-        localStepTable[i].b = rng_mersenne_twister(step_min, step_max, key_range / 2, salt);
+        localStepTable[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, salt);
+        localStepTable[i].b = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, salt);
 
         uint64_t a_tmp[4], b_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
@@ -472,8 +459,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
                     scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
                     scalarAdd(w->b.limbs, w->b.limbs, localStepTable[step_idx].b.limbs);
-                    if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
-                    if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
+
                     jac_batch[i] = w->R;
                 }
 
@@ -482,29 +468,26 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
 
-                    if (aff_batch[i].infinity == 0) {
-                        if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 || (memcmp(aff_batch[i].x, w->prev_x1, 32) == 0 || memcmp(aff_batch[i].x, w->prev_x2, 32) == 0)) {
-                            MurmurHash3 hasher;
-                            uint32_t idx = static_cast<uint32_t>(hasher(aff_batch[i].x[0] ^ 0xABCDEFULL) % N_STEPS);
-                            pointAddJacobian(&w->R, &w->R, &localStepTable[idx].point);
-                            scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
-                            scalarAdd(w->b.limbs, w->b.limbs, localStepTable[idx].b.limbs);
+                    if (memcmp(aff_batch.x, w->snapshot_x, 32) == 0 ||
+                        memcmp(aff_batch.x, w->prev_x1, 32) == 0 ||
+                        memcmp(aff_batch.x, w->prev_x2, 32) == 0) {
+                        MurmurHash3 hasher;
+                        uint32_t idx = static_cast<uint32_t>(hasher(aff_batch[i].x[0] ^ 0xABCDEFULL) % N_STEPS);
+                        pointAddJacobian(&w->R, &w->R, &localStepTable[idx].point);
+                        scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
+                        scalarAdd(w->b.limbs, w->b.limbs, localStepTable[idx].b.limbs);
 
-                            if (compare_uint256(w->a, N) >= 0) w->a = sub_uint256(w->a, N);
-                            if (compare_uint256(w->b, N) >= 0) w->b = sub_uint256(w->b, N);
+                        ECPointAffine aff_jump;
+                        jacobianToAffine(&aff_jump, &w->R);
+                        aff_batch[i] = aff_jump;
 
-                            ECPointAffine aff_jump;
-                            jacobianToAffine(&aff_jump, &w->R);
-                            aff_batch[i] = aff_jump;
+                        w->snapshot_steps = 0;
+                        memset(w->snapshot_x, 0xFF, 32);
+                        memset(w->prev_x1, 0xFE, 32);
+                        memset(w->prev_x2, 0xFD, 32);
 
-                            w->snapshot_steps = 0;
-                            memset(w->snapshot_x, 0xFF, 32);
-                            memset(w->prev_x1, 0xFE, 32);
-                            memset(w->prev_x2, 0xFD, 32);
-
-                            total_cycles.fetch_add(1, std::memory_order_relaxed);
-                            continue;
-                        }
+                        total_cycles.fetch_add(1, std::memory_order_relaxed);
+                        continue;
                     }
 
                     w->snapshot_steps++;
