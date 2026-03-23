@@ -38,7 +38,7 @@ OBJ       := $(SRC_CPP:.cpp=.o) $(SRC_CU:.cu=.o)
 
 LEGACY: clean all
 
-all: gpu_arch set_perms
+all: set_perms gpu_arch
 	@$(MAKE) recurse
 
 set_perms:
