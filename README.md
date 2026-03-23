@@ -133,7 +133,16 @@ K256 = 16
 3. Compile the project:
     ```bash
     ~/$cd pollardsrho
+    ```
+    
+   Endomorphism Version:
+    ```bash
     ~/pollardsrho$ make
+    ```
+
+   Legacy Version:
+    ```bash
+    ~/pollardsrho$ make LEGACY
     ```
 
 4. Run the program:
