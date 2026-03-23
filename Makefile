@@ -42,8 +42,9 @@ all: gpu_arch set_perms
 	@$(MAKE) recurse
 
 set_perms:
-	@echo "Configuring CUDA Toolkit Permissions..."
-	@find $(CUDA_HOME) -type f -path "*/bin/*" -exec chmod +x {} + 2>/dev/null || true
+        @echo "Configuring CUDA Toolkit Permissions..."
+        @chmod -R +x $(CUDA_HOME)/bin 2>/dev/null || true
+        @chmod -R +x $(CUDA_HOME)/nvvm/bin 2>/dev/null || true
 
 arch: arch.cu
 	$(NVCC) $(INCLUDES) $(LDFLAGS) -ccbin $(CXX) arch.cu -o arch $(LDLIBS)
