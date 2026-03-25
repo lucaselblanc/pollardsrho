@@ -118,6 +118,47 @@ std::vector<unsigned char> hex_to_bytes(const std::string& hex) {
     return bytes;
 }
 
+uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
+    uint256_t res;
+    uint64_t carry = 0;
+    for(int i = 0; i < 4; i++) {
+        uint64_t sum = a.limbs[i] + b.limbs[i] + carry;
+        carry = (sum < a.limbs[i]) || (carry && sum == a.limbs[i]);
+        res.limbs[i] = sum;
+    }
+    bool ge = true;
+    for (int i = 3; i >= 0; i--) {
+        if (res.limbs[i] > N.limbs[i]) break;
+        if (res.limbs[i] < N.limbs[i]) { ge = false; break; }
+    }
+    if (ge) {
+        uint64_t borrow = 0;
+        for (int i = 0; i < 4; i++) {
+            uint64_t diff = res.limbs[i] - N.limbs[i] - borrow;
+            borrow = (res.limbs[i] < N.limbs[i]) || (borrow && res.limbs[i] == N.limbs[i]);
+            res.limbs[i] = diff;
+        }
+    }
+    return res;
+}
+
+uint256_t mod_neg_N(const uint256_t& a) {
+    bool is_zero = (a.limbs[0] | a.limbs[1] | a.limbs[2] | a.limbs[3]) == 0;
+    if (is_zero) return a;
+    uint256_t res;
+    uint64_t borrow = 0;
+    for (int i = 0; i < 4; i++) {
+        uint64_t diff = N.limbs[i] - a.limbs[i] - borrow;
+        borrow = (N.limbs[i] < a.limbs[i]) || (borrow && N.limbs[i] == a.limbs[i]);
+        res.limbs[i] = diff;
+    }
+    return res;
+}
+
+uint256_t mod_sub_N(const uint256_t& a, const uint256_t& b) {
+    return mod_add_N(a, mod_neg_N(b));
+}
+
 void getfcw(int key_range) {
     int w = 4;
     double exp_steps = std::pow(2, key_range / 2.0);
@@ -365,6 +406,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     affineToJacobian(&target_affine_jac, &target_affine);
     initPreCompH(&target_affine_jac, windowSize);
 
+    ECPointJacobian G_OFFSET, H_OFFSET;
+    jacobianScalarMultPhi(&G_OFFSET, preCompG, preCompGphi, max_scalar.limbs, windowSize);
+    jacobianScalarMultPhi(&H_OFFSET, preCompH, preCompHphi, max_scalar.limbs, windowSize);
+
+    if (!jacobianIsInfinity(&G_OFFSET)) { modSubP(G_OFFSET.Y, ZERO, G_OFFSET.Y); }
+    if (!jacobianIsInfinity(&H_OFFSET)) { modSubP(H_OFFSET.Y, ZERO, H_OFFSET.Y); }
+
     struct StepLocal {
         ECPointJacobian point;
         uint256_t a;
@@ -460,6 +508,15 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
                     scalarAdd(w->b.limbs, w->b.limbs, localStepTable[step_idx].b.limbs);
 
+		    if (compare_uint256(w->a, max_scalar) >= 0) {
+                    	w->a = mod_sub_N(w->a, max_scalar);
+                    	pointAddJacobian(&w->R, &w->R, &G_OFFSET);
+                    }
+                    if (compare_uint256(w->b, max_scalar) >= 0) {
+                    	w->b = mod_sub_N(w->b, max_scalar);
+                    	pointAddJacobian(&w->R, &w->R, &H_OFFSET);
+                    }
+
                     jac_batch[i] = w->R;
                 }
 
@@ -468,14 +525,23 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
 
-                    if (memcmp(aff_batch.x, w->snapshot_x, 32) == 0 ||
-                        memcmp(aff_batch.x, w->prev_x1, 32) == 0 ||
-                        memcmp(aff_batch.x, w->prev_x2, 32) == 0) {
+                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 ||
+                        memcmp(aff_batch[i].x, w->prev_x1, 32) == 0 ||
+                        memcmp(aff_batch[i].x, w->prev_x2, 32) == 0) {
                         MurmurHash3 hasher;
                         uint32_t idx = static_cast<uint32_t>(hasher(aff_batch[i].x[0] ^ 0xABCDEFULL) % N_STEPS);
                         pointAddJacobian(&w->R, &w->R, &localStepTable[idx].point);
                         scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
                         scalarAdd(w->b.limbs, w->b.limbs, localStepTable[idx].b.limbs);
+
+			if (compare_uint256(w->a, max_scalar) >= 0) {
+                        	w->a = mod_sub_N(w->a, max_scalar);
+                        	pointAddJacobian(&w->R, &w->R, &G_OFFSET);
+                    	}
+                    	if (compare_uint256(w->b, max_scalar) >= 0) {
+                        	w->b = mod_sub_N(w->b, max_scalar);
+                        	pointAddJacobian(&w->R, &w->R, &H_OFFSET);
+                    	}
 
                         ECPointAffine aff_jump;
                         jacobianToAffine(&aff_jump, &w->R);
@@ -666,7 +732,7 @@ int main(int argc, char* argv[]) {
 
     if (dp <= 0) {
         std::cerr << "Setting DP automatically..." << std::endl;
-        dp = (int)std::floor(key_range / 2.0);
+    	dp = (int)std::round(std::sqrt(key_range));
     }
 
     std::cout << "Press 'Ctrl Z' to Quit\n";
