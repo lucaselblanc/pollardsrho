@@ -19,6 +19,23 @@
 
  The current version (Main) introduces the use of equivalence classes of order 6, leveraging the efficient endomorphism (φ) and the negation map (-P) inherent to the secp256k1 curve. This optimization reduces the search space by a factor of √6 ~2.45, significantly accelerating collision detection compared to standard implementations, especially in larger ranges.
 
+## Benchmark TPU v5e-8 (Legacy)
+
+```
+5 bits ≈ 00:00:00
+10 bits ≈ 00:00:00
+15 bits ≈ 00:00:00
+20 bits ≈ 00:00:00
+25 bits ≈ 00:00:00
+30 bits ≈ 00:00:01
+35 bits ≈ 00:00:01
+40 bits ≈ 00:00:01
+45 bits ≈ 00:00:06
+50 bits ≈ 00:00:27
+55 bits ≈ 00:02:25
+60 bits ≈ 00:10:22
+```
+
 ## The Order-6 Equivalence Class
 
  ​In the secp256k1 curve, for any point P=(x,y), we can efficiently compute five other points that share a mathematical relationship:
