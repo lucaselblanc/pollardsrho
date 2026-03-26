@@ -372,21 +372,18 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     std::atomic<unsigned long long> total_iters{0};
     std::atomic<unsigned long long> total_cycles{0};
     uint256_t k{};
-
     auto cores = std::thread::hardware_concurrency();
     auto start_time = std::chrono::system_clock::now();
     auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
-
     const uint32_t N_STEPS = 2048;
-
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
-
     uint256_t min_scalar{}, max_scalar{};
+
     {
         int limb = (key_range - 1) / 64;
-        int bit  = (key_range - 1) % 64;
+        int bit = (key_range - 1) % 64;
         min_scalar.limbs[limb] = 1ULL << bit;
         for (int i = 0; i < limb; i++) max_scalar.limbs[i] = ~0ULL;
         max_scalar.limbs[limb] = (bit == 63) ? ~0ULL : (1ULL << (bit + 1)) - 1;
@@ -409,41 +406,27 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     ECPointJacobian G_OFFSET, H_OFFSET;
     jacobianScalarMultPhi(&G_OFFSET, preCompG, preCompGphi, max_scalar.limbs, windowSize);
     jacobianScalarMultPhi(&H_OFFSET, preCompH, preCompHphi, max_scalar.limbs, windowSize);
-
     if (!jacobianIsInfinity(&G_OFFSET)) { modSubP(G_OFFSET.Y, ZERO, G_OFFSET.Y); }
     if (!jacobianIsInfinity(&H_OFFSET)) { modSubP(H_OFFSET.Y, ZERO, H_OFFSET.Y); }
 
-    struct StepLocal {
-        ECPointJacobian point;
-        uint256_t a;
-        uint256_t b;
-    };
-
+    struct StepLocal { ECPointJacobian point; uint256_t a; uint256_t b; };
     std::vector<StepLocal> localStepTable(N_STEPS);
     std::mt19937_64 salt(target_affine.x[0]);
-
     uint256_t stepSize = {};
     stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
 
     for (int i = 0; i < N_STEPS; i++) {
         localStepTable[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, salt);
-        localStepTable[i].b = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, salt);
-
-        uint64_t a_tmp[4], b_tmp[4];
+        localStepTable[i].b = uint256_t{};
+        uint64_t a_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
-        uint256_to_uint64_array(b_tmp, localStepTable[i].b);
-        ECPointJacobian aiG, biH;
-        jacobianScalarMultPhi(&aiG, preCompG, preCompGphi, a_tmp, windowSize);
-        jacobianScalarMultPhi(&biH, preCompH, preCompHphi, b_tmp, windowSize);
-        pointAddJacobian(&localStepTable[i].point, &aiG, &biH);
+        jacobianScalarMultPhi(&localStepTable[i].point, preCompG, preCompGphi, a_tmp, windowSize);
         ECPointAffine aff_step;
         jacobianToAffine(&aff_step, &localStepTable[i].point);
         affineToJacobian(&localStepTable[i].point, &aff_step);
     }
 
-    phmap::parallel_flat_hash_map<uint64_t, std::vector<DPEntry>, MurmurHash3, 
-    phmap::priv::hash_default_eq<uint64_t>, std::allocator<std::pair<const uint64_t, std::vector<DPEntry>>>, 8, std::mutex > dp_table;
-
+    phmap::parallel_flat_hash_map<uint64_t, std::vector<DPEntry>, MurmurHash3, phmap::priv::hash_default_eq<uint64_t>, std::allocator<std::pair<const uint64_t, std::vector<DPEntry>>>, 8, std::mutex > dp_table;
     std::vector<WalkState> walkers_state(WALKERS);
     std::vector<uint64_t> sharedScalarStepsG((1ULL << windowSize) * 4);
     std::vector<uint64_t> sharedScalarStepsH((1ULL << windowSize) * 4);
@@ -451,35 +434,41 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     initScalarSteps(sharedScalarStepsH.data(), windowSize);
 
     std::string header = "\033[32m[!] Loading Walkers... \033[0m";
-
     for (int i = 0; i < WALKERS; i++) {
         walkers_state[i].rng.seed(std::random_device{}() ^ (uint64_t)i);
         walkers_state[i].buffers = new Buffers();
         walkers_state[i].buffers->scalarStepsG = sharedScalarStepsG.data();
         walkers_state[i].buffers->scalarStepsH = sharedScalarStepsH.data();
         walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
-        walkers_state[i].b = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
+        walkers_state[i].b = uint256_t{};
+        if (i % 2 != 0) {
+            walkers_state[i].b.limbs[0] = 1;
+        }
+
         walkers_state[i].walk_id = i;
         walkers_state[i].snapshot_steps = 0;
         memset(walkers_state[i].snapshot_x, 0, 32);
         memset(walkers_state[i].prev_x1, 0, 32);
         memset(walkers_state[i].prev_x2, 0, 32);
 
-        uint64_t a_arr[4], b_arr[4];
+        uint64_t a_arr[4];
         uint256_to_uint64_array(a_arr, walkers_state[i].a);
-        uint256_to_uint64_array(b_arr, walkers_state[i].b);
-
-        ECPointJacobian Ra, Rb;
+        ECPointJacobian Ra;
         jacobianScalarMultPhi(&Ra, preCompG, preCompGphi, a_arr, windowSize);
-        jacobianScalarMultPhi(&Rb, preCompH, preCompHphi, b_arr, windowSize);
-        pointAddJacobian(&walkers_state[i].R, &Ra, &Rb);
+
+        if (i % 2 == 0) {
+            walkers_state[i].R = Ra;
+        } else {
+            pointAddJacobian(&walkers_state[i].R, &Ra, &target_affine_jac);
+        }
 
         if (i % 32 == 0 || i == WALKERS - 1) {
-        	loading_bar(i + 1, WALKERS, header);
+            loading_bar(i + 1, WALKERS, header);
         }
     }
 
     auto last_print = std::chrono::steady_clock::now();
+
     auto worker = [&](int id_start, int id_end) {
         try {
             int local_count = id_end - id_start;
@@ -491,117 +480,95 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             for (int i = 0; i < local_count; i++) {
                 jac_batch[i] = walkers_state[id_start + i].R;
             }
-
             batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
 
             while (search_in_progress.load(std::memory_order_acquire)) {
                 total_iters.fetch_add(local_count, std::memory_order_relaxed);
-
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
-
                     memcpy(w->prev_x2, w->prev_x1, 32);
                     memcpy(w->prev_x1, aff_batch[i].x, 32);
 
                     uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
                     pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
                     scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
-                    scalarAdd(w->b.limbs, w->b.limbs, localStepTable[step_idx].b.limbs);
 
-		    if (compare_uint256(w->a, max_scalar) >= 0) {
-                    	w->a = mod_sub_N(w->a, max_scalar);
-                    	pointAddJacobian(&w->R, &w->R, &G_OFFSET);
-                    }
-                    if (compare_uint256(w->b, max_scalar) >= 0) {
-                    	w->b = mod_sub_N(w->b, max_scalar);
-                    	pointAddJacobian(&w->R, &w->R, &H_OFFSET);
+                    if (compare_uint256(w->a, max_scalar) >= 0) {
+                        w->a = mod_sub_N(w->a, max_scalar);
+                        pointAddJacobian(&w->R, &w->R, &G_OFFSET);
                     }
 
                     jac_batch[i] = w->R;
                 }
-
                 batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
-
-                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 ||
-                        memcmp(aff_batch[i].x, w->prev_x1, 32) == 0 ||
-                        memcmp(aff_batch[i].x, w->prev_x2, 32) == 0) {
+                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 || memcmp(aff_batch[i].x, w->prev_x1, 32) == 0 || memcmp(aff_batch[i].x, w->prev_x2, 32) == 0) {
                         MurmurHash3 hasher;
                         uint32_t idx = static_cast<uint32_t>(hasher(aff_batch[i].x[0] ^ 0xABCDEFULL) % N_STEPS);
                         pointAddJacobian(&w->R, &w->R, &localStepTable[idx].point);
                         scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
-                        scalarAdd(w->b.limbs, w->b.limbs, localStepTable[idx].b.limbs);
 
-			if (compare_uint256(w->a, max_scalar) >= 0) {
-                        	w->a = mod_sub_N(w->a, max_scalar);
-                        	pointAddJacobian(&w->R, &w->R, &G_OFFSET);
-                    	}
-                    	if (compare_uint256(w->b, max_scalar) >= 0) {
-                        	w->b = mod_sub_N(w->b, max_scalar);
-                        	pointAddJacobian(&w->R, &w->R, &H_OFFSET);
-                    	}
+                        if (compare_uint256(w->a, max_scalar) >= 0) {
+                            w->a = mod_sub_N(w->a, max_scalar);
+                            pointAddJacobian(&w->R, &w->R, &G_OFFSET);
+                        }
 
                         ECPointAffine aff_jump;
                         jacobianToAffine(&aff_jump, &w->R);
                         aff_batch[i] = aff_jump;
-
                         w->snapshot_steps = 0;
                         memset(w->snapshot_x, 0xFF, 32);
                         memset(w->prev_x1, 0xFE, 32);
                         memset(w->prev_x2, 0xFD, 32);
-
                         total_cycles.fetch_add(1, std::memory_order_relaxed);
                         continue;
                     }
 
                     w->snapshot_steps++;
-
                     if ((w->snapshot_steps & (w->snapshot_steps - 1)) == 0) {
                         memcpy(w->snapshot_x, aff_batch[i].x, 32);
                     }
 
                     if (!DP(aff_batch[i].x, DP_BITS)) continue;
+
                     w->snapshot_steps = 0;
                     try {
                         DPEntry found_dp;
                         bool cl = false;
-
-                        dp_table.lazy_emplace_l(aff_batch[i].x[0],
-                            [&](auto& bucket) {
-                                auto& dps = bucket.second;
-                                for (const auto& entry : dps) {
-                                    if (entry.x == aff_batch[i].x[1]) {
-                                        bool same_state = (compare_uint256(w->a, entry.a) == 0) && (compare_uint256(w->b, entry.b) == 0);
-                                        if (!same_state) {
-                                            found_dp = entry;
-                                            cl = true;
-                                        }
-                                        return;
+                        dp_table.lazy_emplace_l(aff_batch[i].x[0], [&](auto& bucket) {
+                            auto& dps = bucket.second;
+                            for (const auto& entry : dps) {
+                                if (entry.x == aff_batch[i].x[1]) {
+                                    bool same_state = (compare_uint256(w->a, entry.a) == 0) && (compare_uint256(w->b, entry.b) == 0);
+                                    if (!same_state) {
+                                        found_dp = entry;
+                                        cl = true;
                                     }
+                                    return;
                                 }
-
-                                if(!cl)
-                                {
-                                    DPEntry new_entry;
-                                    new_entry.x = aff_batch[i].x[1];
-                                    new_entry.a = w->a; new_entry.b = w->b;
-                                    dps.push_back(new_entry);
-                                }
-                            },
-                            [&](auto bucket) {
-                                DPEntry entry;
-                                entry.x = aff_batch[i].x[1];
-                                entry.a = w->a; entry.b = w->b;
-                                bucket(aff_batch[i].x[0], std::vector<DPEntry>{entry});
                             }
-                        );
+                            if(!cl) {
+                                DPEntry new_entry;
+                                new_entry.x = aff_batch[i].x[1];
+                                new_entry.a = w->a;
+                                new_entry.b = w->b;
+                                dps.push_back(new_entry);
+                            }
+                        }, [&](auto bucket) {
+                            DPEntry entry;
+                            entry.x = aff_batch[i].x[1];
+                            entry.a = w->a;
+                            entry.b = w->b;
+                            bucket(aff_batch[i].x[0], std::vector<DPEntry>{entry});
+                        } );
 
                         if (cl) {
                             uint256_t da, db, inv_db;
                             if (compare_uint256(w->a, found_dp.a) >= 0) da = sub_uint256(w->a, found_dp.a);
                             else da = sub_uint256(N, sub_uint256(found_dp.a, w->a));
+
                             if (compare_uint256(found_dp.b, w->b) >= 0) db = sub_uint256(found_dp.b, w->b);
                             else db = sub_uint256(N, sub_uint256(w->b, found_dp.b));
 
@@ -643,12 +610,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                 long double x = (k_val * k_val) / (2.0L * M) / (WALKERS * (1 << DP_BITS));
                 long double d = (x <= 1.0L) ? 0.0L : std::floor(std::log2(x));
                 long double prob = (1.0L - expl(-d)) * 100.0L;
-
-                std::cout << "\033[3A\r"
-                << "\033[2KTotal Ops/10s: " << total_iters.load() << "\n"
-                << "\033[2KSelf-Collision Cycles:  " << total_cycles.load() << "\n"
-                << "\033[2KCollision Probability: " << std::fixed << std::setprecision(8) << (prob) << "...%\n"
-                << std::flush;
+                std::cout << "\033[3A\r" << "\033[2KTotal Ops/10s: " << total_iters.load() << "\n" << "\033[2KSelf-Collision Cycles: " << total_cycles.load() << "\n" << "\033[2KCollision Probability: " << std::fixed << std::setprecision(8) << (prob) << "...%\n" << std::flush;
                 last_print = now;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -668,7 +630,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
 
     for (unsigned int t = 0; t < cores; t++) {
         int start = t * chunk;
-        int end   = (t == cores - 1) ? WALKERS : start + chunk;
+        int end = (t == cores - 1) ? WALKERS : start + chunk;
         threads.emplace_back(worker, start, end);
     }
 
@@ -687,12 +649,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     }
 
     dp_table.clear();
-
     auto end_time = std::chrono::system_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
-    std::cout << "Total duration: " << std::setw(2) << std::setfill('0') << duration.count() / 3600 << ":"
-    << std::setw(2) << std::setfill('0') << (duration.count() % 3600) / 60 << ":"
-    << std::setw(2) << std::setfill('0') << duration.count() % 60 << std::endl;
+    std::cout << "Total duration: " << std::setw(2) << std::setfill('0') << duration.count() / 3600 << ":" << std::setw(2) << std::setfill('0') << (duration.count() % 3600) / 60 << ":" << std::setw(2) << std::setfill('0') << duration.count() % 60 << std::endl;
 
     return k;
 }
