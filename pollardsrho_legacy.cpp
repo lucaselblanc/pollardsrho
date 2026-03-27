@@ -606,9 +606,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         while (search_in_progress.load(std::memory_order_acquire)) {
             auto now = std::chrono::steady_clock::now();
             if (now - last_print >= std::chrono::seconds(10)) {
-                long double k_val = (long double)total_iters.load(std::memory_order_relaxed);
-                long double x = (k_val * k_val) / (2.0L * M) / (WALKERS * (1 << DP_BITS));
-                long double d = (x <= 1.0L) ? 0.0L : std::floor(std::log2(x));
+                long double k = (long double)total_iters.load(std::memory_order_relaxed);
+                long double x = (k * k) / (2.0L * M);
+                long double d = (x <= 1.0L) ? 0.0L : x;
                 long double prob = (1.0L - expl(-d)) * 100.0L;
                 std::cout << "\033[3A\r" << "\033[2KTotal Ops/10s: " << total_iters.load() << "\n" << "\033[2KSelf-Collision Cycles: " << total_cycles.load() << "\n" << "\033[2KCollision Probability: " << std::fixed << std::setprecision(8) << (prob) << "...%\n" << std::flush;
                 last_print = now;
