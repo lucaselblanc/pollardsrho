@@ -107,6 +107,7 @@ K256 = 16
 
 - g++
 - boost/multiprecision/cpp_int.hpp
+- libssl-dev
 
 ## Installation
 
@@ -117,9 +118,10 @@ K256 = 16
 
 2. Install the necessary libraries:
     ```bash
-    sudo apt-get update
+    sudo apt update
     sudo apt install build-essential g++ -y
     sudo apt install libboost-dev -y
+    sudo apt install libssl-dev
     ```
 
 3. Compile the project:
