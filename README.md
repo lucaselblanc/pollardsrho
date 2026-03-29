@@ -1,4 +1,4 @@
-# Pollard's Rho Algorithm for SECP256K1 Curve (Beta)
+# Pollard's Rho Lambda Algorithm for SECP256K1 Curve (ρλ)
 
 ![C++](https://img.shields.io/badge/Language-C++-blue)
 ![CUDA](https://img.shields.io/badge/Language-CUDA-green)
@@ -7,9 +7,9 @@
 
 ## Description
 
- This repository contains a high-performance implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve.
+ This repository contains a high-performance implementation of Pollard’s Rho Lambda algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve.
 
-#### Lambda Rho (λρ)
+#### Pollard's Rho Lambda (ρλ)
 
  The algorithm executes high-speed pseudo-random walks over the secp256k1 group using an R-adding walk iteration function. It utilizes a table of 2048 pre-computed steps and a MurmurHash3-based avalanche function to determine state transitions, maintaining the algebraic representation `R = a * G + b * H`. The scalars are probabilistically distributed within a specific ```key_range```, optimizing collision search for an probability distribution in O(√K).
 
@@ -75,7 +75,7 @@ K256 = 16
 
 ## Algorithm Complexity
 
- The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the steps is restricted to O(√k), keeps the probabilistic window restricted to the range. Given secp256k1, this translates to approximately O(√range), as predicted by the birthday paradox for random walks over a finite group.
+ The expected time complexity of Pollard's Rho Lambda algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the steps is restricted to O(√k), keeps the probabilistic window restricted to the range. Given secp256k1, this translates to approximately O(√range), as predicted by the birthday paradox for random walks over a finite group.
 
 ## Prerequisites
 
