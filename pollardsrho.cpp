@@ -10,7 +10,7 @@
 * Written by Lucas Leblanc               *
 ******************************************/
 
-/* --- LAMBDA RHO VERSION (λρ) --- */
+/* --- POLLARD'S RHO LAMBDA (ρλ) --- */
 
 #include "secp256k1.h"
 #include "parallel_hashmap/phmap.h"
