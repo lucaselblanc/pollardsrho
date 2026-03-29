@@ -23,7 +23,7 @@ SRC_CPP   := pollardsrho.cpp almostinverse.cpp
 SRC_CU    := secp256k1.cu
 OBJ       := $(SRC_CPP:.cpp=.o) $(SRC_CU:.cu=.o)
 
-.PHONY: all clean gpu_arch recurse set_perms
+.PHONY: all gpu_arch recurse set_perms
 
 all: set_perms gpu_arch
 	@$(MAKE) recurse
@@ -36,7 +36,8 @@ arch: arch.cu
 	$(NVCC) $(INCLUDES) $(LDFLAGS) -ccbin $(CXX) arch.cu -o arch $(LDLIBS)
 
 gpu_arch: arch
-	@./arch > gpu_arch 2>/dev/null || echo "GPU_ARCH := 0" > gpu_arch
+	@RESULT=$$(./arch 2>/dev/null | grep -E '^[0-9]+$$' || echo "0"); \
+	echo "GPU_ARCH := $$RESULT" > gpu_arch
 
 recurse: $(TARGET)
 
@@ -46,8 +47,8 @@ NVCCFLAGS := -O3 -std=c++14 -ccbin $(CXX) $(INCLUDES) \
              -Xcompiler "-O3 -pthread -fpermissive -I$(CUDA_HOME)/include" \
              --expt-relaxed-constexpr -MD
 
-ifneq ($(GPU_ARCH),0)
-    NVCCFLAGS += -gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH)
+ifneq ($(filter-out 0,$(strip $(GPU_ARCH))),)
+    NVCCFLAGS += -gencode arch=compute_$(strip $(GPU_ARCH)),code=sm_$(strip $(GPU_ARCH))
 endif
 
 %.o: %.cpp
@@ -60,4 +61,5 @@ $(TARGET): $(OBJ)
 	$(NVCC) $(OBJ) -o $@ $(LDFLAGS) $(LDLIBS) -Xcompiler "-I$(CUDA_HOME)/include"
 
 clean:
-	rm -f $(TARGET) $(OBJ) arch gpu_arch *.d
+	@echo "Cleaning..."
+	rm -f pollardsrho arch gpu_arch *.o *.d
