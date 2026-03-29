@@ -5,6 +5,20 @@
 ![CUDA](https://img.shields.io/badge/Arch-GPU%20&%20CPU-orange)
 ![Linux](https://img.shields.io/badge/Platform-Linux-white)
 
+## Anchor Links:
+[Main Index](https://github.com/lucaselblanc/pollardsrho/tree/main?tab=readme-ov-file#pollards-rho-lambda-algorithm-for-secp256k1-curve-%CF%81%CE%BB)
+[Description](https://github.com/lucaselblanc/pollardsrho/tree/main?tab=readme-ov-file#description)
+[Algorithm Version](https://github.com/lucaselblanc/pollardsrho/tree/main#pollards-rho-lambda-%CF%81%CE%BB)
+[Benchmark](https://github.com/lucaselblanc/pollardsrho/tree/main#benchmark-tpu-v5e-8)
+[Technical Features](https://github.com/lucaselblanc/pollardsrho/tree/main#technical-features)
+[Distinguished Points](https://github.com/lucaselblanc/pollardsrho/tree/main#distinguished-points-dp)
+[Delay Of Distinguished Points](https://github.com/lucaselblanc/pollardsrho/tree/main#delay-of-distinguished-points)
+[Algorithm Complexity](https://github.com/lucaselblanc/pollardsrho/tree/main#algorithm-complexity)
+[Prerequisites](https://github.com/lucaselblanc/pollardsrho/tree/main#prerequisites)
+[Installation](https://github.com/lucaselblanc/pollardsrho/tree/main#installation)
+[Commands](https://github.com/lucaselblanc/pollardsrho/tree/main#commands)
+[External Libraries Used](https://github.com/lucaselblanc/pollardsrho/tree/main#external-libraries-used)
+
 ## Description
 
  This repository contains a high-performance implementation of Pollard’s Rho Lambda algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve.
