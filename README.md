@@ -9,17 +9,13 @@
 
  This repository contains a high-performance implementation of Pollard’s Rho algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve.
 
-#### Legacy Version (ρ)
+#### Lambda Rho (λρ)
 
- The algorithm executes high-speed pseudo-random walks over the secp256k1 group using an R-adding walk iteration function. It utilizes a table of 2048 pre-computed steps and a MurmurHash3-based avalanche function to determine state transitions, maintaining the algebraic representation `R = a * G + b * H`. The scalars are initially probabilistically distributed within a specific ```key_range```, optimizing collision search for an initial probability distribution in O(√K) instead of the general distribution for the entire group O(√N), and as points are multiplied on the curve, walkers may eventually exceed ```key_range```, since the search in Pollard's rho algorithm is blind, and for the algorithm it does not matter in which scalar area the points actually are, as long as the walkers maintain their linear congruence relations for the group N.
+ The algorithm executes high-speed pseudo-random walks over the secp256k1 group using an R-adding walk iteration function. It utilizes a table of 2048 pre-computed steps and a MurmurHash3-based avalanche function to determine state transitions, maintaining the algebraic representation `R = a * G + b * H`. The scalars are probabilistically distributed within a specific ```key_range```, optimizing collision search for an probability distribution in O(√K).
 
  When two independent walkers encounter the same group element (a collision) with distinct coefficient pairs `(a, b)`, it yields a linear congruence modulo the group order `N`, allowing for the immediate recovery of the private key with the calculation of d through mod inversion. To maximize throughput and enable massive parallelization, the implementation employs a Distinguished Points (DP) strategy, where only points meeting a specific bit-mask criteria are stored in a high-concurrency hash map. This allows multiple CPU threads to traverse different paths simultaneously with minimal memory overhead. The system is specifically tuned for the secp256k1 curve and requires a Bitcoin public key as the target.
 
-#### Endomorphism Version (φ)
-
- The current version (Main) introduces the use of equivalence classes of order 6, leveraging the efficient endomorphism (φ) and the negation map (-P) inherent to the secp256k1 curve. This optimization reduces the search space by a factor of √6 ~2.45, significantly accelerating collision detection compared to standard implementations, especially in larger ranges.
-
-## Benchmark TPU v5e-8 (Legacy)
+## Benchmark TPU v5e-8
 
 ```
 5 bits ≈ 00:00:00
@@ -35,24 +31,6 @@
 55 bits ≈ 00:02:25
 60 bits ≈ 00:10:22
 ```
-
-## The Order-6 Equivalence Class
-
- ​In the secp256k1 curve, for any point P=(x,y), we can efficiently compute five other points that share a mathematical relationship:
-
-- ​Negation: (x, -y)
-- ​Endomorphism (φ): (β x, y) and (β^2 x, y)
-- ​Combined: (β x, -y) and (β^2 x, -y)
-
- The Endomorphism version utilizes a Canonical Representative Function (normalize_oeq6). Instead of walking through individual points, the algorithm walks through "sets" of 6 points. By always choosing the point with the smallest X-coordinate as the representative, we effectively shrink the "haystack" while looking for the same "needle".
-
-#### Scalar Decomposition with λ
- 
- Because we use the endomorphism (φ)(P) = λP, the scalar relation R = kG is tracked through a decomposed state:
-
-```R = (a1 + a2λ)G + (b1 + b2λ)H```
-
- When a collision is found in the Distinguished Points table, the private key k is recovered by solving the linear congruence using the eigenvalue λ (mod n).
 
 ## Technical Features
 
@@ -81,21 +59,6 @@ int dp = (key_range / 2.0) - math.log2(RAM_BYTES / POINT_BYTES);
 Simple Abstraction:
 
 ```
-int dp = math.floor(key_range / 2.0);
-```
-
-```
-k2 = 1
-k4 = 2
-k8 = 4
-k16 = 8
-k32 = 16
-k64 = 32
-k128 = 64
-K256 = 128
-```
-
-```
 int dp = math.sqrt(key_range);
 ```
 
@@ -112,21 +75,7 @@ K256 = 16
 
 ## Algorithm Complexity
 
- The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the initial steps is restricted to √k, subsequently encompassing the entire group in √n, the version with endomorphism keeps the probabilistic window restricted to the range, but remains non-deterministic. Given secp256k1, this translates to approximately O(√N), as predicted by the birthday paradox for random walks over a finite group.
-
-## Pollard's Rho vs Pollard's Kangaroo/Lambda
-
-#### Pollard's Rho Algorithm (Probabilistic √N)
-
- In the Pollard's Rho algorithm, it is assumed that we do not know the minimum-maximum scalar range in which the private key may lie, as the search is blind, this is useful when you have no prior knowledge of k, so the value of ```key_range``` can be any value >= 1. If you correctly guess the maximum range, you will eventually arrive at a solution, in the worst-case scenario in up to √K steps, following the birthday paradox on which the algorithm is based. The advantage of Pollard's Rho over Pollard's Kangaroo is the generality of the points, as the recovery of k does not depend on the distance between the two colliding walkers, but rather on the linear congruence relationship maintained between them, another advantage over lambda is the possibility of using equivalence classes of size 2 or 6, something that would break the kang walk, but optimizes the rho walk. This algorithm rarely has problems with short or long loops due to its chaotic and completely pseudo-random walk, as there is no deterministic linearity dependency for a solution, the loops(fruitless cycles) occur due to this linearity combined with entropy density. The difference between the coefficients a and b is resolved through modular inversion and not with simple addition or subtraction as happens in Pollard's Kangaroo. Finally, any collision is valid for Pollard's Rho, which ends up being a huge advantage, due to the astronomically large group space of the secp256k1 curve, the program will never stop until a collision occurs, or it reaches the 256-bit limit, however, it is more likely that the operating system itself will terminate the process before reaching this limit, if the total number of operations exceeds √K, the probability of a useful collision occurring after that point is very low, but this is left to the solver's discretion.
-
-#### Pollard's Kangaroo/Lambda Algorithm (Probabilistic √K)
- 
- In Pollard's Kangaroo (lambda) algorithm, it is assumed that there is prior knowledge about k, the search is strictly limited to the ```key_range``` and will not go beyond it. Without the exact search range, the algorithm becomes impracticable, because the path taken by the domesticated kangaroo and the wild kangaroo is deterministic, and it is fully calculated using the average steps of √K, without the original range, the algorithm breaks. It's as if Pollard's Kangaroo were a more efficient version of the Baby Steps Giant Steps (BSGS) algorithm, the difference is that lambda does this in a more intelligent (no brute force) way, using the domesticated kangaroo to initiate the search by scattering traps/points along the path, which are saved in a table. Eventually, a wild kangaroo has a statistical chance of landing on one of these points left by the tame, causing a collision and solving k. Due to this determinism of the path, the recovery of k occurs through a simple addition or subtraction of the accumulated distance between tame and wild, however, this simplicity comes at a high price with the increase in internal loops where the kangaroo gets stuck on a path it has already visited, another bad scenario occurs when a wild kangaroo makes a very large jump and ends up never landing on any of the points left by the domesticated kangaroo, meaning the wild kangaroo never has a chance to resolve any future collisions, in this algorithm, the main concern will always be to get a kangaroo out of a loop when it gets stuck in one, and to normalize the average of the jumps to avoid overshooting. Both the rho and the kangaroo algorithms use distinguished points to reduce memory costs when saving points.
-
-## Self-Collision Cycles
-
- Self-Collision cycles of short periodicity (typically length 2 or 6) are a frequent pathological state when implementing the negation map (P -> -P), which theoretically offers a √2 ~1.41 efficiency speedup. This issue is significantly compounded when leveraging equivalence classes via the order-6 GLV Endomorphism (specific to the secp256k1 curve), targeting a √6 ~2.45 acceleration. The practical application of these optimizations across the curve's full group order requires a robust canonical representative function to prevent the pseudo-random walk from collapsing into local orbits. Furthermore, such symmetry-based optimizations are inherently difficult to reconcile with range-restricted searches, for the algorithm to remain viable, the iteration must maintain a trajectory that scales with the square root of the search space √k without diverging from the target interval due to modular negation (n - k), short cycles can also occur without the use of equivalence classes, when the walker jumps are too short for the range, for example: ```~key_range(10) / 4``` and longer cycles are rarer for rho, although there is still a safety check to detect them.
+ The expected time complexity of Pollard's Rho algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the steps is restricted to O(√k), keeps the probabilistic window restricted to the range. Given secp256k1, this translates to approximately O(√range), as predicted by the birthday paradox for random walks over a finite group.
 
 ## Prerequisites
 
@@ -151,15 +100,9 @@ K256 = 16
     ```bash
     ~/$cd pollardsrho
     ```
-    
-   Endomorphism Version:
+
     ```bash
     ~/pollardsrho$ make
-    ```
-
-   Legacy Version:
-    ```bash
-    ~/pollardsrho$ make LEGACY
     ```
 
 4. Run the program:
@@ -171,7 +114,7 @@ K256 = 16
 
     Example usage:
     ```bash
-    ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135 1000000 20
+    ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135 1000000 12
     ```
 
 ## Commands
