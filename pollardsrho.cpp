@@ -14,6 +14,7 @@
 
 #include "secp256k1.h"
 #include "parallel_hashmap/phmap.h"
+#include <openssl/sha.h>
 #include <fstream>
 #include <unistd.h>
 #include <iostream>
@@ -42,6 +43,8 @@ const std::string& DARK_PINK = "\033[38;2;140;70;140m";
 const std::string& PINK = "\033[35m";
 const std::string& ORANGE = "\033[38;2;255;128;0m";
 const std::string& RESET = "\033[0m";
+
+const char* BASE_58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 struct Buffers {
     uint64_t* scalarStepsG;
@@ -95,6 +98,7 @@ void loading_bar(uint64_t current, uint64_t total, const std::string& label) {
     std::cout << " " << std::fixed << std::setprecision(1) << (percent * 100.0) << "%" << std::endl;
 }
 
+auto cores = std::thread::hardware_concurrency();
 int windowSize = 12; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
 
 void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
@@ -123,7 +127,7 @@ std::string gradient_zeros(std::string hex, const std::string& color_1, const st
 
 std::vector<unsigned char> hex_to_bytes(const std::string& hex) {
     if (hex.length() % 2 != 0) {
-        throw std::invalid_argument("A string hexadecimal deve ter n par de caracteres");
+        throw std::invalid_argument("The hexadecimal string must have n pairs of characters!");
     }
 
     std::vector<unsigned char> bytes(hex.size() / 2);
@@ -212,11 +216,11 @@ void getfcw(int key_range) {
             }
         }
         catch(const std::invalid_argument& e) {
-            std::cout << ORANGE << "Warning: " << e.what() << RESET << std::endl;
+            std::cout << ORANGE << "WRNG: " << e.what() << RESET << std::endl;
             continue;
         }
         catch(const std::out_of_range& e) {
-            std::cout << ORANGE << "Warning: " << e.what() << RESET << std::endl;
+            std::cout << ORANGE << "WRNG: " << e.what() << RESET << std::endl;
             continue;
         }
     }
@@ -385,14 +389,12 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     std::atomic<bool> search_in_progress(true);
     std::atomic<unsigned long long> total_iters{0};
     std::atomic<unsigned long long> total_cycles{0};
-    uint256_t k{};
-    auto cores = std::thread::hardware_concurrency();
     auto start_time = std::chrono::system_clock::now();
     auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
     std::tm start_tm{};
     localtime_r(&start_time_t, &start_tm);
-    const uint32_t N_STEPS = 2048;
-    auto target_pubkey = hex_to_bytes(target_pubkey_hex);
+
+    uint256_t k{};
     uint256_t min_scalar{}, max_scalar{};
     {
         int limb = (key_range - 1) / 64;
@@ -411,6 +413,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET;
     std::cout << "\n\n\n\n";
 
+    auto target_pubkey = hex_to_bytes(target_pubkey_hex);
     ECPointAffine target_affine{};
     ECPointJacobian target_affine_jac{};
     decompressPublicKey(&target_affine, target_pubkey.data());
@@ -421,6 +424,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     jacobianScalarMultPhi(&G_OFFSET, preCompG, preCompGphi, max_scalar.limbs, windowSize);
     if (!jacobianIsInfinity(&G_OFFSET)) { modSubP(G_OFFSET.Y, ZERO, G_OFFSET.Y); }
 
+    const uint32_t N_STEPS = 2048;
     struct StepLocal { ECPointJacobian point; uint256_t a; uint256_t b; };
     std::vector<StepLocal> localStepTable(N_STEPS);
     std::mt19937_64 salt(target_affine.x[0]);
@@ -674,45 +678,108 @@ void save_key(const std::string& pub_key_hex, const uint256_t& priv_key) {
     if (outfile.is_open()) {
         outfile << pub_key_hex << " : " << uint256_to_hex(priv_key) << "\n";
         outfile.close();
-        std::cout << ORANGE << "[INFO!] " << RESET << "Chave salva com sucesso em " << RESET << BLUE << "DISCRETE_LOGS_SOLVED" << RESET << std::endl;
+        std::cout << ORANGE << "[INFO!] " << RESET << "Key successfully saved in " << RESET << BLUE << "DISCRETE_LOGS_SOLVED" << RESET << std::endl;
     } else {
-        std::cerr << RED << "[ERROR!] Nao foi possivel abrir o arquivo para salvar a chave!" << RESET << std::endl;
+        std::cerr << RED << "[ERROR!] We were unable to open the file to save the key!" << RESET << std::endl;
     }
+}
+
+std::string EncodeBase58(const std::vector<unsigned char>& data) {
+    std::vector<int> digits;
+    for (unsigned char byte : data) {
+        int carry = byte;
+        for (size_t j = 0; j < digits.size(); ++j) {
+            carry += digits[j] * 256;
+            digits[j] = carry % 58;
+            carry /= 58;
+        }
+        while (carry > 0) {
+            digits.push_back(carry % 58);
+            carry /= 58;
+        }
+    }
+    std::string result;
+    for (unsigned char byte : data) { if (byte == 0) result += '1'; else break; }
+    for (auto it = digits.rbegin(); it != digits.rend(); ++it) { result += BASE_58[*it]; }
+    return result;
+}
+
+std::vector<unsigned char> DoubleSHA256(const std::vector<unsigned char>& data) {
+    std::vector<unsigned char> hash1(SHA256_DIGEST_LENGTH);
+    std::vector<unsigned char> hash2(SHA256_DIGEST_LENGTH);
+    SHA256(data.data(), data.size(), hash1.data());
+    SHA256(hash1.data(), hash1.size(), hash2.data());
+    return hash2;
+}
+
+std::string EncodeBase58Check(const std::vector<unsigned char>& payload) {
+    std::vector<unsigned char> hash = DoubleSHA256(payload);
+    std::vector<unsigned char> dataToEncode = payload;
+    dataToEncode.insert(dataToEncode.end(), hash.begin(), hash.begin() + 4);
+    return EncodeBase58(dataToEncode);
+}
+
+std::string HexToWif(const std::string& hexKey) {
+    std::vector<unsigned char> keyBytes = hex_to_bytes(hexKey);
+    std::vector<unsigned char> payload;
+    payload.push_back(0x80);
+    payload.insert(payload.end(), keyBytes.begin(), keyBytes.end());
+    payload.push_back(0x01);
+    return EncodeBase58Check(payload);
 }
 
 int main(int argc, char* argv[]) {
 
-    if (argc < 3) {
-        std::cerr << CYAN << "Uso: " << RESET << argv[0] << PINK << " <Compressed Public Key(Hex)> " << "<Key Range(int)> " << "<Walkers(int)>" << RESET << std::endl;
+    if (argc < 4) {
+        std::cerr << ORANGE << "[Use]: " << RESET << argv[0] << PINK << " <Compressed Public Key(Hex)> " << "<Key Range(int)> " << "<Walkers(int)>" << RESET << std::endl;
         return 1;
     }
-
-    init_secp256k1(std::stoi(argv[2]));
 
     std::string pub_key_hex(argv[1]);
     int key_range = std::stoi(argv[2]);
     int walkers = std::stoi(argv[3]);
     int dp = 0;
 
+    if (pub_key_hex.length() != 66) {
+        std::cerr << RED << "[ERROR] The Compressed Public Key Must Be Exactly 66 Characters Long, Prefix 02/03 + 64 Hex." << RESET << std::endl;
+        std::cerr << "Current Length: " << pub_key_hex.length() << std::endl;
+        return 1;
+    }
+
+    std::string prefix = pub_key_hex.substr(0, 2);
+    if (prefix != "02" && prefix != "03") {
+        std::cerr << RED << "[ERROR] Unusual Compressed Key Prefix: " << prefix <<", Expected: 02/03." << RESET << std::endl;
+        std::cerr << "Prefix Entered: " << prefix << std::endl;
+        return 1;
+    }
+
+    if (key_range < 1 || key_range > 256) {
+        std::cerr << RED << "[ERROR] Key Range Outside Permitted Limits (1 - 256)." << RESET << std::endl;
+        std::cerr << "Value Entered: " << key_range << std::endl;
+        return 1;
+    }
+
     if (argc >= 5) {
         try {
             dp = std::stoi(argv[4]);
         } catch (...) {
-            std::cerr << RED << "Unknown error parsing arguments!" << RESET << std::endl;
+            std::cerr << RED << "Unknown Error Parsing Arguments!" << RESET << std::endl;
         }
     }
 
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
-
     if (dp <= 0) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
-    	dp = (int)std::round(std::sqrt(key_range));
+        dp = (int)std::round(std::sqrt(key_range));
     }
-
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
+    if (walkers != (cores * 512)) {
+        std::cout << ORANGE << "[WRNG] For its " << PINK << cores << RESET << ORANGE << " Cores, The Ideal Number Of Walkers Is: " << RESET << PINK << (cores * 512) << RESET << "." << std::endl;
+    }
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
 
+    init_secp256k1(std::stoi(argv[2]));
     uint256_t found_key = prho(pub_key_hex, key_range, walkers, dp);
 
     std::cout << GREEN << "[SUCCESS!] " << RESET << "Collision Found!" << std::endl;
@@ -734,8 +801,8 @@ int main(int argc, char* argv[]) {
     }
 
     save_key(pub_key_hex, found_key);
-
-    std::cout << GREEN << "Private key found: " << RESET << gradient_zeros(uint256_to_hex(found_key), DARK_PINK, PINK) << std::endl;
+    std::cout << ORANGE << "[WIF Key]: " << CYAN << HexToWif(uint256_to_hex(found_key)) << RESET << std::endl;
+    std::cout << GREEN << "[Private Key]: " << RESET << gradient_zeros(uint256_to_hex(found_key), DARK_PINK, PINK) << std::endl;
 
     double key_val = 0;
     for (int i = 0; i < 4; i++) {
@@ -747,7 +814,7 @@ int main(int argc, char* argv[]) {
     double relative_pos = (key_val - range_start) / (range_end - range_start);
     double percentage = relative_pos * 100.0;
 
-    std::cout << CYAN << "% of the Range: " << RESET << PINK << std::fixed << std::setprecision(2) << percentage << "%" << RESET << std::endl;
+    std::cout << CYAN << "[% Of The Range]: " << RESET << PINK << std::fixed << std::setprecision(2) << percentage << "%" << RESET << std::endl;
 
     delete[] preCompG;
     delete[] preCompGphi;
