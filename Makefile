@@ -18,7 +18,7 @@ export PATH := $(CUDA_HOME)/bin:$(CUDA_HOME)/nvvm/bin:$(PATH)
 
 INCLUDES  := -I$(CUDA_HOME)/include -I$(CUDA_HOME)/bin
 LDFLAGS   := -L$(CUDA_HOME)/lib64 -L$(CUDA_HOME)
-LDLIBS    := -lcudart_static -lcudadevrt -lpthread -ldl -lrt
+LDLIBS    := -lcudart_static -lcudadevrt -lpthread -ldl -lrt -lcrypto
 SRC_CPP   := pollardsrho.cpp almostinverse.cpp
 SRC_CU    := secp256k1.cu
 OBJ       := $(SRC_CPP:.cpp=.o) $(SRC_CU:.cu=.o)
