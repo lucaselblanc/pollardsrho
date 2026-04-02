@@ -101,7 +101,7 @@ K256 = 16
 
 ## Algorithm Complexity
 
- The expected time complexity of Pollard's Rho Lambda algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the steps is restricted to O(√k), keeps the probabilistic window restricted to the range. Given secp256k1, this translates to approximately O(√range), as predicted by the birthday paradox for random walks over a finite group.
+ The expected time complexity of Pollard's Rho Lambda algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the steps is restricted to O(√k) through an artificial cyclic subgroup, keeps the probabilistic window restricted to the range. Given secp256k1, this translates to approximately O(√range), as predicted by the birthday paradox for random walks over a finite group.
 
 ## Prerequisites
 
