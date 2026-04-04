@@ -319,6 +319,10 @@ __host__ __device__ bool DP(const uint64_t* affine_x, int DP_BITS) {
     return (affine_x[0] & ((1ULL << DP_BITS) - 1)) == 0;
 }
 
+__device__ bool is_equal_x(const uint64_t* a, const uint64_t* b) {
+    return (a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3]);
+}
+
 __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* step_table, uint32_t N_STEPS, DPEntry* dp_buffer, int* dp_counter, int max_dp_buffer, int DP_BITS, const ECPointJacobian* G_OFFSET, uint256_t max_scalar) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= num_walkers) return;
@@ -327,8 +331,41 @@ __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* 
 
     for(int step = 0; step < 256; step++) {
         ECPointAffine aff_current;
-
         jacobianToAffine(&aff_current, &w.R);
+
+        if(DP(aff_current.x, DP_BITS)) {
+            int idx = atomicAdd(dp_counter, 1);
+            if (idx < max_dp_buffer) {
+                dp_buffer[idx].x = aff_current.x[1];
+                dp_buffer[idx].a = w.a;
+                dp_buffer[idx].b = w.b;
+            }
+            w.snapshot_steps = 0;
+        }
+
+        if (is_equal_x(aff_current.x, w.snapshot_x) || 
+            is_equal_x(aff_current.x, w.prev_x1) || 
+            is_equal_x(aff_current.x, w.prev_x2)) {
+
+            uint32_t jump_idx = (aff_current.x[0] ^ 0xABCDEFULL) % N_STEPS;
+
+            pointAddJacobian(&w.R, &w.R, &step_table[jump_idx].point);
+            scalarAdd(w.a.limbs, w.a.limbs, step_table[jump_idx].a.limbs);
+
+            w.snapshot_steps = 0;
+            for(int i=0; i<4; i++) {
+                w.snapshot_x[i] = 0xFFFFFFFFFFFFFFFFULL;
+                w.prev_x1[i] = 0xFEFEFEFEFEFEFEFEULL;
+                w.prev_x2[i] = 0xFDFDFDFDFDFDFDFDULL;
+            }
+            continue;
+        }
+
+        for(int i=0; i<4; i++) {
+            w.prev_x2[i] = w.prev_x1[i];
+            w.prev_x1[i] = aff_current.x[i];
+        }
+
         uint32_t step_idx = get_step_idx(aff_current.x, N_STEPS);
 
         pointAddJacobian(&w.R, &w.R, &step_table[step_idx].point);
@@ -369,13 +406,9 @@ __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* 
             pointAddJacobian(&w.R, &w.R, G_OFFSET);
         }
 
-        if(DP(aff_current.x, DP_BITS)) {
-            int idx = atomicAdd(dp_counter, 1);
-            if (idx < max_dp_buffer) {
-                dp_buffer[idx].x = aff_current.x[1];
-                dp_buffer[idx].a = w.a;
-                dp_buffer[idx].b = w.b;
-            }
+        w.snapshot_steps++;
+        if ((w.snapshot_steps & (w.snapshot_steps - 1)) == 0) {
+            for(int i=0; i<4; i++) w.snapshot_x[i] = aff_current.x[i];
         }
     }
 
