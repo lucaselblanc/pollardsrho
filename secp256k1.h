@@ -13,6 +13,11 @@
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
+#ifndef __CUDACC__
+    #include <boost/multiprecision/cpp_int.hpp>
+    typedef boost::multiprecision::cpp_int BigInt;
+#endif
+
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
