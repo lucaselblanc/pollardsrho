@@ -319,7 +319,7 @@ __host__ __device__ bool DP(const uint64_t* affine_x, int DP_BITS) {
     return (affine_x[0] & ((1ULL << DP_BITS) - 1)) == 0;
 }
 
-__global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* step_table, uint32_t N_STEPS, DPEntry* dp_buffer, int* dp_counter, int max_dp_buffer, int DP_BITS, const ECPointJacobian* G_OFFSET) {
+__global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* step_table, uint32_t N_STEPS, DPEntry* dp_buffer, int* dp_counter, int max_dp_buffer, int DP_BITS, const ECPointJacobian* G_OFFSET, uint256_t max_scalar) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= num_walkers) return;
 
@@ -366,7 +366,7 @@ __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* 
             w.a.limbs[2] -= (max_scalar.limbs[2] + borrow);
             borrow = (temp < max_scalar.limbs[2] || (temp == max_scalar.limbs[2] && borrow)) ? 1 : 0;
             w.a.limbs[3] -= (max_scalar.limbs[3] + borrow);
-            pointAddJacobian(&w.R, &w.R, &G_OFFSET);
+            pointAddJacobian(&w.R, &w.R, G_OFFSET);
         }
 
         if(DP(aff_current.x, DP_BITS)) {
@@ -708,6 +708,10 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         cudaHostGetDevicePointer((void**)&dev_dp_buffer, (void*)host_dp_buffer, 0);
         cudaHostGetDevicePointer((void**)&dev_dp_counter, (void*)host_dp_counter, 0);
 
+        ECPointJacobian* dev_G_OFFSET = nullptr;
+        cudaMalloc((void**)&dev_G_OFFSET, sizeof(ECPointJacobian));
+        cudaMemcpy(dev_G_OFFSET, &G_OFFSET, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+
         WalkState* dev_states = nullptr;
         cudaMalloc((void**)&dev_states, WALKERS * sizeof(WalkState));
         cudaMemcpy(dev_states, walkers_state.data(), WALKERS * sizeof(WalkState), cudaMemcpyHostToDevice);
@@ -723,7 +727,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             int numBlocks = (WALKERS + blockSize - 1) / blockSize;
 
             while (search_in_progress.load(std::memory_order_acquire)) {
-                dp_kernel<<<numBlocks, blockSize>>>(dev_states, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS, &G_OFFSET);
+                dp_kernel<<<numBlocks, blockSize>>>(dev_states, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS, dev_G_OFFSET, max_scalar);
                 cudaDeviceSynchronize();
 
                 total_iters.fetch_add(WALKERS * 256, std::memory_order_relaxed);
@@ -772,7 +776,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     *host_dp_counter = 0;
                 }
             }
-            cudaFree(dev_states); cudaFree(dev_step_table); cudaFreeHost(host_dp_buffer); cudaFreeHost(host_dp_counter);
+            cudaFree(dev_states); cudaFree(dev_step_table); cudaFreeHost(host_dp_buffer); cudaFreeHost(host_dp_counter); cudaFree(dev_G_OFFSET);
         });
     }
     else
