@@ -319,7 +319,7 @@ __host__ __device__ bool DP(const uint64_t* affine_x, int DP_BITS) {
     return (affine_x[0] & ((1ULL << DP_BITS) - 1)) == 0;
 }
 
-__global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* step_table, uint32_t N_STEPS, DPEntry* dp_buffer, int* dp_counter, int max_dp_buffer, int DP_BITS) {
+__global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* step_table, uint32_t N_STEPS, DPEntry* dp_buffer, int* dp_counter, int max_dp_buffer, int DP_BITS, const ECPointJacobian* G_OFFSET) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= num_walkers) return;
 
@@ -334,10 +334,45 @@ __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* 
         pointAddJacobian(&w.R, &w.R, &step_table[step_idx].point);
         scalarAdd(w.a.limbs, w.a.limbs, step_table[step_idx].a.limbs);
 
+bool is_greater_equal = false;
+if (w.a.limbs[3] > max_scalar.limbs[3]) {
+    is_greater_equal = true;
+} else if (w.a.limbs[3] == max_scalar.limbs[3]) {
+    if (w.a.limbs[2] > max_scalar.limbs[2]) {
+        is_greater_equal = true;
+    } else if (w.a.limbs[2] == max_scalar.limbs[2]) {
+        if (w.a.limbs[1] > max_scalar.limbs[1]) {
+            is_greater_equal = true;
+        } else if (w.a.limbs[1] == max_scalar.limbs[1]) {
+            if (w.a.limbs[0] >= max_scalar.limbs[0]) {
+                is_greater_equal = true;
+            }
+        }
+    }
+}
+
+if (is_greater_equal) {
+    unsigned long long borrow = 0;
+    unsigned long long temp;
+
+    temp = w.a.limbs[0];
+    w.a.limbs[0] -= max_scalar.limbs[0];
+    borrow = (temp < max_scalar.limbs[0]) ? 1 : 0;
+
+    temp = w.a.limbs[1];
+    w.a.limbs[1] -= (max_scalar.limbs[1] + borrow);
+    borrow = (temp < max_scalar.limbs[1] || (temp == max_scalar.limbs[1] && borrow)) ? 1 : 0;
+    temp = w.a.limbs[2];
+    w.a.limbs[2] -= (max_scalar.limbs[2] + borrow);
+    borrow = (temp < max_scalar.limbs[2] || (temp == max_scalar.limbs[2] && borrow)) ? 1 : 0;
+    w.a.limbs[3] -= (max_scalar.limbs[3] + borrow);
+    pointAddJacobian(&w.R, &w.R, &G_OFFSET);
+}
+
         if(DP(aff_current.x, DP_BITS)) {
             int idx = atomicAdd(dp_counter, 1);
             if (idx < max_dp_buffer) {
-                dp_buffer[idx].x = aff_current.x[0];
+                dp_buffer[idx].x = aff_current.x[1];
                 dp_buffer[idx].a = w.a;
                 dp_buffer[idx].b = w.b;
             }
@@ -688,7 +723,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             int numBlocks = (WALKERS + blockSize - 1) / blockSize;
 
             while (search_in_progress.load(std::memory_order_acquire)) {
-                dp_kernel<<<numBlocks, blockSize>>>(dev_states, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS);
+                dp_kernel<<<numBlocks, blockSize>>>(dev_states, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS, &G_OFFSET);
                 cudaDeviceSynchronize();
 
                 total_iters.fetch_add(WALKERS * 256, std::memory_order_relaxed);
