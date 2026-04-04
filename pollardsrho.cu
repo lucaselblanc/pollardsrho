@@ -334,40 +334,40 @@ __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* 
         pointAddJacobian(&w.R, &w.R, &step_table[step_idx].point);
         scalarAdd(w.a.limbs, w.a.limbs, step_table[step_idx].a.limbs);
 
-bool is_greater_equal = false;
-if (w.a.limbs[3] > max_scalar.limbs[3]) {
-    is_greater_equal = true;
-} else if (w.a.limbs[3] == max_scalar.limbs[3]) {
-    if (w.a.limbs[2] > max_scalar.limbs[2]) {
-        is_greater_equal = true;
-    } else if (w.a.limbs[2] == max_scalar.limbs[2]) {
-        if (w.a.limbs[1] > max_scalar.limbs[1]) {
+        bool is_greater_equal = false;
+        if (w.a.limbs[3] > max_scalar.limbs[3]) {
             is_greater_equal = true;
-        } else if (w.a.limbs[1] == max_scalar.limbs[1]) {
-            if (w.a.limbs[0] >= max_scalar.limbs[0]) {
+        } else if (w.a.limbs[3] == max_scalar.limbs[3]) {
+            if (w.a.limbs[2] > max_scalar.limbs[2]) {
                 is_greater_equal = true;
+            } else if (w.a.limbs[2] == max_scalar.limbs[2]) {
+                if (w.a.limbs[1] > max_scalar.limbs[1]) {
+                    is_greater_equal = true;
+                } else if (w.a.limbs[1] == max_scalar.limbs[1]) {
+                    if (w.a.limbs[0] >= max_scalar.limbs[0]) {
+                        is_greater_equal = true;
+                    }
+                }
             }
         }
-    }
-}
 
-if (is_greater_equal) {
-    unsigned long long borrow = 0;
-    unsigned long long temp;
+        if (is_greater_equal) {
+            unsigned long long borrow = 0;
+            unsigned long long temp;
 
-    temp = w.a.limbs[0];
-    w.a.limbs[0] -= max_scalar.limbs[0];
-    borrow = (temp < max_scalar.limbs[0]) ? 1 : 0;
+            temp = w.a.limbs[0];
+            w.a.limbs[0] -= max_scalar.limbs[0];
+            borrow = (temp < max_scalar.limbs[0]) ? 1 : 0;
 
-    temp = w.a.limbs[1];
-    w.a.limbs[1] -= (max_scalar.limbs[1] + borrow);
-    borrow = (temp < max_scalar.limbs[1] || (temp == max_scalar.limbs[1] && borrow)) ? 1 : 0;
-    temp = w.a.limbs[2];
-    w.a.limbs[2] -= (max_scalar.limbs[2] + borrow);
-    borrow = (temp < max_scalar.limbs[2] || (temp == max_scalar.limbs[2] && borrow)) ? 1 : 0;
-    w.a.limbs[3] -= (max_scalar.limbs[3] + borrow);
-    pointAddJacobian(&w.R, &w.R, &G_OFFSET);
-}
+            temp = w.a.limbs[1];
+            w.a.limbs[1] -= (max_scalar.limbs[1] + borrow);
+            borrow = (temp < max_scalar.limbs[1] || (temp == max_scalar.limbs[1] && borrow)) ? 1 : 0;
+            temp = w.a.limbs[2];
+            w.a.limbs[2] -= (max_scalar.limbs[2] + borrow);
+            borrow = (temp < max_scalar.limbs[2] || (temp == max_scalar.limbs[2] && borrow)) ? 1 : 0;
+            w.a.limbs[3] -= (max_scalar.limbs[3] + borrow);
+            pointAddJacobian(&w.R, &w.R, &G_OFFSET);
+        }
 
         if(DP(aff_current.x, DP_BITS)) {
             int idx = atomicAdd(dp_counter, 1);
