@@ -43,7 +43,6 @@ recurse: $(TARGET)
 
 -include gpu_arch
 
-CXXFLAGS := -03 -std=c++14 -pthread -I. $(INCLUDES)
 NVCCFLAGS := -O3 -std=c++14 -rdc=true -ccbin $(CXX) $(INCLUDES) \
              -Xcompiler "-O3 -pthread -fpermissive -I$(CUDA_HOME)/include" \
              --expt-relaxed-constexpr -MD
@@ -53,7 +52,7 @@ ifneq ($(filter-out 0,$(strip $(GPU_ARCH))),)
 endif
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(NVCCFLAGS) -c $< -o $@
 
 %.o: %.cu
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
