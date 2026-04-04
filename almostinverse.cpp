@@ -14,7 +14,6 @@
 
 #include "secp256k1.h"
 
-using BigInt = cpp_int;
 using std::make_tuple;
 using std::tuple;
 using std::get;
