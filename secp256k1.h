@@ -34,7 +34,6 @@
 #include <cstring>
 #include <iostream>
 #include <tuple>
-#include <boost/multiprecision/cpp_int.hpp>
 
 struct uint256_t {
     uint64_t limbs[4];
