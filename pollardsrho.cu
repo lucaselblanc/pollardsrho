@@ -12,6 +12,7 @@
 
 /* --- POLLARD'S RHO LAMBDA (ρλ) --- */
 
+#define BATCH_SIZE 1024
 #define MAX_BLOCK_SIZE 128
 #include "secp256k1.h"
 
@@ -32,7 +33,7 @@ struct Buffers {
     uint64_t* scalarStepsH;
 };
 
-struct M64_RNG {
+struct MX64_RNG {
     uint64_t state;
     __host__ __device__ void seed(uint64_t s) {
         state = (s == 0) ? 1 : s;
@@ -56,7 +57,7 @@ struct M64_RNG {
 
 struct WalkState {
     uint256_t a, b;
-    M64_RNG rng;
+    MX64_RNG rng;
     ECPointJacobian R;
     Buffers* buffers;
     uint32_t walk_id;
@@ -400,22 +401,20 @@ __host__ __device__ void batchJacobianToAffine(ECPointAffine* aff_out, const ECP
 
 __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* step_table, uint32_t N_STEPS, DPEntry* dp_buffer, int* dp_counter, int max_dp_buffer, int DP_BITS, const ECPointJacobian* G_OFFSET, uint256_t max_scalar) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    bool is_active = (tid < num_walkers);
-
     __shared__ ECPointJacobian s_jac[MAX_BLOCK_SIZE];
     __shared__ ECPointAffine s_aff[MAX_BLOCK_SIZE];
     __shared__ uint64_t s_scratch_prefix[MAX_BLOCK_SIZE * 4];
     __shared__ uint64_t s_scratch_inv[MAX_BLOCK_SIZE * 4];
 
     WalkState w;
-    if (is_active) {
+    if (tid < num_walkers) {
         w = states[tid];
     } else {
         memset(&w, 0, sizeof(WalkState));
         w.R.infinity = 1;
     }
 
-    for(int step = 0; step < 256; step++) {
+    for(int step = 0; step < BATCH_SIZE; step++) {
         if (threadIdx.x < MAX_BLOCK_SIZE) {
             s_jac[threadIdx.x] = w.R;
         }
@@ -436,7 +435,7 @@ __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* 
         }
         __syncthreads();
 
-        if (!is_active) continue;
+        if (tid >= num_walkers) continue;
 
         ECPointAffine aff_current;
         if (threadIdx.x < MAX_BLOCK_SIZE) {
@@ -503,11 +502,9 @@ __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* 
         if (is_greater_equal) {
             unsigned long long borrow = 0;
             unsigned long long temp;
-
             temp = w.a.limbs[0];
             w.a.limbs[0] -= max_scalar.limbs[0];
             borrow = (temp < max_scalar.limbs[0]) ? 1 : 0;
-
             temp = w.a.limbs[1];
             w.a.limbs[1] -= (max_scalar.limbs[1] + borrow);
             borrow = (temp < max_scalar.limbs[1] || (temp == max_scalar.limbs[1] && borrow)) ? 1 : 0;
@@ -524,7 +521,7 @@ __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* 
         }
     }
 
-    if (is_active) {
+    if (tid < num_walkers) {
         states[tid] = w;
     }
 }
@@ -533,10 +530,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     std::atomic<bool> search_in_progress(true);
     std::atomic<unsigned long long> total_iters{0};
     std::atomic<unsigned long long> total_cycles{0};
-    auto start_time = std::chrono::system_clock::now();
-    auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
-    std::tm start_tm{};
-    localtime_r(&start_time_t, &start_tm);
 
     uint256_t k{};
     uint256_t min_scalar{}, max_scalar{};
@@ -547,15 +540,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         for (int i = 0; i < limb; i++) max_scalar.limbs[i] = ~0ULL;
         max_scalar.limbs[limb] = (bit == 63) ? ~0ULL : (1ULL << (bit + 1)) - 1;
     }
-
-    std::cout << CYAN << "Started at: " << RESET << PINK << std::put_time(&start_tm, "%H:%M:%S") << RESET << std::endl;
-    std::cout << CYAN << "WALKERS: " << RESET << PINK << WALKERS << RESET << std::endl;
-    std::cout << CYAN << "DP BITS: " << RESET << PINK << DP_BITS << RESET << std::endl;
-    std::cout << CYAN << "Key Range: " << RESET << PINK << (key_range) << RESET << std::endl;
-    std::cout << CYAN << "Min Range: " << RESET << gradient_zeros(uint256_to_hex(min_scalar), DARK_PINK, PINK) << std::endl;
-    std::cout << CYAN << "Max Range: " << RESET << gradient_zeros(uint256_to_hex(max_scalar), DARK_PINK, PINK) << std::endl;
-    std::cout << BLUE << "---------------------------------------------------------------------------" << RESET;
-    std::cout << "\n\n\n\n";
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
     ECPointAffine target_affine{};
@@ -593,6 +577,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     initScalarSteps(sharedScalarStepsG.data(), windowSize);
     initScalarSteps(sharedScalarStepsH.data(), windowSize);
 
+    std::cout << "\n" << std::endl;
     std::string header = "\033[96m[!] Loading Walkers... \033[0m";
     for (int i = 0; i < WALKERS; i++) {
         std::mt19937_64 cpu_rng(std::random_device{}() ^ (uint64_t)i);
@@ -629,7 +614,22 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         }
     }
 
+    std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+    std::cout << CYAN << "WALKERS: " << RESET << PINK << WALKERS << RESET << std::endl;
+    std::cout << CYAN << "DP BITS: " << RESET << PINK << DP_BITS << RESET << std::endl;
+    std::cout << CYAN << "Key Range: " << RESET << PINK << (key_range) << RESET << std::endl;
+    std::cout << CYAN << "Min Range: " << RESET << gradient_zeros(uint256_to_hex(min_scalar), DARK_PINK, PINK) << std::endl;
+    std::cout << CYAN << "Max Range: " << RESET << gradient_zeros(uint256_to_hex(max_scalar), DARK_PINK, PINK) << std::endl;
+
+    auto start_time = std::chrono::system_clock::now();
+    auto start_time_t = std::chrono::system_clock::to_time_t(start_time);
+    std::tm start_tm{};
+    localtime_r(&start_time_t, &start_tm);
     auto last_print = std::chrono::steady_clock::now();
+
+    std::cout << CYAN << "Started at: " << RESET << PINK << std::put_time(&start_tm, "%H:%M:%S") << RESET << std::endl;
+    std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+    std::cout << CYAN << "Total Ops/10s: " << RESET << GREEN << "?" << RESET << "\n" << CYAN << "Self-Collision Cycles: " << RESET << GREEN << "?" << RESET << "\n" << CYAN << "Collision Probability: " << RESET << GREEN << "?%\n" << RESET << std::flush;
 
     auto worker = [&](int id_start, int id_end) {
         try {
@@ -827,7 +827,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                 dp_kernel<<<numBlocks, blockSize>>>(dev_states, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS, dev_G_OFFSET, max_scalar);
                 cudaDeviceSynchronize();
 
-                total_iters.fetch_add(WALKERS * 256, std::memory_order_relaxed);
+                total_iters.fetch_add(WALKERS * BATCH_SIZE, std::memory_order_relaxed);
 
                 if (*host_dp_counter > 0) {
                     int current_count = std::min(*host_dp_counter, MAX_DP_BUFFER);
@@ -906,10 +906,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     dp_table.clear();
     auto end_time = std::chrono::system_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
-    std::cout << "\n" << std::endl;
-    std::cout << CYAN << "Total duration: " << RESET << PINK << std::setw(2) << std::setfill('0') << duration.count() / 3600 << ":" << std::setw(2) << std::setfill('0') << (duration.count() % 3600) / 60 << ":" << std::setw(2) << std::setfill('0') << duration.count() % 60 << RESET;
-    std::cout << "\n";
-
+    std::cout << CYAN << "Total duration: " << RESET << PINK << std::setw(2) << std::setfill('0') << duration.count() / 3600 << ":" << std::setw(2) << std::setfill('0') << (duration.count() % 3600) / 60 << ":" << std::setw(2) << std::setfill('0') << duration.count() % 60 << RESET << std::endl;
+    std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
     return k;
 }
 
@@ -969,15 +967,38 @@ std::string HexToWif(const std::string& hexKey) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc < 4) {
-        std::cerr << ORANGE << "[Use]: " << RESET << argv[0] << PINK << " <Compressed Public Key(Hex)> " << "<Key Range(int)> " << "<Walkers(int)>" << RESET << std::endl;
+    std::string pub_key_hex;
+    int key_range;
+    int walkers;
+    int dp = -1;
+
+    if (argc == 1) {
+        std::cout << "The Parameters Cannot Be Empty!" << std::endl;
         return 1;
     }
 
-    std::string pub_key_hex(argv[1]);
-    int key_range = std::stoi(argv[2]);
-    int walkers = std::stoi(argv[3]);
-    int dp = 0;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        if (arg == "--pubkey" && i + 1 < argc) {
+            pub_key_hex = argv[++i];
+        } else if (arg == "--range" && i + 1 < argc) {
+            key_range = std::stoi(argv[++i]);
+        } else if (arg == "--walkers" && i + 1 < argc) {
+            walkers = std::stoi(argv[++i]);
+        } else if (arg == "--dp" && i + 1 < argc) {
+            dp = std::stoi(argv[++i]);
+        } else {
+            std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+            std::cerr << ORANGE << "[USAGE]: " << RESET << GREEN << argv[0] << RESET << " --? <?> --? <?> --? <?>\n"
+            << GREEN << "*" << RESET << " --pubkey <hex>  => Compressed Public Key     (Required)\n"
+            << GREEN << "*" << RESET << " --range <int>   => Key Range Bits            (Required)\n"
+            << GREEN << "*" << RESET << " --walkers <int> => Number Of Walkers         (Required)\n"
+            << GREEN << "*" << RESET << " --dp <int>      => Distinguished Points Bits (Optional)\n";
+            std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+            return 1;
+        }
+    }
 
     if (pub_key_hex.length() != 66) {
         std::cerr << RED << "[ERROR] The Compressed Public Key Must Be Exactly 66 Characters Long, Prefix 02/03 + 64 Hex." << RESET << std::endl;
@@ -998,14 +1019,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (argc >= 5) {
-        try {
-            dp = std::stoi(argv[4]);
-        } catch (...) {
-            std::cerr << RED << "Unknown Error Parsing Arguments!" << RESET << std::endl;
-        }
-    }
-
     cudaGetDeviceCount(&deviceCount);
 
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
@@ -1017,7 +1030,7 @@ int main(int argc, char* argv[]) {
     }
     if (dp <= 0) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
-        dp = (int)std::round(std::sqrt(key_range));
+        dp = (int)std::round((double)key_range / 2.0 - 10.0);
     }
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
