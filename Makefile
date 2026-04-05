@@ -32,7 +32,7 @@ set_perms:
 	@echo "Configuring CUDA Toolkit Permissions..."
 	@find $(CUDA_HOME) -type f -path "*/bin/*" -exec chmod +x {} + 2>/dev/null || true
 
-arch: arch.cu
+arch: arch.cu | set_perms
 	$(NVCC) $(INCLUDES) $(LDFLAGS) -ccbin $(CXX) arch.cu -o arch $(LDLIBS)
 
 gpu_arch: arch
