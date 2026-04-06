@@ -12,7 +12,7 @@
 
 /* --- POLLARD'S RHO LAMBDA (ρλ) --- */
 
-#define BATCH_SIZE 1024
+#define BATCH_SIZE 256
 #define MAX_BLOCK_SIZE 128
 #include "secp256k1.h"
 
