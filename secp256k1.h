@@ -37,7 +37,6 @@
 #include <ctime>
 #include <cmath>
 #include <cstring>
-#include <iostream>
 #include <tuple>
 
 struct uint256_t {
@@ -61,7 +60,6 @@ typedef struct {
 struct uint128_t {
     uint64_t lo;
     uint64_t hi;
-
     __host__ __device__ uint128_t(uint64_t x = 0) : lo(x), hi(0) {}
     __host__ __device__ uint128_t operator*(const uint128_t& other) const { uint128_t res; res.lo = lo * other.lo; res.hi = __umul64hi(lo, other.lo); return res; }
     __host__ __device__ uint128_t operator*(uint64_t other) const { return *this * uint128_t(other); }
@@ -93,7 +91,10 @@ struct uint128_t {
 using uint128_t = unsigned __int128;
 #endif
 
-#ifdef __CUDA_ARCH__
+#ifdef __cplusplus
+extern "C" {
+#endif
+
     extern __device__ __constant__ uint64_t P_CONST[4];
     extern __device__ __constant__ uint64_t N_CONST[4];
     extern __device__ __constant__ uint256_t N_STRUCT;
@@ -112,6 +113,7 @@ using uint128_t = unsigned __int128;
     extern __device__ __constant__ uint64_t G1[4];
     extern __device__ __constant__ uint64_t G2[4];
     extern __device__ __constant__ uint64_t MU_P;
+
     extern __device__ ECPointJacobian* preCompG;
     extern __device__ ECPointJacobian* preCompGphi;
     extern __device__ ECPointJacobian* preCompH;
@@ -120,33 +122,9 @@ using uint128_t = unsigned __int128;
     extern __device__ ECPointJacobian* jacEndo;
     extern __device__ ECPointJacobian* jacNormH;
     extern __device__ ECPointJacobian* jacEndoH;
-#else
-    extern const uint64_t P_CONST[4];
-    extern const uint64_t N_CONST[4];
-    extern const uint256_t N_STRUCT;
-    extern const uint64_t GX_CONST[4];
-    extern const uint64_t GY_CONST[4];
-    extern const uint64_t R2_MOD_P[4];
-    extern const uint64_t ZERO_MONT[4];
-    extern const uint64_t ONE_MONT[4];
-    extern const uint64_t SEVEN_MONT[4];
-    extern const uint64_t SUB2_FP[4];
-    extern const uint64_t ZERO[4];
-    extern const uint64_t LAMBDA_N[4];
-    extern const uint64_t BETA_P[4];
-    extern const uint64_t MINUS_B1[4];
-    extern const uint64_t MINUS_B2[4];
-    extern const uint64_t G1[4];
-    extern const uint64_t G2[4];
-    extern const uint64_t MU_P;
-    extern ECPointJacobian* preCompG;
-    extern ECPointJacobian* preCompGphi;
-    extern ECPointJacobian* preCompH;
-    extern ECPointJacobian* preCompHphi;
-    extern ECPointJacobian* jacNorm;
-    extern ECPointJacobian* jacEndo;
-    extern ECPointJacobian* jacNormH;
-    extern ECPointJacobian* jacEndoH;
+
+#ifdef __cplusplus
+}
 #endif
 
 uint256_t almostinverse(uint256_t base, uint256_t mod);
