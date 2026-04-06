@@ -825,6 +825,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
 
             while (search_in_progress.load(std::memory_order_acquire)) {
                 dp_kernel<<<numBlocks, blockSize>>>(dev_states, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS, dev_G_OFFSET, max_scalar);
+
+                cudaError_t err = cudaGetLastError();
+if (err != cudaSuccess) {
+    std::cerr << "CUDA Error: " << cudaGetErrorString(err) << std::endl;
+    search_in_progress.store(false);
+}
+
                 cudaDeviceSynchronize();
 
                 total_iters.fetch_add(WALKERS * BATCH_SIZE, std::memory_order_relaxed);
