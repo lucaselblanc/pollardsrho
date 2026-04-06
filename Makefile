@@ -59,7 +59,7 @@ endif
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJ)
-	$(NVCC) $(OBJ) -o $@ $(LDFLAGS) -Xcompiler "$(CXXFLAGS)" $(LDLIBS)
+	$(NVCC) $(NVCCFLAGS) $(OBJ) -o $@ $(LDFLAGS) $(LDLIBS)
 
 clean:
 	@echo "Cleaning..."
