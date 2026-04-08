@@ -94,37 +94,114 @@ using uint128_t = unsigned __int128;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-    extern __device__ __constant__ uint64_t P_CONST[4];
-    extern __device__ __constant__ uint64_t N_CONST[4];
-    extern __device__ __constant__ uint256_t N_STRUCT;
-    extern __device__ __constant__ uint64_t GX_CONST[4];
-    extern __device__ __constant__ uint64_t GY_CONST[4];
-    extern __device__ __constant__ uint64_t R2_MOD_P[4];
-    extern __device__ __constant__ uint64_t ZERO_MONT[4];
-    extern __device__ __constant__ uint64_t ONE_MONT[4];
-    extern __device__ __constant__ uint64_t SEVEN_MONT[4];
-    extern __device__ __constant__ uint64_t SUB2_FP[4];
-    extern __device__ __constant__ uint64_t ZERO[4];
-    extern __device__ __constant__ uint64_t LAMBDA_N[4];
-    extern __device__ __constant__ uint64_t BETA_P[4];
-    extern __device__ __constant__ uint64_t MINUS_B1[4];
-    extern __device__ __constant__ uint64_t MINUS_B2[4];
-    extern __device__ __constant__ uint64_t G1[4];
-    extern __device__ __constant__ uint64_t G2[4];
-    extern __device__ __constant__ uint64_t MU_P;
-
-    extern __device__ ECPointJacobian* preCompG;
-    extern __device__ ECPointJacobian* preCompGphi;
-    extern __device__ ECPointJacobian* preCompH;
-    extern __device__ ECPointJacobian* preCompHphi;
-    extern __device__ ECPointJacobian* jacNorm;
-    extern __device__ ECPointJacobian* jacEndo;
-    extern __device__ ECPointJacobian* jacNormH;
-    extern __device__ ECPointJacobian* jacEndoH;
-
+	extern __device__ __constant__ uint64_t P_CONST[4];
+	extern __device__ __constant__ uint64_t N_CONST[4];
+	extern __device__ __constant__ uint256_t N_STRUCT;
+	extern __device__ __constant__ uint64_t GX_CONST[4];
+	extern __device__ __constant__ uint64_t GY_CONST[4];
+	extern __device__ __constant__ uint64_t R2_MOD_P[4];
+	extern __device__ __constant__ uint64_t ZERO_MONT[4];
+	extern __device__ __constant__ uint64_t ONE_MONT[4];
+	extern __device__ __constant__ uint64_t SEVEN_MONT[4];
+	extern __device__ __constant__ uint64_t SUB2_FP[4];
+	extern __device__ __constant__ uint64_t LAMBDA_N[4];
+	extern __device__ __constant__ uint64_t BETA_P[4];
+	extern __device__ __constant__ uint64_t MINUS_B1[4];
+	extern __device__ __constant__ uint64_t MINUS_B2[4];
+	extern __device__ __constant__ uint64_t G1[4];
+	extern __device__ __constant__ uint64_t G2[4];
+	extern __device__ __constant__ uint64_t MU_P;
+	extern __device__ ECPointJacobian* preCompG;
+	extern __device__ ECPointJacobian* preCompGphi;
+ 	extern __device__ ECPointJacobian* preCompH;
+	extern __device__ ECPointJacobian* preCompHphi;
+	extern __device__ ECPointJacobian* jacNorm;
+	extern __device__ ECPointJacobian* jacEndo;
+	extern __device__ ECPointJacobian* jacNormH;
+	extern __device__ ECPointJacobian* jacEndoH;
 #ifdef __cplusplus
 }
+#endif
+
+#ifndef __CUDA_ARCH__
+	extern const uint64_t P_CONST_HOST[4];
+	extern const uint64_t N_CONST_HOST[4];
+	extern const uint256_t N_STRUCT_HOST;
+	extern const uint64_t GX_CONST_HOST[4];
+	extern const uint64_t GY_CONST_HOST[4];
+	extern const uint64_t R2_MOD_P_HOST[4];
+	extern const uint64_t ZERO_MONT_HOST[4];
+	extern const uint64_t ONE_MONT_HOST[4];
+	extern const uint64_t SEVEN_MONT_HOST[4];
+ 	extern const uint64_t SUB2_FP_HOST[4];
+ 	extern const uint64_t LAMBDA_N_HOST[4];
+	extern const uint64_t BETA_P_HOST[4];
+ 	extern const uint64_t MINUS_B1_HOST[4];
+ 	extern const uint64_t MINUS_B2_HOST[4];
+ 	extern const uint64_t G1_HOST[4];
+ 	extern const uint64_t G2_HOST[4];
+ 	extern const uint64_t MU_P_HOST;
+ 	extern ECPointJacobian* preCompG_HOST;
+	extern ECPointJacobian* preCompGphi_HOST;
+ 	extern ECPointJacobian* preCompH_HOST;
+ 	extern ECPointJacobian* preCompHphi_HOST;
+ 	extern ECPointJacobian* jacNorm_HOST;
+ 	extern ECPointJacobian* jacEndo_HOST;
+	extern ECPointJacobian* jacNormH_HOST;
+ 	extern ECPointJacobian* jacEndoH_HOST;
+
+#ifndef __CUDA_ARCH__
+        #undef P_CONST
+        #define P_CONST P_CONST_HOST
+        #undef N_CONST
+        #define N_CONST N_CONST_HOST
+        #undef N_STRUCT
+        #define N_STRUCT N_STRUCT_HOST
+        #undef GX_CONST
+        #define GX_CONST GX_CONST_HOST
+        #undef GY_CONST
+        #define GY_CONST GY_CONST_HOST
+        #undef R2_MOD_P
+        #define R2_MOD_P R2_MOD_P_HOST
+        #undef ZERO_MONT
+        #define ZERO_MONT ZERO_MONT_HOST
+        #undef ONE_MONT
+        #define ONE_MONT ONE_MONT_HOST
+        #undef SEVEN_MONT
+        #define SEVEN_MONT SEVEN_MONT_HOST
+        #undef SUB2_FP
+        #define SUB2_FP SUB2_FP_HOST
+        #undef LAMBDA_N
+        #define LAMBDA_N LAMBDA_N_HOST
+        #undef BETA_P
+        #define BETA_P BETA_P_HOST
+        #undef MINUS_B1
+        #define MINUS_B1 MINUS_B1_HOST
+        #undef MINUS_B2
+        #define MINUS_B2 MINUS_B2_HOST
+        #undef G1
+        #define G1 G1_HOST
+        #undef G2
+        #define G2 G2_HOST
+        #undef MU_P
+        #define MU_P MU_P_HOST
+        #undef preCompG
+        #define preCompG preCompG_HOST
+        #undef preCompGphi
+        #define preCompGphi preCompGphi_HOST
+        #undef preCompH
+        #define preCompH preCompH_HOST
+        #undef preCompHphi
+        #define preCompHphi preCompHphi_HOST
+        #undef jacNorm
+        #define jacNorm jacNorm_HOST
+        #undef jacEndo
+        #define jacEndo jacEndo_HOST
+        #undef jacNormH
+        #define jacNormH jacNormH_HOST
+        #undef jacEndoH
+        #define jacEndoH jacEndoH_HOST
+#endif
 #endif
 
 uint256_t almostinverse(uint256_t base, uint256_t mod);
