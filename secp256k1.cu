@@ -12,6 +12,32 @@
 
 #include "secp256k1.h"
 
+#undef P_CONST
+#undef N_CONST
+#undef N_STRUCT
+#undef GX_CONST
+#undef GY_CONST
+#undef R2_MOD_P
+#undef ZERO_MONT
+#undef ONE_MONT
+#undef SEVEN_MONT
+#undef SUB2_FP
+#undef LAMBDA_N
+#undef BETA_P
+#undef MINUS_B1
+#undef MINUS_B2
+#undef G1
+#undef G2
+#undef MU_P
+#undef preCompG
+#undef preCompGphi
+#undef preCompH
+#undef preCompHphi
+#undef jacNorm
+#undef jacEndo
+#undef jacNormH
+#undef jacEndoH
+
 extern "C" {
     __device__ __constant__ uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
     __device__ __constant__ uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -30,15 +56,71 @@ extern "C" {
     __device__ __constant__ uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
     __device__ __constant__ uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
     __device__ __constant__ uint64_t MU_P = 0xD838091DD2253531ULL;
-    __device__ ECPointJacobian* preCompG;
-    __device__ ECPointJacobian* preCompGphi;
-    __device__ ECPointJacobian* preCompH;
-    __device__ ECPointJacobian* preCompHphi;
-    __device__ ECPointJacobian* jacNorm;
-    __device__ ECPointJacobian* jacEndo;
-    __device__ ECPointJacobian* jacNormH;
-    __device__ ECPointJacobian* jacEndoH;
+    __device__ ECPointJacobian* preCompG = nullptr;
+    __device__ ECPointJacobian* preCompGphi = nullptr;
+    __device__ ECPointJacobian* preCompH = nullptr;
+    __device__ ECPointJacobian* preCompHphi = nullptr;
+    __device__ ECPointJacobian* jacNorm = nullptr;
+    __device__ ECPointJacobian* jacEndo = nullptr;
+    __device__ ECPointJacobian* jacNormH = nullptr;
+    __device__ ECPointJacobian* jacEndoH = nullptr;
 }
+
+#ifndef __CUDA_ARCH__
+    #define P_CONST P_CONST_HOST
+    #define N_CONST N_CONST_HOST
+    #define N_STRUCT N_STRUCT_HOST
+    #define GX_CONST GX_CONST_HOST
+    #define GY_CONST GY_CONST_HOST
+    #define R2_MOD_P R2_MOD_P_HOST
+    #define ZERO_MONT ZERO_MONT_HOST
+    #define ONE_MONT ONE_MONT_HOST
+    #define SEVEN_MONT SEVEN_MONT_HOST
+    #define SUB2_FP SUB2_FP_HOST
+    #define LAMBDA_N LAMBDA_N_HOST
+    #define BETA_P BETA_P_HOST
+    #define MINUS_B1 MINUS_B1_HOST
+    #define MINUS_B2 MINUS_B2_HOST
+    #define G1 G1_HOST
+    #define G2 G2_HOST
+    #define MU_P MU_P_HOST
+    #define preCompG preCompG_HOST
+    #define preCompGphi preCompGphi_HOST
+    #define preCompH preCompH_HOST
+    #define preCompHphi preCompHphi_HOST
+    #define jacNorm jacNorm_HOST
+    #define jacEndo jacEndo_HOST
+    #define jacNormH jacNormH_HOST
+    #define jacEndoH jacEndoH_HOST
+#endif
+
+#ifndef __CUDA_ARCH__
+        extern const uint64_t P_CONST_HOST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+        extern const uint64_t N_CONST_HOST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
+        extern const uint256_t N_STRUCT_HOST = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
+        extern const uint64_t GX_CONST_HOST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
+        extern const uint64_t GY_CONST_HOST[4] = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
+        extern const uint64_t R2_MOD_P_HOST[4] = { 0x000007A2000E90A1, 0x0000000000000001, 0x0ULL, 0x0ULL };
+        extern const uint64_t ZERO_MONT_HOST[4] = { 0x0ULL, 0x0ULL, 0x0ULL, 0x0ULL };
+        extern const uint64_t ONE_MONT_HOST[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
+        extern const uint64_t SEVEN_MONT_HOST[4] = {0x700001AB7ULL, 0x0ULL, 0x0ULL, 0x0ULL};
+        extern const uint64_t SUB2_FP_HOST[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+        extern const uint64_t LAMBDA_N_HOST[4] = { 0xDF02967C1B23BD72ULL, 0xA5261C028812645AULL, 0xA5261C028812645AULL, 0x5363AD4CC05C30E0ULL };
+        extern const uint64_t BETA_P_HOST[4] = { 0xB315ECECBB640683ULL, 0x9CF0497512F58995ULL, 0x6E64479EAC3434E9ULL, 0x7AE96A2B657C0710ULL };
+        extern const uint64_t MINUS_B1_HOST[4] = { 0x6F547FA90ABFE4C3ULL, 0xE4437ED6010E8828ULL, 0x0ULL, 0x0ULL };
+        extern const uint64_t MINUS_B2_HOST[4] = { 0x8A280AC50774346DULL, 0xD765CDA83DB1562CULL, 0xCFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
+        extern const uint64_t G1_HOST[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
+        extern const uint64_t G2_HOST[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
+        extern const uint64_t MU_P_HOST = 0xD838091DD2253531ULL;
+        ECPointJacobian* preCompG_HOST = nullptr;
+        ECPointJacobian* preCompGphi_HOST = nullptr;
+        ECPointJacobian* preCompH_HOST = nullptr;
+        ECPointJacobian* preCompHphi_HOST = nullptr;
+        ECPointJacobian* jacNorm_HOST = nullptr;
+        ECPointJacobian* jacEndo_HOST = nullptr;
+        ECPointJacobian* jacNormH_HOST = nullptr;
+        ECPointJacobian* jacEndoH_HOST = nullptr;
+#endif
 
 __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
     uint64_t temp[8];
