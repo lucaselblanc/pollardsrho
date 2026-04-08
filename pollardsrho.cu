@@ -16,6 +16,17 @@
 #define MAX_BLOCK_SIZE 128
 #include "secp256k1.h"
 
+#ifdef __CUDA_ARCH__
+    extern ECPointJacobian* preCompG_HOST;
+    extern ECPointJacobian* preCompGphi_HOST;
+    extern ECPointJacobian* preCompH_HOST;
+    extern ECPointJacobian* preCompHphi_HOST;
+    extern ECPointJacobian* jacNorm_HOST;
+    extern ECPointJacobian* jacNormH_HOST;
+    extern ECPointJacobian* jacEndo_HOST;
+    extern ECPointJacobian* jacEndoH_HOST;
+#endif
+
 const std::string& RED = "\033[91m";
 const std::string& GREEN = "\033[92m";
 const std::string& BLUE = "\033[94m";
@@ -269,14 +280,62 @@ void init_secp256k1(int key_range) {
 
     preCompG = new ECPointJacobian[1ULL << windowSize];
     preCompGphi = new ECPointJacobian[1ULL << windowSize];
-    preCompH = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
-    preCompHphi = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
-    jacNorm = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
-    jacNormH = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
-    jacEndo = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
-    jacEndoH = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
+    preCompH = new ECPointJacobian[1ULL << windowSize];
+    preCompHphi = new ECPointJacobian[1ULL << windowSize];
+    jacNorm = new ECPointJacobian[windowSize];
+    jacNormH = new ECPointJacobian[windowSize];
+    jacEndo = new ECPointJacobian[windowSize];
+    jacEndoH = new ECPointJacobian[windowSize];
 
     initPreCompG(windowSize);
+
+    size_t tableSize = (1ULL << windowSize) * sizeof(ECPointJacobian);
+    size_t normSize = windowSize * sizeof(ECPointJacobian);
+    ECPointJacobian *d_G, *d_Gphi, *d_H, *d_Hphi, *d_jN, *d_jNH, *d_jE, *d_jEH;
+
+    cudaMalloc((void**)&d_G, tableSize);
+    cudaMemcpy(d_G, preCompG, tableSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_Gphi, tableSize);
+    cudaMemcpy(d_Gphi, preCompGphi, tableSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_H, tableSize);
+    cudaMemcpy(d_H, preCompH, tableSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_Hphi, tableSize);
+    cudaMemcpy(d_Hphi, preCompHphi, tableSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_jN, normSize);
+    cudaMemcpy(d_jN, jacNorm, normSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_jNH, normSize);
+    cudaMemcpy(d_jNH, jacNormH, normSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_jE, normSize);
+    cudaMemcpy(d_jE, jacEndo, normSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_jEH, normSize);
+    cudaMemcpy(d_jEH, jacEndoH, normSize, cudaMemcpyHostToDevice);
+
+    #undef preCompG
+    #undef preCompGphi
+    #undef preCompH
+    #undef preCompHphi
+    #undef jacNorm
+    #undef jacNormH
+    #undef jacEndo
+    #undef jacEndoH
+
+    cudaMemcpyToSymbol(preCompG, &d_G, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(preCompGphi, &d_Gphi, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(preCompH, &d_H, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(preCompHphi, &d_Hphi, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacNorm, &d_jN, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacNormH, &d_jNH, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacEndo, &d_jE, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacEndoH, &d_jEH, sizeof(ECPointJacobian*));
+
+    #define preCompG preCompG_HOST
+    #define preCompGphi preCompGphi_HOST
+    #define preCompH preCompH_HOST
+    #define preCompHphi preCompHphi_HOST
+    #define jacNorm jacNorm_HOST
+    #define jacNormH jacNormH_HOST
+    #define jacEndo jacEndo_HOST
+    #define jacEndoH jacEndoH_HOST
 }
 
 uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
@@ -989,7 +1048,7 @@ int main(int argc, char* argv[]) {
 
         if (arg == "--pubkey" && i + 1 < argc) {
             pub_key_hex = argv[++i];
-        } else if (arg == "--range" && i + 1 < argc) {
+        } else if (arg == "--keyrange" && i + 1 < argc) {
             key_range = std::stoi(argv[++i]);
         } else if (arg == "--walkers" && i + 1 < argc) {
             walkers = std::stoi(argv[++i]);
@@ -998,10 +1057,10 @@ int main(int argc, char* argv[]) {
         } else {
             std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
             std::cerr << ORANGE << "[USAGE]: " << RESET << GREEN << argv[0] << RESET << " --? <?> --? <?> --? <?>\n"
-            << GREEN << "*" << RESET << " --pubkey <hex>  => Compressed Public Key     (Required)\n"
-            << GREEN << "*" << RESET << " --range <int>   => Key Range Bits            (Required)\n"
-            << GREEN << "*" << RESET << " --walkers <int> => Number Of Walkers         (Required)\n"
-            << GREEN << "*" << RESET << " --dp <int>      => Distinguished Points Bits (Optional)\n";
+            << GREEN << "*" << RESET << " --pubkey	=> Compressed Public Key	<hex> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --keyrange	=> Key Range Bits		<int> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --walkers	=> Number Of Walkers 		<int> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --dp		=> Distinguished Points Bits	<int> ("<< GREEN << "*" << RESET << "Optional)\n";
             std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
             return 1;
         }
