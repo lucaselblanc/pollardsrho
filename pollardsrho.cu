@@ -134,8 +134,8 @@ void loading_bar(uint64_t current, uint64_t total, const std::string& label) {
 
     std::cout << label << "\n";
     for (int i = 0; i < barWidth; ++i) {
-        if (i < pos) std::cout << BLUE << "â–ˆ" << RESET;
-        else std::cout << BLUE << "â–’" << RESET;
+        if (i < pos) std::cout << BLUE << "█" << RESET;
+        else std::cout << BLUE << "▒" << RESET;
     }
 
     std::cout << " " << std::fixed << std::setprecision(1) << (percent * 100.0) << "%" << std::endl;
