@@ -10,7 +10,7 @@
 * Written by Lucas Leblanc               *
 ******************************************/
 
-/* --- POLLARD'S RHO LAMBDA (ρλ) --- */ 
+/* --- POLLARD'S RHO LAMBDA (ρλ) --- */
 
 #define BATCH_SIZE 256
 #define MAX_BLOCK_SIZE 128
@@ -332,32 +332,7 @@ void init_secp256k1(int key_range) {
     cudaMalloc((void**)&d_jEH, normSize);
     cudaMemcpy(d_jEH, jacEndoH, normSize, cudaMemcpyHostToDevice);
 
-    #undef preCompG
-    #undef preCompGphi
-    #undef preCompH
-    #undef preCompHphi
-    #undef jacNorm
-    #undef jacNormH
-    #undef jacEndo
-    #undef jacEndoH
-
-    cudaMemcpyToSymbol(preCompG, &d_G, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(preCompGphi, &d_Gphi, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(preCompH, &d_H, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(preCompHphi, &d_Hphi, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(jacNorm, &d_jN, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(jacNormH, &d_jNH, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(jacEndo, &d_jE, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(jacEndoH, &d_jEH, sizeof(ECPointJacobian*));
-
-    #define preCompG preCompG_HOST
-    #define preCompGphi preCompGphi_HOST
-    #define preCompH preCompH_HOST
-    #define preCompHphi preCompHphi_HOST
-    #define jacNorm jacNorm_HOST
-    #define jacNormH jacNormH_HOST
-    #define jacEndo jacEndo_HOST
-    #define jacEndoH jacEndoH_HOST
+    update_secp256k1_gpu_pointers(d_G, d_Gphi, d_H, d_Hphi, d_jN, d_jNH, d_jE, d_jEH);
 }
 
 uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
@@ -1165,10 +1140,10 @@ int main(int argc, char* argv[]) {
         } else {
             std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
             std::cerr << ORANGE << "[USAGE]: " << RESET << GREEN << argv[0] << RESET << " --? <?> --? <?> --? <?>\n"
-            << GREEN << "*" << RESET << " --pubkey	=> Compressed Public Key	<hex> ("<< RED << "*" << RESET << "Required)\n"
-            << GREEN << "*" << RESET << " --keyrange	=> Key Range Bits		<int> ("<< RED << "*" << RESET << "Required)\n"
-            << GREEN << "*" << RESET << " --walkers	=> Number Of Walkers 		<int> ("<< RED << "*" << RESET << "Required)\n"
-            << GREEN << "*" << RESET << " --dp		=> Distinguished Points Bits	<int> ("<< GREEN << "*" << RESET << "Optional)\n";
+            << GREEN << "*" << RESET << " --pubkey        => Compressed Public Key        <hex> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --keyrange        => Key Range Bits                <int> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --walkers        => Number Of Walkers                 <int> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --dp                => Distinguished Points Bits        <int> ("<< GREEN << "*" << RESET << "Optional)\n";
             std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
             return 1;
         }
