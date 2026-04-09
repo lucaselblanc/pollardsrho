@@ -66,6 +66,22 @@ extern "C" {
     __device__ ECPointJacobian* jacEndoH = nullptr;
 }
 
+extern "C" void update_secp256k1_gpu_pointers(
+    ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
+    ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
+    ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
+    ECPointJacobian* d_jE, ECPointJacobian* d_jEH
+) {
+    cudaMemcpyToSymbol(preCompG, &d_G, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(preCompGphi, &d_Gphi, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(preCompH, &d_H, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(preCompHphi, &d_Hphi, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacNorm, &d_jN, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacNormH, &d_jNH, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacEndo, &d_jE, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacEndoH, &d_jEH, sizeof(ECPointJacobian*));
+}
+
 #ifndef __CUDA_ARCH__
     #define P_CONST P_CONST_HOST
     #define N_CONST N_CONST_HOST
