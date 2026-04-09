@@ -66,11 +66,23 @@ struct MX64_RNG {
     }
 };
 
-struct GlobalStep {
+struct __align__(16) GlobalStep {
     ECPointJacobian point;
     uint256_t a;
     uint256_t b;
 };
+
+__device__ __forceinline__ GlobalStep load_global_step_ldg(const GlobalStep* table, uint32_t idx) {
+    GlobalStep res;
+    const uint64_t* src = (const uint64_t*)&table[idx];
+    uint64_t* dst = (uint64_t*)&res;
+
+    #pragma unroll
+    for(int i = 0; i < sizeof(GlobalStep) / sizeof(uint64_t); i++) {
+        dst[i] = __ldg(&src[i]);
+    }
+    return res;
+}
 
 struct WalkState {
     uint256_t a, b;
@@ -93,18 +105,6 @@ struct WalkStateSoA {
     uint64_t* prev_x1;
     uint64_t* prev_x2;
 };
-
-__device__ __forceinline__ GlobalStep load_global_step_ldg(const GlobalStep* table, uint32_t idx) {
-    GlobalStep res;
-    const uint64_t* src = (const uint64_t*)&table[idx];
-    uint64_t* dst = (uint64_t*)&res;
-
-    #pragma unroll
-    for(int i = 0; i < sizeof(GlobalStep) / sizeof(uint64_t); i++) {
-        dst[i] = __ldg(&src[i]);
-    }
-    return res;
-}
 
 struct MurmurHash3 {
     //MurmurHash3<Avalanche constants>
@@ -894,22 +894,20 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         return k;
     }
 
-    cudaGetDeviceCount(&deviceCount);
+        cudaGetDeviceCount(&deviceCount);
     if (deviceCount > 0) {
         size_t free_mem, total_mem;
         cudaMemGetInfo(&free_mem, &total_mem);
         const int MAX_DP_BUFFER = static_cast<size_t>(free_mem * 0.5f) / sizeof(DPEntry);
-        DPEntry* host_dp_buffer = nullptr;
-        int* host_dp_counter = nullptr;
-
-        cudaHostAlloc((void**)&host_dp_buffer, MAX_DP_BUFFER * sizeof(DPEntry), cudaHostAllocMapped);
-        cudaHostAlloc((void**)&host_dp_counter, sizeof(int), cudaHostAllocMapped);
-        *host_dp_counter = 0;
 
         DPEntry* dev_dp_buffer = nullptr;
         int* dev_dp_counter = nullptr;
-        cudaHostGetDevicePointer((void**)&dev_dp_buffer, (void*)host_dp_buffer, 0);
-        cudaHostGetDevicePointer((void**)&dev_dp_counter, (void*)host_dp_counter, 0);
+        cudaMalloc((void**)&dev_dp_buffer, MAX_DP_BUFFER * sizeof(DPEntry));
+        cudaMalloc((void**)&dev_dp_counter, sizeof(int));
+        cudaMemset(dev_dp_counter, 0, sizeof(int));
+
+        DPEntry* host_dp_buffer = new DPEntry[MAX_DP_BUFFER];
+        int h_dp_counter = 0;
 
         ECPointJacobian* dev_G_OFFSET = nullptr;
         cudaMalloc((void**)&dev_G_OFFSET, sizeof(ECPointJacobian));
@@ -970,11 +968,14 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                 }
 
                 cudaDeviceSynchronize();
-
                 total_iters.fetch_add(WALKERS * BATCH_SIZE, std::memory_order_relaxed);
 
-                if (*host_dp_counter > 0) {
-                    int current_count = std::min(*host_dp_counter, MAX_DP_BUFFER);
+                cudaMemcpy(&h_dp_counter, dev_dp_counter, sizeof(int), cudaMemcpyDeviceToHost);
+
+                if (h_dp_counter > 0) {
+                    int current_count = std::min(h_dp_counter, MAX_DP_BUFFER);
+                    cudaMemcpy(host_dp_buffer, dev_dp_buffer, current_count * sizeof(DPEntry), cudaMemcpyDeviceToHost);
+
                     for (int i = 0; i < current_count; i++) {
                         DPEntry w_dp = host_dp_buffer[i];
                         DPEntry found_dp;
@@ -1014,15 +1015,17 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                             }
                         }
                     }
-                    *host_dp_counter = 0;
+                    cudaMemset(dev_dp_counter, 0, sizeof(int));
+                    h_dp_counter = 0;
                 }
             }
 
             cudaFree(host_soa.a); cudaFree(host_soa.b); cudaFree(host_soa.R);
             cudaFree(host_soa.snapshot_steps); cudaFree(host_soa.snapshot_x);
             cudaFree(host_soa.prev_x1); cudaFree(host_soa.prev_x2);
-            cudaFree(dev_step_table); cudaFreeHost(host_dp_buffer);
-            cudaFreeHost(host_dp_counter); cudaFree(dev_G_OFFSET);
+            cudaFree(dev_step_table); cudaFree(dev_G_OFFSET);
+            cudaFree(dev_dp_buffer); cudaFree(dev_dp_counter);
+            delete[] host_dp_buffer;
         });
     }
     else
