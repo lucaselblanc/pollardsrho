@@ -10,7 +10,7 @@
 * Written by Lucas Leblanc               *
 ******************************************/
 
-/* --- POLLARD'S RHO LAMBDA (ÏÎ») --- */
+/* --- POLLARD'S RHO LAMBDA (ρλ) --- */ 
 
 #define BATCH_SIZE 256
 #define MAX_BLOCK_SIZE 128
