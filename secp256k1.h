@@ -204,6 +204,13 @@ extern "C" {
 #endif
 #endif
 
+extern "C" void update_secp256k1_gpu_pointers(
+    ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
+    ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
+    ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
+    ECPointJacobian* d_jE, ECPointJacobian* d_jEH
+);
+
 uint256_t almostinverse(uint256_t base, uint256_t mod);
 
 __host__ __device__ void affineToJacobian(ECPointJacobian *jac, const ECPointAffine *aff);
