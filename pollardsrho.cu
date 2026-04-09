@@ -10,7 +10,7 @@
 * Written by Lucas Leblanc               *
 ******************************************/
 
-/* --- POLLARD'S RHO LAMBDA (ρλ) --- */
+/* --- POLLARD'S RHO LAMBDA (ÏÎ») --- */
 
 #define BATCH_SIZE 256
 #define MAX_BLOCK_SIZE 128
@@ -66,6 +66,12 @@ struct MX64_RNG {
     }
 };
 
+struct GlobalStep {
+    ECPointJacobian point;
+    uint256_t a;
+    uint256_t b;
+};
+
 struct WalkState {
     uint256_t a, b;
     MX64_RNG rng;
@@ -78,11 +84,27 @@ struct WalkState {
     uint64_t prev_x2[4];
 };
 
-struct GlobalStep {
-    ECPointJacobian point;
-    uint256_t a;
-    uint256_t b;
+struct WalkStateSoA {
+    uint256_t* a;
+    uint256_t* b;
+    ECPointJacobian* R;
+    uint64_t* snapshot_steps;
+    uint64_t* snapshot_x;
+    uint64_t* prev_x1;
+    uint64_t* prev_x2;
 };
+
+__device__ __forceinline__ GlobalStep load_global_step_ldg(const GlobalStep* table, uint32_t idx) {
+    GlobalStep res;
+    const uint64_t* src = (const uint64_t*)&table[idx];
+    uint64_t* dst = (uint64_t*)&res;
+
+    #pragma unroll
+    for(int i = 0; i < sizeof(GlobalStep) / sizeof(uint64_t); i++) {
+        dst[i] = __ldg(&src[i]);
+    }
+    return res;
+}
 
 struct MurmurHash3 {
     //MurmurHash3<Avalanche constants>
@@ -112,8 +134,8 @@ void loading_bar(uint64_t current, uint64_t total, const std::string& label) {
 
     std::cout << label << "\n";
     for (int i = 0; i < barWidth; ++i) {
-        if (i < pos) std::cout << BLUE << "█" << RESET;
-        else std::cout << BLUE << "▒" << RESET;
+        if (i < pos) std::cout << BLUE << "â–ˆ" << RESET;
+        else std::cout << BLUE << "â–’" << RESET;
     }
 
     std::cout << " " << std::fixed << std::setprecision(1) << (percent * 100.0) << "%" << std::endl;
@@ -458,24 +480,47 @@ __host__ __device__ void batchJacobianToAffine(ECPointAffine* aff_out, const ECP
     }
 }
 
-__global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* step_table, uint32_t N_STEPS, DPEntry* dp_buffer, int* dp_counter, int max_dp_buffer, int DP_BITS, const ECPointJacobian* G_OFFSET, uint256_t max_scalar) {
+__global__ void dp_kernel(WalkStateSoA states, int num_walkers, const GlobalStep* step_table, uint32_t N_STEPS, DPEntry* dp_buffer, int* dp_counter, int max_dp_buffer, int DP_BITS, const ECPointJacobian* G_OFFSET, uint256_t max_scalar) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
     __shared__ ECPointJacobian s_jac[MAX_BLOCK_SIZE];
     __shared__ ECPointAffine s_aff[MAX_BLOCK_SIZE];
     __shared__ uint64_t s_scratch_prefix[MAX_BLOCK_SIZE * 4];
     __shared__ uint64_t s_scratch_inv[MAX_BLOCK_SIZE * 4];
+    __shared__ int warp_base_idx[MAX_BLOCK_SIZE / 32];
 
-    WalkState w;
+    uint256_t w_a, w_b;
+    ECPointJacobian w_R;
+    uint64_t w_snapshot_steps = 0;
+    uint64_t w_snapshot_x[4];
+    uint64_t w_prev_x1[4];
+    uint64_t w_prev_x2[4];
+
     if (tid < num_walkers) {
-        w = states[tid];
+        w_a = states.a[tid];
+        w_b = states.b[tid];
+        w_R = states.R[tid];
+        w_snapshot_steps = states.snapshot_steps[tid];
+        for(int i=0; i<4; i++) {
+            w_snapshot_x[i] = states.snapshot_x[tid * 4 + i];
+            w_prev_x1[i]    = states.prev_x1[tid * 4 + i];
+            w_prev_x2[i]    = states.prev_x2[tid * 4 + i];
+        }
     } else {
-        memset(&w, 0, sizeof(WalkState));
-        w.R.infinity = 1;
+        w_R.infinity = 1;
+    }
+
+    ECPointJacobian G_OFF_local;
+    const uint64_t* go_src = (const uint64_t*)G_OFFSET;
+    uint64_t* go_dst = (uint64_t*)&G_OFF_local;
+    #pragma unroll
+    for(int i = 0; i < sizeof(ECPointJacobian) / sizeof(uint64_t); i++) {
+        go_dst[i] = __ldg(&go_src[i]);
     }
 
     for(int step = 0; step < BATCH_SIZE; step++) {
         if (threadIdx.x < MAX_BLOCK_SIZE) {
-            s_jac[threadIdx.x] = w.R;
+            s_jac[threadIdx.x] = w_R;
         }
         __syncthreads();
 
@@ -500,58 +545,78 @@ __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* 
         if (threadIdx.x < MAX_BLOCK_SIZE) {
             aff_current = s_aff[threadIdx.x];
         } else {
-            jacobianToAffine(&aff_current, &w.R);
+            jacobianToAffine(&aff_current, &w_R);
         }
 
-        if(DP(aff_current.x, DP_BITS)) {
-            int idx = atomicAdd(dp_counter, 1);
-            if (idx < max_dp_buffer) {
-                dp_buffer[idx].x = aff_current.x[1];
-                dp_buffer[idx].a = w.a;
-                dp_buffer[idx].b = w.b;
+        bool is_dp = DP(aff_current.x, DP_BITS);
+        unsigned int active = __activemask();
+        unsigned int ballot = __ballot_sync(active, is_dp ? 1 : 0);
+
+        if (ballot != 0) {
+            int dp_count = __popc(ballot);
+            int leader = __ffs(ballot) - 1;
+
+            if (lane_id == leader) {
+                warp_base_idx[warp_id] = atomicAdd(dp_counter, dp_count);
             }
-            w.snapshot_steps = 0;
+            __syncwarp(active);
+
+            if (is_dp) {
+                unsigned int mask_before = (1u << lane_id) - 1;
+                int my_offset = __popc(ballot & mask_before);
+                int write_idx = warp_base_idx[warp_id] + my_offset;
+
+                if (write_idx < max_dp_buffer) {
+                    dp_buffer[write_idx].x = aff_current.x[1];
+                    dp_buffer[write_idx].a = w_a;
+                    dp_buffer[write_idx].b = w_b;
+                }
+                w_snapshot_steps = 0;
+            }
         }
 
-        if (is_equal_x(aff_current.x, w.snapshot_x) ||
-            is_equal_x(aff_current.x, w.prev_x1) ||
-            is_equal_x(aff_current.x, w.prev_x2)) {
+        if (is_equal_x(aff_current.x, w_snapshot_x) ||
+            is_equal_x(aff_current.x, w_prev_x1) ||
+            is_equal_x(aff_current.x, w_prev_x2)) {
 
             uint32_t jump_idx = (aff_current.x[0] ^ 0xABCDEFULL) % N_STEPS;
 
-            pointAddJacobian(&w.R, &w.R, &step_table[jump_idx].point);
-            scalarAdd(w.a.limbs, w.a.limbs, step_table[jump_idx].a.limbs);
+            GlobalStep jump_step = load_global_step_ldg(step_table, jump_idx);
 
-            w.snapshot_steps = 0;
+            pointAddJacobian(&w_R, &w_R, &jump_step.point);
+            scalarAdd(w_a.limbs, w_a.limbs, jump_step.a.limbs);
+
+            w_snapshot_steps = 0;
             for(int i=0; i<4; i++) {
-                w.snapshot_x[i] = 0xFFFFFFFFFFFFFFFFULL;
-                w.prev_x1[i] = 0xFEFEFEFEFEFEFEFEULL;
-                w.prev_x2[i] = 0xFDFDFDFDFDFDFDFDULL;
+                w_snapshot_x[i] = 0xFFFFFFFFFFFFFFFFULL;
+                w_prev_x1[i] = 0xFEFEFEFEFEFEFEFEULL;
+                w_prev_x2[i] = 0xFDFDFDFDFDFDFDFDULL;
             }
             continue;
         }
 
         for(int i=0; i<4; i++) {
-            w.prev_x2[i] = w.prev_x1[i];
-            w.prev_x1[i] = aff_current.x[i];
+            w_prev_x2[i] = w_prev_x1[i];
+            w_prev_x1[i] = aff_current.x[i];
         }
 
         uint32_t step_idx = get_step_idx(aff_current.x, N_STEPS);
+        GlobalStep step_data = load_global_step_ldg(step_table, step_idx);
 
-        pointAddJacobian(&w.R, &w.R, &step_table[step_idx].point);
-        scalarAdd(w.a.limbs, w.a.limbs, step_table[step_idx].a.limbs);
+        pointAddJacobian(&w_R, &w_R, &step_data.point);
+        scalarAdd(w_a.limbs, w_a.limbs, step_data.a.limbs);
 
         bool is_greater_equal = false;
-        if (w.a.limbs[3] > max_scalar.limbs[3]) {
+        if (w_a.limbs[3] > max_scalar.limbs[3]) {
             is_greater_equal = true;
-        } else if (w.a.limbs[3] == max_scalar.limbs[3]) {
-            if (w.a.limbs[2] > max_scalar.limbs[2]) {
+        } else if (w_a.limbs[3] == max_scalar.limbs[3]) {
+            if (w_a.limbs[2] > max_scalar.limbs[2]) {
                 is_greater_equal = true;
-            } else if (w.a.limbs[2] == max_scalar.limbs[2]) {
-                if (w.a.limbs[1] > max_scalar.limbs[1]) {
+            } else if (w_a.limbs[2] == max_scalar.limbs[2]) {
+                if (w_a.limbs[1] > max_scalar.limbs[1]) {
                     is_greater_equal = true;
-                } else if (w.a.limbs[1] == max_scalar.limbs[1]) {
-                    if (w.a.limbs[0] >= max_scalar.limbs[0]) {
+                } else if (w_a.limbs[1] == max_scalar.limbs[1]) {
+                    if (w_a.limbs[0] >= max_scalar.limbs[0]) {
                         is_greater_equal = true;
                     }
                 }
@@ -561,27 +626,35 @@ __global__ void dp_kernel(WalkState* states, int num_walkers, const GlobalStep* 
         if (is_greater_equal) {
             unsigned long long borrow = 0;
             unsigned long long temp;
-            temp = w.a.limbs[0];
-            w.a.limbs[0] -= max_scalar.limbs[0];
+            temp = w_a.limbs[0];
+            w_a.limbs[0] -= max_scalar.limbs[0];
             borrow = (temp < max_scalar.limbs[0]) ? 1 : 0;
-            temp = w.a.limbs[1];
-            w.a.limbs[1] -= (max_scalar.limbs[1] + borrow);
+            temp = w_a.limbs[1];
+            w_a.limbs[1] -= (max_scalar.limbs[1] + borrow);
             borrow = (temp < max_scalar.limbs[1] || (temp == max_scalar.limbs[1] && borrow)) ? 1 : 0;
-            temp = w.a.limbs[2];
-            w.a.limbs[2] -= (max_scalar.limbs[2] + borrow);
+            temp = w_a.limbs[2];
+            w_a.limbs[2] -= (max_scalar.limbs[2] + borrow);
             borrow = (temp < max_scalar.limbs[2] || (temp == max_scalar.limbs[2] && borrow)) ? 1 : 0;
-            w.a.limbs[3] -= (max_scalar.limbs[3] + borrow);
-            pointAddJacobian(&w.R, &w.R, G_OFFSET);
+            w_a.limbs[3] -= (max_scalar.limbs[3] + borrow);
+
+            pointAddJacobian(&w_R, &w_R, &G_OFF_local);
         }
 
-        w.snapshot_steps++;
-        if ((w.snapshot_steps & (w.snapshot_steps - 1)) == 0) {
-            for(int i=0; i<4; i++) w.snapshot_x[i] = aff_current.x[i];
+        w_snapshot_steps++;
+        if ((w_snapshot_steps & (w_snapshot_steps - 1)) == 0) {
+            for(int i=0; i<4; i++) w_snapshot_x[i] = aff_current.x[i];
         }
     }
 
     if (tid < num_walkers) {
-        states[tid] = w;
+        states.a[tid] = w_a;
+        states.R[tid] = w_R;
+        states.snapshot_steps[tid] = w_snapshot_steps;
+        for(int i=0; i<4; i++) {
+            states.snapshot_x[tid * 4 + i] = w_snapshot_x[i];
+            states.prev_x1[tid * 4 + i]    = w_prev_x1[i];
+            states.prev_x2[tid * 4 + i]    = w_prev_x2[i];
+        }
     }
 }
 
@@ -867,13 +940,43 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         cudaMalloc((void**)&dev_G_OFFSET, sizeof(ECPointJacobian));
         cudaMemcpy(dev_G_OFFSET, &G_OFFSET, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
 
-        WalkState* dev_states = nullptr;
-        cudaMalloc((void**)&dev_states, WALKERS * sizeof(WalkState));
-        cudaMemcpy(dev_states, walkers_state.data(), WALKERS * sizeof(WalkState), cudaMemcpyHostToDevice);
-
         void* dev_step_table = nullptr;
         cudaMalloc(&dev_step_table, N_STEPS * sizeof(GlobalStep));
         cudaMemcpy(dev_step_table, localStepTable.data(), N_STEPS * sizeof(GlobalStep), cudaMemcpyHostToDevice);
+
+        WalkStateSoA host_soa;
+        cudaMalloc((void**)&host_soa.a, WALKERS * sizeof(uint256_t));
+        cudaMalloc((void**)&host_soa.b, WALKERS * sizeof(uint256_t));
+        cudaMalloc((void**)&host_soa.R, WALKERS * sizeof(ECPointJacobian));
+        cudaMalloc((void**)&host_soa.snapshot_steps, WALKERS * sizeof(uint64_t));
+        cudaMalloc((void**)&host_soa.snapshot_x, WALKERS * 4 * sizeof(uint64_t));
+        cudaMalloc((void**)&host_soa.prev_x1, WALKERS * 4 * sizeof(uint64_t));
+        cudaMalloc((void**)&host_soa.prev_x2, WALKERS * 4 * sizeof(uint64_t));
+
+        std::vector<uint256_t> h_a(WALKERS), h_b(WALKERS);
+        std::vector<ECPointJacobian> h_R(WALKERS);
+        std::vector<uint64_t> h_snap_steps(WALKERS);
+        std::vector<uint64_t> h_snap_x(WALKERS * 4), h_prev_x1(WALKERS * 4), h_prev_x2(WALKERS * 4);
+
+        for (int i = 0; i < WALKERS; i++) {
+            h_a[i] = walkers_state[i].a;
+            h_b[i] = walkers_state[i].b;
+            h_R[i] = walkers_state[i].R;
+            h_snap_steps[i] = walkers_state[i].snapshot_steps;
+            for (int j = 0; j < 4; j++) {
+                h_snap_x[i * 4 + j] = walkers_state[i].snapshot_x[j];
+                h_prev_x1[i * 4 + j] = walkers_state[i].prev_x1[j];
+                h_prev_x2[i * 4 + j] = walkers_state[i].prev_x2[j];
+            }
+        }
+
+        cudaMemcpy(host_soa.a, h_a.data(), WALKERS * sizeof(uint256_t), cudaMemcpyHostToDevice);
+        cudaMemcpy(host_soa.b, h_b.data(), WALKERS * sizeof(uint256_t), cudaMemcpyHostToDevice);
+        cudaMemcpy(host_soa.R, h_R.data(), WALKERS * sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
+        cudaMemcpy(host_soa.snapshot_steps, h_snap_steps.data(), WALKERS * sizeof(uint64_t), cudaMemcpyHostToDevice);
+        cudaMemcpy(host_soa.snapshot_x, h_snap_x.data(), WALKERS * 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
+        cudaMemcpy(host_soa.prev_x1, h_prev_x1.data(), WALKERS * 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
+        cudaMemcpy(host_soa.prev_x2, h_prev_x2.data(), WALKERS * 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
 
         threads.emplace_back([&]() {
             int minGridSize;
@@ -883,13 +986,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             int numBlocks = (WALKERS + blockSize - 1) / blockSize;
 
             while (search_in_progress.load(std::memory_order_acquire)) {
-                dp_kernel<<<numBlocks, blockSize>>>(dev_states, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS, dev_G_OFFSET, max_scalar);
+                dp_kernel<<<numBlocks, blockSize>>>(host_soa, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS, dev_G_OFFSET, max_scalar);
 
                 cudaError_t err = cudaGetLastError();
-if (err != cudaSuccess) {
-    std::cerr << "CUDA Error: " << cudaGetErrorString(err) << std::endl;
-    search_in_progress.store(false);
-}
+                if (err != cudaSuccess) {
+                    std::cerr << "CUDA Error: " << cudaGetErrorString(err) << std::endl;
+                    search_in_progress.store(false);
+                }
 
                 cudaDeviceSynchronize();
 
@@ -939,7 +1042,12 @@ if (err != cudaSuccess) {
                     *host_dp_counter = 0;
                 }
             }
-            cudaFree(dev_states); cudaFree(dev_step_table); cudaFreeHost(host_dp_buffer); cudaFreeHost(host_dp_counter); cudaFree(dev_G_OFFSET);
+
+            cudaFree(host_soa.a); cudaFree(host_soa.b); cudaFree(host_soa.R);
+            cudaFree(host_soa.snapshot_steps); cudaFree(host_soa.snapshot_x);
+            cudaFree(host_soa.prev_x1); cudaFree(host_soa.prev_x2);
+            cudaFree(dev_step_table); cudaFreeHost(host_dp_buffer);
+            cudaFreeHost(host_dp_counter); cudaFree(dev_G_OFFSET);
         });
     }
     else
