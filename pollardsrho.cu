@@ -967,7 +967,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     search_in_progress.store(false);
                 }
 
-                cudaDeviceSynchronize();
+                if(total_iters.load() % 100000000 == 0) {
+                    cudaDeviceSynchronize();
+                }
                 total_iters.fetch_add(WALKERS * BATCH_SIZE, std::memory_order_relaxed);
 
                 cudaMemcpy(&h_dp_counter, dev_dp_counter, sizeof(int), cudaMemcpyDeviceToHost);
