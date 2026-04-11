@@ -12,8 +12,7 @@
 
 /* --- POLLARD'S RHO LAMBDA (ρλ) --- */
 
-#define BATCH_SIZE 256
-#define MAX_BLOCK_SIZE 128
+#define BLOCK_SIZE 128
 #include "secp256k1.h"
 
 #ifdef __CUDA_ARCH__
@@ -44,49 +43,9 @@ struct Buffers {
     uint64_t* scalarStepsH;
 };
 
-struct MX64_RNG {
-    uint64_t state;
-    __host__ __device__ void seed(uint64_t s) {
-        state = (s == 0) ? 1 : s;
-    }
-
-    __host__ __device__ uint64_t next() {
-        state += 0x9e3779b97f4a7c15ULL;
-        uint64_t z = state;
-        z ^= z >> 33;
-        z *= 0xff51afd7ed558ccdULL;
-        z ^= z >> 33;
-        z *= 0xc4ceb9fe1a85ec53ULL;
-        z ^= z >> 33;
-        return z;
-    }
-
-    __host__ __device__ uint64_t operator()() {
-        return next();
-    }
-};
-
-struct __align__(16) GlobalStep {
-    ECPointJacobian point;
-    uint256_t a;
-    uint256_t b;
-};
-
-__device__ __forceinline__ GlobalStep load_global_step_ldg(const GlobalStep* table, uint32_t idx) {
-    GlobalStep res;
-    const uint64_t* src = (const uint64_t*)&table[idx];
-    uint64_t* dst = (uint64_t*)&res;
-
-    #pragma unroll
-    for(int i = 0; i < sizeof(GlobalStep) / sizeof(uint64_t); i++) {
-        dst[i] = __ldg(&src[i]);
-    }
-    return res;
-}
-
 struct WalkState {
     uint256_t a, b;
-    MX64_RNG rng;
+    std::mt19937_64 rng;
     ECPointJacobian R;
     Buffers* buffers;
     uint32_t walk_id;
@@ -96,19 +55,9 @@ struct WalkState {
     uint64_t prev_x2[4];
 };
 
-struct WalkStateSoA {
-    uint256_t* a;
-    uint256_t* b;
-    ECPointJacobian* R;
-    uint64_t* snapshot_steps;
-    uint64_t* snapshot_x;
-    uint64_t* prev_x1;
-    uint64_t* prev_x2;
-};
-
 struct MurmurHash3 {
     //MurmurHash3<Avalanche constants>
-    __host__ __device__ size_t operator()(uint64_t x) const {
+    size_t operator()(uint64_t x) const {
         x ^= x >> 33;
         x *= 0xff51afd7ed558ccdULL;
         x ^= x >> 33;
@@ -302,37 +251,14 @@ void init_secp256k1(int key_range) {
 
     preCompG = new ECPointJacobian[1ULL << windowSize];
     preCompGphi = new ECPointJacobian[1ULL << windowSize];
-    preCompH = new ECPointJacobian[1ULL << windowSize];
-    preCompHphi = new ECPointJacobian[1ULL << windowSize];
-    jacNorm = new ECPointJacobian[windowSize];
-    jacNormH = new ECPointJacobian[windowSize];
-    jacEndo = new ECPointJacobian[windowSize];
-    jacEndoH = new ECPointJacobian[windowSize];
+    preCompH = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
+    preCompHphi = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
+    jacNorm = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
+    jacNormH = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
+    jacEndo = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
+    jacEndoH = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
 
     initPreCompG(windowSize);
-
-    size_t tableSize = (1ULL << windowSize) * sizeof(ECPointJacobian);
-    size_t normSize = windowSize * sizeof(ECPointJacobian);
-    ECPointJacobian *d_G, *d_Gphi, *d_H, *d_Hphi, *d_jN, *d_jNH, *d_jE, *d_jEH;
-
-    cudaMalloc((void**)&d_G, tableSize);
-    cudaMemcpy(d_G, preCompG, tableSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_Gphi, tableSize);
-    cudaMemcpy(d_Gphi, preCompGphi, tableSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_H, tableSize);
-    cudaMemcpy(d_H, preCompH, tableSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_Hphi, tableSize);
-    cudaMemcpy(d_Hphi, preCompHphi, tableSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_jN, normSize);
-    cudaMemcpy(d_jN, jacNorm, normSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_jNH, normSize);
-    cudaMemcpy(d_jNH, jacNormH, normSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_jE, normSize);
-    cudaMemcpy(d_jE, jacEndo, normSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_jEH, normSize);
-    cudaMemcpy(d_jEH, jacEndoH, normSize, cudaMemcpyHostToDevice);
-
-    update_secp256k1_gpu_pointers(d_G, d_Gphi, d_H, d_Hphi, d_jN, d_jNH, d_jE, d_jEH);
 }
 
 uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
@@ -389,21 +315,17 @@ uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max
     return add_uint256(r, min_scalar);
 }
 
-__host__ __device__ uint32_t get_step_idx(const uint64_t* x, uint32_t N_STEPS) {
+uint32_t get_step_idx(const uint64_t* x, uint32_t N_STEPS) {
     uint64_t combined = x[0] ^ (x[1] << 1) ^ (x[2] << 2) ^ (x[3] << 3);
     MurmurHash3 hasher;
     return static_cast<uint32_t>(hasher(combined) % N_STEPS);
 }
 
-__host__ __device__ bool DP(const uint64_t* affine_x, int DP_BITS) {
+bool DP(const uint64_t* affine_x, int DP_BITS) {
     return (affine_x[0] & ((1ULL << DP_BITS) - 1)) == 0;
 }
 
-__device__ bool is_equal_x(const uint64_t* a, const uint64_t* b) {
-    return (a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3]);
-}
-
-__host__ __device__ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count, uint64_t* scratch_prefix, uint64_t* scratch_inv) {
+void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count, uint64_t* scratch_prefix, uint64_t* scratch_inv) {
     if (count <= 0) return;
     if (jacobianIsInfinity(&jac_in[0])) {
         memcpy(&scratch_prefix[0], ONE_MONT, 32);
@@ -455,219 +377,27 @@ __host__ __device__ void batchJacobianToAffine(ECPointAffine* aff_out, const ECP
     }
 }
 
-__device__ __forceinline__ void scalarAddPTX(uint64_t* r, const uint64_t* a, const uint64_t* b) {
-    asm volatile(
-        "add.cc.u64    %0, %4, %8;\n\t"
-        "addc.cc.u64   %1, %5, %9;\n\t"
-        "addc.cc.u64   %2, %6, %10;\n\t"
-        "addc.u64      %3, %7, %11;\n\t"
-        : "=l"(r[0]), "=l"(r[1]), "=l"(r[2]), "=l"(r[3])
-        : "l"(a[0]), "l"(a[1]), "l"(a[2]), "l"(a[3]),
-          "l"(b[0]), "l"(b[1]), "l"(b[2]), "l"(b[3])
-    );
-}
-
-__device__ __forceinline__ void scalarSubPTX(uint64_t* r, const uint64_t* a, const uint64_t* b) {
-    asm volatile(
-        "sub.cc.u64    %0, %4, %8;\n\t"
-        "subc.cc.u64   %1, %5, %9;\n\t"
-        "subc.cc.u64   %2, %6, %10;\n\t"
-        "subc.u64      %3, %7, %11;\n\t"
-        : "=l"(r[0]), "=l"(r[1]), "=l"(r[2]), "=l"(r[3])
-        : "l"(a[0]), "l"(a[1]), "l"(a[2]), "l"(a[3]),
-          "l"(b[0]), "l"(b[1]), "l"(b[2]), "l"(b[3])
-    );
-}
-
-__device__ __forceinline__ bool scalarCmpGePTX(const uint64_t* a, const uint64_t* b) {
-    if (a[3] > b[3]) return true;
-    if (a[3] < b[3]) return false;
-    if (a[2] > b[2]) return true;
-    if (a[2] < b[2]) return false;
-    if (a[1] > b[1]) return true;
-    if (a[1] < b[1]) return false;
-    return a[0] >= b[0];
-}
-
-__global__ void dp_kernel(WalkStateSoA states, int num_walkers, const GlobalStep* step_table, uint32_t N_STEPS, DPEntry* dp_buffer, int* dp_counter, int max_dp_buffer, int DP_BITS, const ECPointJacobian* G_OFFSET, uint256_t max_scalar) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-    __shared__ ECPointJacobian s_jac[MAX_BLOCK_SIZE];
-    __shared__ ECPointAffine s_aff[MAX_BLOCK_SIZE];
-    __shared__ uint64_t s_scratch_prefix[MAX_BLOCK_SIZE * 4];
-    __shared__ uint64_t s_scratch_inv[MAX_BLOCK_SIZE * 4];
-    __shared__ int warp_base_idx[MAX_BLOCK_SIZE / 32];
-
-    uint256_t w_a, w_b;
-    ECPointJacobian w_R;
-    uint64_t w_snapshot_steps = 0;
-    uint64_t w_snapshot_x[4];
-    uint64_t w_prev_x1[4];
-    uint64_t w_prev_x2[4];
-
-    if (tid < num_walkers) {
-        w_a = states.a[tid];
-        w_b = states.b[tid];
-        w_R = states.R[tid];
-        w_snapshot_steps = states.snapshot_steps[tid];
-        for(int i=0; i<4; i++) {
-            w_snapshot_x[i] = states.snapshot_x[tid * 4 + i];
-            w_prev_x1[i]    = states.prev_x1[tid * 4 + i];
-            w_prev_x2[i]    = states.prev_x2[tid * 4 + i];
-        }
-    } else {
-        w_R.infinity = 1;
-    }
-
-    ECPointJacobian G_OFF_local;
-    const uint64_t* go_src = (const uint64_t*)G_OFFSET;
-    uint64_t* go_dst = (uint64_t*)&G_OFF_local;
-    #pragma unroll
-    for(int i = 0; i < sizeof(ECPointJacobian) / sizeof(uint64_t); i++) {
-        go_dst[i] = __ldg(&go_src[i]);
-    }
-
-    for(int step = 0; step < BATCH_SIZE; step++) {
-        if (threadIdx.x < MAX_BLOCK_SIZE) {
-            s_jac[threadIdx.x] = w_R;
-        }
-        __syncthreads();
-
-        int warp_id = threadIdx.x / 32;
-        int lane_id = threadIdx.x % 32;
-
-        if (lane_id == 0 && threadIdx.x < MAX_BLOCK_SIZE) {
-            int warp_size = (blockDim.x - warp_id * 32 < 32) ? (blockDim.x - warp_id * 32) : 32;
-            batchJacobianToAffine(
-                &s_aff[warp_id * 32],
-                &s_jac[warp_id * 32],
-                warp_size,
-                &s_scratch_prefix[warp_id * 32 * 4],
-                &s_scratch_inv[warp_id * 32 * 4]
-            );
-        }
-        __syncthreads();
-
-        if (tid >= num_walkers) continue;
-
-        ECPointAffine aff_current;
-        if (threadIdx.x < MAX_BLOCK_SIZE) {
-            aff_current = s_aff[threadIdx.x];
-        } else {
-            jacobianToAffine(&aff_current, &w_R);
-        }
-
-        bool is_dp = DP(aff_current.x, DP_BITS);
-        unsigned int active = __activemask();
-        unsigned int ballot = __ballot_sync(active, is_dp ? 1 : 0);
-
-        if (ballot != 0) {
-            int dp_count = __popc(ballot);
-            int leader = __ffs(ballot) - 1;
-
-            if (lane_id == leader) {
-                warp_base_idx[warp_id] = atomicAdd(dp_counter, dp_count);
+__global__ void batchJacobianToAffineKernel(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < count) {
+        if (jacobianIsInfinity(&jac_in[idx])) {
+            aff_out[idx].infinity = 1;
+            for(int i = 0; i < 4; i++) {
+                aff_out[idx].x[i] = 0;
+                aff_out[idx].y[i] = 0;
             }
-            __syncwarp(active);
-
-            if (is_dp) {
-                unsigned int mask_before = (1u << lane_id) - 1;
-                int my_offset = __popc(ballot & mask_before);
-                int write_idx = warp_base_idx[warp_id] + my_offset;
-
-                if (write_idx < max_dp_buffer) {
-                    dp_buffer[write_idx].x = aff_current.x[1];
-                    dp_buffer[write_idx].a = w_a;
-                    dp_buffer[write_idx].b = w_b;
-                }
-                w_snapshot_steps = 0;
-            }
+            return;
         }
 
-        if (is_equal_x(aff_current.x, w_snapshot_x) ||
-            is_equal_x(aff_current.x, w_prev_x1) ||
-            is_equal_x(aff_current.x, w_prev_x2)) {
+        uint64_t z_inv[4];
+        uint64_t z2[4];
+        uint64_t tmp_mont[4];
 
-            uint32_t jump_idx = (aff_current.x[0] ^ 0xABCDEFULL) % N_STEPS;
-
-            GlobalStep jump_step = load_global_step_ldg(step_table, jump_idx);
-
-            pointAddJacobian(&w_R, &w_R, &jump_step.point);
-            scalarAddPTX(w_a.limbs, w_a.limbs, jump_step.a.limbs);
-
-            w_snapshot_steps = 0;
-            for(int i=0; i<4; i++) {
-                w_snapshot_x[i] = 0xFFFFFFFFFFFFFFFFULL;
-                w_prev_x1[i] = 0xFEFEFEFEFEFEFEFEULL;
-                w_prev_x2[i] = 0xFDFDFDFDFDFDFDFDULL;
-            }
-            continue;
-        }
-
-        for(int i=0; i<4; i++) {
-            w_prev_x2[i] = w_prev_x1[i];
-            w_prev_x1[i] = aff_current.x[i];
-        }
-
-        uint32_t step_idx = get_step_idx(aff_current.x, N_STEPS);
-        GlobalStep step_data = load_global_step_ldg(step_table, step_idx);
-
-        pointAddJacobian(&w_R, &w_R, &step_data.point);
-        scalarAddPTX(w_a.limbs, w_a.limbs, step_data.a.limbs);
-        if (scalarCmpGePTX(w_a.limbs, max_scalar.limbs)) {
-            scalarSubPTX(w_a.limbs, w_a.limbs, max_scalar.limbs);
-            pointAddJacobian(&w_R, &w_R, &G_OFF_local);
-        }
-
-        bool is_greater_equal = false;
-        if (w_a.limbs[3] > max_scalar.limbs[3]) {
-            is_greater_equal = true;
-        } else if (w_a.limbs[3] == max_scalar.limbs[3]) {
-            if (w_a.limbs[2] > max_scalar.limbs[2]) {
-                is_greater_equal = true;
-            } else if (w_a.limbs[2] == max_scalar.limbs[2]) {
-                if (w_a.limbs[1] > max_scalar.limbs[1]) {
-                    is_greater_equal = true;
-                } else if (w_a.limbs[1] == max_scalar.limbs[1]) {
-                    if (w_a.limbs[0] >= max_scalar.limbs[0]) {
-                        is_greater_equal = true;
-                    }
-                }
-            }
-        }
-
-        if (is_greater_equal) {
-            unsigned long long borrow = 0;
-            unsigned long long temp;
-            temp = w_a.limbs[0];
-            w_a.limbs[0] -= max_scalar.limbs[0];
-            borrow = (temp < max_scalar.limbs[0]) ? 1 : 0;
-            temp = w_a.limbs[1];
-            w_a.limbs[1] -= (max_scalar.limbs[1] + borrow);
-            borrow = (temp < max_scalar.limbs[1] || (temp == max_scalar.limbs[1] && borrow)) ? 1 : 0;
-            temp = w_a.limbs[2];
-            w_a.limbs[2] -= (max_scalar.limbs[2] + borrow);
-            borrow = (temp < max_scalar.limbs[2] || (temp == max_scalar.limbs[2] && borrow)) ? 1 : 0;
-            w_a.limbs[3] -= (max_scalar.limbs[3] + borrow);
-
-            pointAddJacobian(&w_R, &w_R, &G_OFF_local);
-        }
-
-        w_snapshot_steps++;
-        if ((w_snapshot_steps & (w_snapshot_steps - 1)) == 0) {
-            for(int i=0; i<4; i++) w_snapshot_x[i] = aff_current.x[i];
-        }
-    }
-
-    if (tid < num_walkers) {
-        states.a[tid] = w_a;
-        states.R[tid] = w_R;
-        states.snapshot_steps[tid] = w_snapshot_steps;
-        for(int i=0; i<4; i++) {
-            states.snapshot_x[tid * 4 + i] = w_snapshot_x[i];
-            states.prev_x1[tid * 4 + i]    = w_prev_x1[i];
-            states.prev_x2[tid * 4 + i]    = w_prev_x2[i];
-        }
+        modExpMontP(z_inv, jac_in[idx].Z, SUB2_FP);
+        modMulMontP(z2, z_inv, z_inv);
+        modMulMontP(tmp_mont, jac_in[idx].X, z2);
+        fromMontgomeryP(aff_out[idx].x, tmp_mont);
+        aff_out[idx].infinity = 0;
     }
 }
 
@@ -784,11 +514,36 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             std::vector<uint64_t> scratch_prefix(local_count * 4);
             std::vector<uint64_t> scratch_inv(local_count * 4);
 
+            ECPointJacobian* d_jac_batch = nullptr;
+            ECPointAffine* d_aff_batch = nullptr;
+            cudaStream_t stream;
+
+            if (deviceCount > 0) {
+                cudaStreamCreate(&stream);
+                cudaMalloc(&d_jac_batch, local_count * sizeof(ECPointJacobian));
+                cudaMalloc(&d_aff_batch, local_count * sizeof(ECPointAffine));
+            } else {
+                scratch_prefix.resize(local_count * 4);
+                scratch_inv.resize(local_count * 4);
+            }
+
+            auto montgomeryBatchInversion = [&]() {
+                if (deviceCount > 0) {
+                    cudaMemcpyAsync(d_jac_batch, jac_batch.data(), local_count * sizeof(ECPointJacobian), cudaMemcpyHostToDevice, stream);
+                    int numBlocks = (local_count + BLOCK_SIZE - 1) / BLOCK_SIZE;
+                    batchJacobianToAffineKernel<<<numBlocks, BLOCK_SIZE, 0, stream>>>(d_aff_batch, d_jac_batch, local_count);
+                    cudaMemcpyAsync(aff_batch.data(), d_aff_batch, local_count * sizeof(ECPointAffine), cudaMemcpyDeviceToHost, stream);
+                    cudaStreamSynchronize(stream);
+                } else {
+                    batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
+                }
+            };
+
             for (int i = 0; i < local_count; i++) {
                 jac_batch[i] = walkers_state[id_start + i].R;
             }
 
-            batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
+            montgomeryBatchInversion();
 
             while (search_in_progress.load(std::memory_order_acquire)) {
                 total_iters.fetch_add(local_count, std::memory_order_relaxed);
@@ -809,7 +564,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     jac_batch[i] = w->R;
                 }
 
-                batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
+                montgomeryBatchInversion();
 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
@@ -900,6 +655,12 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     }
                 }
             }
+
+            if (deviceCount > 0) {
+                cudaFree(d_jac_batch);
+                cudaFree(d_aff_batch);
+                cudaStreamDestroy(stream);
+            }
         } catch (const std::exception& e) {
             std::cerr << RED << "\n[Thread Error]: " << e.what() << RESET << std::endl;
             search_in_progress.store(false);
@@ -932,160 +693,14 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         return k;
     }
 
-    cudaGetDeviceCount(&deviceCount);
-    if (deviceCount > 0) {
-        size_t free_mem, total_mem;
-        cudaMemGetInfo(&free_mem, &total_mem);
-        const int MAX_DP_BUFFER = static_cast<size_t>(free_mem * 0.5f) / sizeof(DPEntry);
+    if (cores == 0) cores = 2;
+    cores = std::min<unsigned int>(cores, WALKERS);
+    int chunk = WALKERS / cores;
 
-        DPEntry* host_dp_buffer = nullptr;
-        int* host_dp_counter = nullptr;
-
-        cudaHostAlloc((void**)&host_dp_buffer, MAX_DP_BUFFER * sizeof(DPEntry), cudaHostAllocMapped);
-        cudaHostAlloc((void**)&host_dp_counter, sizeof(int), cudaHostAllocMapped);
-        *host_dp_counter = 0;
-
-        DPEntry* dev_dp_buffer = nullptr;
-        int* dev_dp_counter = nullptr;
-        cudaHostGetDevicePointer((void**)&dev_dp_buffer, host_dp_buffer, 0);
-        cudaHostGetDevicePointer((void**)&dev_dp_counter, host_dp_counter, 0);
-
-        ECPointJacobian* dev_G_OFFSET = nullptr;
-        cudaMalloc((void**)&dev_G_OFFSET, sizeof(ECPointJacobian));
-        cudaMemcpy(dev_G_OFFSET, &G_OFFSET, sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
-
-        void* dev_step_table = nullptr;
-        cudaMalloc(&dev_step_table, N_STEPS * sizeof(GlobalStep));
-        cudaMemcpy(dev_step_table, localStepTable.data(), N_STEPS * sizeof(GlobalStep), cudaMemcpyHostToDevice);
-
-        WalkStateSoA host_soa;
-        cudaMalloc((void**)&host_soa.a, WALKERS * sizeof(uint256_t));
-        cudaMalloc((void**)&host_soa.b, WALKERS * sizeof(uint256_t));
-        cudaMalloc((void**)&host_soa.R, WALKERS * sizeof(ECPointJacobian));
-        cudaMalloc((void**)&host_soa.snapshot_steps, WALKERS * sizeof(uint64_t));
-        cudaMalloc((void**)&host_soa.snapshot_x, WALKERS * 4 * sizeof(uint64_t));
-        cudaMalloc((void**)&host_soa.prev_x1, WALKERS * 4 * sizeof(uint64_t));
-        cudaMalloc((void**)&host_soa.prev_x2, WALKERS * 4 * sizeof(uint64_t));
-
-        std::vector<uint256_t> h_a(WALKERS), h_b(WALKERS);
-        std::vector<ECPointJacobian> h_R(WALKERS);
-        std::vector<uint64_t> h_snap_steps(WALKERS);
-        std::vector<uint64_t> h_snap_x(WALKERS * 4), h_prev_x1(WALKERS * 4), h_prev_x2(WALKERS * 4);
-
-        for (int i = 0; i < WALKERS; i++) {
-            h_a[i] = walkers_state[i].a;
-            h_b[i] = walkers_state[i].b;
-            h_R[i] = walkers_state[i].R;
-            h_snap_steps[i] = walkers_state[i].snapshot_steps;
-            for (int j = 0; j < 4; j++) {
-                h_snap_x[i * 4 + j] = walkers_state[i].snapshot_x[j];
-                h_prev_x1[i * 4 + j] = walkers_state[i].prev_x1[j];
-                h_prev_x2[i * 4 + j] = walkers_state[i].prev_x2[j];
-            }
-        }
-
-        cudaMemcpy(host_soa.a, h_a.data(), WALKERS * sizeof(uint256_t), cudaMemcpyHostToDevice);
-        cudaMemcpy(host_soa.b, h_b.data(), WALKERS * sizeof(uint256_t), cudaMemcpyHostToDevice);
-        cudaMemcpy(host_soa.R, h_R.data(), WALKERS * sizeof(ECPointJacobian), cudaMemcpyHostToDevice);
-        cudaMemcpy(host_soa.snapshot_steps, h_snap_steps.data(), WALKERS * sizeof(uint64_t), cudaMemcpyHostToDevice);
-        cudaMemcpy(host_soa.snapshot_x, h_snap_x.data(), WALKERS * 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
-        cudaMemcpy(host_soa.prev_x1, h_prev_x1.data(), WALKERS * 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
-        cudaMemcpy(host_soa.prev_x2, h_prev_x2.data(), WALKERS * 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
-
-
-        threads.emplace_back([&]() {
-            int minGridSize;
-            int blockSize;
-            cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, dp_kernel, 0, 0);
-            if (blockSize > MAX_BLOCK_SIZE) blockSize = MAX_BLOCK_SIZE;
-            int numBlocks = (WALKERS + blockSize - 1) / blockSize;
-
-            cudaStream_t stream;
-            cudaStreamCreate(&stream);
-
-            while (search_in_progress.load(std::memory_order_acquire)) {
-                dp_kernel<<<numBlocks, blockSize, 0, stream>>>(host_soa, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS, dev_G_OFFSET, max_scalar);
-
-                cudaStreamSynchronize(stream);
-
-                cudaError_t err = cudaGetLastError();
-                if (err != cudaSuccess) {
-                    std::cerr << "CUDA Error: " << cudaGetErrorString(err) << std::endl;
-                    search_in_progress.store(false);
-                }
-
-                total_iters.fetch_add(WALKERS * BATCH_SIZE, std::memory_order_relaxed);
-
-                int current_dp_count = *host_dp_counter;
-
-                if (current_dp_count > 0) {
-                    int safe_count = std::min(current_dp_count, MAX_DP_BUFFER);
-
-                    for (int i = 0; i < safe_count; i++) {
-                        DPEntry w_dp = host_dp_buffer[i];
-                        DPEntry found_dp;
-                        bool cl = false;
-
-                        dp_table.lazy_emplace_l(w_dp.x, [&](auto& bucket) {
-                            auto& dps = bucket.second;
-                            for (const auto& entry : dps) {
-                                if (entry.x == w_dp.x) {
-                                    bool same_state = (compare_uint256(w_dp.a, entry.a) == 0) && (compare_uint256(w_dp.b, entry.b) == 0);
-                                    if (!same_state) { found_dp = entry; cl = true; }
-                                    return;
-                                }
-                            }
-                            if(!cl) { dps.push_back(w_dp); }
-                        }, [&](auto bucket) {
-                            bucket(w_dp.x, std::vector<DPEntry>{w_dp});
-                        });
-
-                        if (cl) {
-                            uint256_t da, db, inv_db;
-                            if (compare_uint256(w_dp.a, found_dp.a) >= 0) da = sub_uint256(w_dp.a, found_dp.a);
-                            else da = sub_uint256(N_STRUCT, sub_uint256(found_dp.a, w_dp.a));
-                            if (compare_uint256(found_dp.b, w_dp.b) >= 0) db = sub_uint256(found_dp.b, w_dp.b);
-                            else db = sub_uint256(N_STRUCT, sub_uint256(w_dp.b, found_dp.b));
-
-                            if (!scalarIsZero(db.limbs)) {
-                                inv_db = almostinverse(db, N_STRUCT);
-                                uint64_t res_k[4];
-                                scalarMul(res_k, da.limbs, inv_db.limbs);
-                                unsigned char test_pub[33];
-                                generatePublicKey(preCompG, preCompGphi, test_pub, res_k, windowSize);
-                                if (memcmp(test_pub, target_pubkey.data(), 33) == 0) {
-                                    memcpy(k.limbs, res_k, 32);
-                                    search_in_progress.store(false, std::memory_order_release);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    *host_dp_counter = 0;
-                }
-            }
-
-            cudaStreamDestroy(stream);
-            cudaFreeHost(host_dp_buffer);
-            cudaFreeHost(host_dp_counter);
-            cudaFree(host_soa.a); cudaFree(host_soa.b); cudaFree(host_soa.R);
-            cudaFree(host_soa.snapshot_steps); cudaFree(host_soa.snapshot_x);
-            cudaFree(host_soa.prev_x1); cudaFree(host_soa.prev_x2);
-            cudaFree(dev_step_table); cudaFree(dev_G_OFFSET);
-        });
-    }
-    else
-    {
-        if (cores == 0) cores = 2;
-        cores = std::min<unsigned int>(cores, WALKERS);
-        int chunk = WALKERS / cores;
-
-        for (unsigned int t = 0; t < cores; t++) {
-            int start = t * chunk;
-            int end = (t == cores - 1) ? WALKERS : start + chunk;
-            threads.emplace_back(worker, start, end);
-        }
+    for (unsigned int t = 0; t < cores; t++) {
+        int start = t * chunk;
+        int end = (t == cores - 1) ? WALKERS : start + chunk;
+        threads.emplace_back(worker, start, end);
     }
 
     for (auto& th : threads) {
