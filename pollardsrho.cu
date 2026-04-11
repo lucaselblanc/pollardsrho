@@ -455,6 +455,40 @@ __host__ __device__ void batchJacobianToAffine(ECPointAffine* aff_out, const ECP
     }
 }
 
+__device__ __forceinline__ void scalarAddPTX(uint64_t* r, const uint64_t* a, const uint64_t* b) {
+    asm volatile(
+        "add.cc.u64    %0, %4, %8;\n\t"
+        "addc.cc.u64   %1, %5, %9;\n\t"
+        "addc.cc.u64   %2, %6, %10;\n\t"
+        "addc.u64      %3, %7, %11;\n\t"
+        : "=l"(r[0]), "=l"(r[1]), "=l"(r[2]), "=l"(r[3])
+        : "l"(a[0]), "l"(a[1]), "l"(a[2]), "l"(a[3]),
+          "l"(b[0]), "l"(b[1]), "l"(b[2]), "l"(b[3])
+    );
+}
+
+__device__ __forceinline__ void scalarSubPTX(uint64_t* r, const uint64_t* a, const uint64_t* b) {
+    asm volatile(
+        "sub.cc.u64    %0, %4, %8;\n\t"
+        "subc.cc.u64   %1, %5, %9;\n\t"
+        "subc.cc.u64   %2, %6, %10;\n\t"
+        "subc.u64      %3, %7, %11;\n\t"
+        : "=l"(r[0]), "=l"(r[1]), "=l"(r[2]), "=l"(r[3])
+        : "l"(a[0]), "l"(a[1]), "l"(a[2]), "l"(a[3]),
+          "l"(b[0]), "l"(b[1]), "l"(b[2]), "l"(b[3])
+    );
+}
+
+__device__ __forceinline__ bool scalarCmpGePTX(const uint64_t* a, const uint64_t* b) {
+    if (a[3] > b[3]) return true;
+    if (a[3] < b[3]) return false;
+    if (a[2] > b[2]) return true;
+    if (a[2] < b[2]) return false;
+    if (a[1] > b[1]) return true;
+    if (a[1] < b[1]) return false;
+    return a[0] >= b[0];
+}
+
 __global__ void dp_kernel(WalkStateSoA states, int num_walkers, const GlobalStep* step_table, uint32_t N_STEPS, DPEntry* dp_buffer, int* dp_counter, int max_dp_buffer, int DP_BITS, const ECPointJacobian* G_OFFSET, uint256_t max_scalar) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -559,7 +593,7 @@ __global__ void dp_kernel(WalkStateSoA states, int num_walkers, const GlobalStep
             GlobalStep jump_step = load_global_step_ldg(step_table, jump_idx);
 
             pointAddJacobian(&w_R, &w_R, &jump_step.point);
-            scalarAdd(w_a.limbs, w_a.limbs, jump_step.a.limbs);
+            scalarAddPTX(w_a.limbs, w_a.limbs, jump_step.a.limbs);
 
             w_snapshot_steps = 0;
             for(int i=0; i<4; i++) {
@@ -579,7 +613,11 @@ __global__ void dp_kernel(WalkStateSoA states, int num_walkers, const GlobalStep
         GlobalStep step_data = load_global_step_ldg(step_table, step_idx);
 
         pointAddJacobian(&w_R, &w_R, &step_data.point);
-        scalarAdd(w_a.limbs, w_a.limbs, step_data.a.limbs);
+        scalarAddPTX(w_a.limbs, w_a.limbs, step_data.a.limbs);
+        if (scalarCmpGePTX(w_a.limbs, max_scalar.limbs)) {
+            scalarSubPTX(w_a.limbs, w_a.limbs, max_scalar.limbs);
+            pointAddJacobian(&w_R, &w_R, &G_OFF_local);
+        }
 
         bool is_greater_equal = false;
         if (w_a.limbs[3] > max_scalar.limbs[3]) {
@@ -894,20 +932,23 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         return k;
     }
 
-        cudaGetDeviceCount(&deviceCount);
+    cudaGetDeviceCount(&deviceCount);
     if (deviceCount > 0) {
         size_t free_mem, total_mem;
         cudaMemGetInfo(&free_mem, &total_mem);
         const int MAX_DP_BUFFER = static_cast<size_t>(free_mem * 0.5f) / sizeof(DPEntry);
 
+        DPEntry* host_dp_buffer = nullptr;
+        int* host_dp_counter = nullptr;
+
+        cudaHostAlloc((void**)&host_dp_buffer, MAX_DP_BUFFER * sizeof(DPEntry), cudaHostAllocMapped);
+        cudaHostAlloc((void**)&host_dp_counter, sizeof(int), cudaHostAllocMapped);
+        *host_dp_counter = 0;
+
         DPEntry* dev_dp_buffer = nullptr;
         int* dev_dp_counter = nullptr;
-        cudaMalloc((void**)&dev_dp_buffer, MAX_DP_BUFFER * sizeof(DPEntry));
-        cudaMalloc((void**)&dev_dp_counter, sizeof(int));
-        cudaMemset(dev_dp_counter, 0, sizeof(int));
-
-        DPEntry* host_dp_buffer = new DPEntry[MAX_DP_BUFFER];
-        int h_dp_counter = 0;
+        cudaHostGetDevicePointer((void**)&dev_dp_buffer, host_dp_buffer, 0);
+        cudaHostGetDevicePointer((void**)&dev_dp_counter, host_dp_counter, 0);
 
         ECPointJacobian* dev_G_OFFSET = nullptr;
         cudaMalloc((void**)&dev_G_OFFSET, sizeof(ECPointJacobian));
@@ -951,6 +992,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         cudaMemcpy(host_soa.prev_x1, h_prev_x1.data(), WALKERS * 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
         cudaMemcpy(host_soa.prev_x2, h_prev_x2.data(), WALKERS * 4 * sizeof(uint64_t), cudaMemcpyHostToDevice);
 
+
         threads.emplace_back([&]() {
             int minGridSize;
             int blockSize;
@@ -958,8 +1000,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             if (blockSize > MAX_BLOCK_SIZE) blockSize = MAX_BLOCK_SIZE;
             int numBlocks = (WALKERS + blockSize - 1) / blockSize;
 
+            cudaStream_t stream;
+            cudaStreamCreate(&stream);
+
             while (search_in_progress.load(std::memory_order_acquire)) {
-                dp_kernel<<<numBlocks, blockSize>>>(host_soa, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS, dev_G_OFFSET, max_scalar);
+                dp_kernel<<<numBlocks, blockSize, 0, stream>>>(host_soa, WALKERS, (const GlobalStep*)dev_step_table, N_STEPS, dev_dp_buffer, dev_dp_counter, MAX_DP_BUFFER, DP_BITS, dev_G_OFFSET, max_scalar);
+
+                cudaStreamSynchronize(stream);
 
                 cudaError_t err = cudaGetLastError();
                 if (err != cudaSuccess) {
@@ -967,21 +1014,18 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     search_in_progress.store(false);
                 }
 
-                if(total_iters.load() % 100000000 == 0) {
-                    cudaDeviceSynchronize();
-                }
                 total_iters.fetch_add(WALKERS * BATCH_SIZE, std::memory_order_relaxed);
 
-                cudaMemcpy(&h_dp_counter, dev_dp_counter, sizeof(int), cudaMemcpyDeviceToHost);
+                int current_dp_count = *host_dp_counter;
 
-                if (h_dp_counter > 0) {
-                    int current_count = std::min(h_dp_counter, MAX_DP_BUFFER);
-                    cudaMemcpy(host_dp_buffer, dev_dp_buffer, current_count * sizeof(DPEntry), cudaMemcpyDeviceToHost);
+                if (current_dp_count > 0) {
+                    int safe_count = std::min(current_dp_count, MAX_DP_BUFFER);
 
-                    for (int i = 0; i < current_count; i++) {
+                    for (int i = 0; i < safe_count; i++) {
                         DPEntry w_dp = host_dp_buffer[i];
                         DPEntry found_dp;
                         bool cl = false;
+
                         dp_table.lazy_emplace_l(w_dp.x, [&](auto& bucket) {
                             auto& dps = bucket.second;
                             for (const auto& entry : dps) {
@@ -1017,17 +1061,18 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                             }
                         }
                     }
-                    cudaMemset(dev_dp_counter, 0, sizeof(int));
-                    h_dp_counter = 0;
+
+                    *host_dp_counter = 0;
                 }
             }
 
+            cudaStreamDestroy(stream);
+            cudaFreeHost(host_dp_buffer);
+            cudaFreeHost(host_dp_counter);
             cudaFree(host_soa.a); cudaFree(host_soa.b); cudaFree(host_soa.R);
             cudaFree(host_soa.snapshot_steps); cudaFree(host_soa.snapshot_x);
             cudaFree(host_soa.prev_x1); cudaFree(host_soa.prev_x2);
             cudaFree(dev_step_table); cudaFree(dev_G_OFFSET);
-            cudaFree(dev_dp_buffer); cudaFree(dev_dp_counter);
-            delete[] host_dp_buffer;
         });
     }
     else
