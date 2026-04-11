@@ -150,6 +150,7 @@ extern "C" {
 	extern ECPointJacobian* jacNormH_HOST;
  	extern ECPointJacobian* jacEndoH_HOST;
 
+
 #ifndef __CUDA_ARCH__
         #undef P_CONST
         #define P_CONST P_CONST_HOST
@@ -203,13 +204,6 @@ extern "C" {
         #define jacEndoH jacEndoH_HOST
 #endif
 #endif
-
-extern "C" void update_secp256k1_gpu_pointers(
-    ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
-    ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
-    ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
-    ECPointJacobian* d_jE, ECPointJacobian* d_jEH
-);
 
 uint256_t almostinverse(uint256_t base, uint256_t mod);
 
