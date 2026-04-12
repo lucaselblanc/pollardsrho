@@ -378,56 +378,57 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
 }
 
 __global__ void batchJacobianToAffineKernel(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count) {
-    __shared__ uint64_t s_Z[BLOCK_SIZE][4];
-    __shared__ uint64_t s_data[BLOCK_SIZE][4];
+    __shared__ __align__(16) uint64_t s_Z[BLOCK_SIZE][4];
+    __shared__ __align__(16) uint64_t s_data[BLOCK_SIZE][4];
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int tx = threadIdx.x;
 
     if (idx < count) {
         if (jacobianIsInfinity(&jac_in[idx])) {
-            *(uint4*)(s_Z[tx]) = *(uint4*)(ONE_MONT);
-            *((uint4*)(s_Z[tx]) + 1) = *((uint4*)(ONE_MONT) + 1);
+            *((uint4*)s_Z[tx]) = *((uint4*)ONE_MONT);
+            *((uint4*)s_Z[tx] + 1) = *((uint4*)ONE_MONT + 1);
         } else {
-            *(uint4*)(s_Z[tx]) = *(uint4*)(jac_in[idx].Z);
-            *((uint4*)(s_Z[tx]) + 1) = *((uint4*)(jac_in[idx].Z) + 1);
+            *((uint4*)s_Z[tx]) = *((uint4*)jac_in[idx].Z);
+            *((uint4*)s_Z[tx] + 1) = *((uint4*)jac_in[idx].Z + 1);
         }
     } else {
-        *(uint4*)(s_Z[tx]) = *(uint4*)(ONE_MONT);
-        *((uint4*)(s_Z[tx]) + 1) = *((uint4*)(ONE_MONT) + 1);
+        *((uint4*)s_Z[tx]) = *((uint4*)ONE_MONT);
+        *((uint4*)s_Z[tx] + 1) = *((uint4*)ONE_MONT + 1);
     }
 
     __syncthreads();
 
     if (tx == 0) {
-        *(uint4*)(s_data[0]) = *(uint4*)(s_Z[0]);
-        *((uint4*)(s_data[0]) + 1) = *((uint4*)(s_Z[0]) + 1);
+        *((uint4*)s_data[0]) = *((uint4*)s_Z[0]);
+        *((uint4*)s_data[0] + 1) = *((uint4*)s_Z[0] + 1);
 
         for (int i = 1; i < BLOCK_SIZE; i++) {
             modMulMontP(s_data[i], s_data[i-1], s_Z[i]);
         }
 
-        uint64_t inv_all[4];
+        __align__(16) uint64_t inv_all[4];
         modExpMontP(inv_all, s_data[BLOCK_SIZE-1], SUB2_FP);
 
         for (int i = BLOCK_SIZE - 1; i > 0; i--) {
-            uint64_t tmp_inv[4];
+            __align__(16) uint64_t tmp_inv[4];
             modMulMontP(tmp_inv, inv_all, s_data[i-1]);
             modMulMontP(inv_all, inv_all, s_Z[i]);
 
-            *(uint4*)(s_data[i]) = *(uint4*)(tmp_inv);
-            *((uint4*)(s_data[i]) + 1) = *((uint4*)(tmp_inv) + 1);
+            *((uint4*)s_data[i]) = *((uint4*)tmp_inv);
+            *((uint4*)s_data[i] + 1) = *((uint4*)tmp_inv + 1);
         }
 
-        *(uint4*)(s_data[0]) = *(uint4*)(inv_all);
-        *((uint4*)(s_data[0]) + 1) = *((uint4*)(inv_all) + 1);
+        *((uint4*)s_data[0]) = *((uint4*)inv_all);
+        *((uint4*)s_data[0] + 1) = *((uint4*)inv_all + 1);
     }
 
     __syncthreads();
 
     if (idx < count) {
         if (!jacobianIsInfinity(&jac_in[idx])) {
-            uint64_t z2[4], tmp_mont[4];
+            __align__(16) uint64_t z2[4];
+            __align__(16) uint64_t tmp_mont[4];
             modMulMontP(z2, s_data[tx], s_data[tx]);
             modMulMontP(tmp_mont, jac_in[idx].X, z2);
             fromMontgomeryP(aff_out[idx].x, tmp_mont);
@@ -569,6 +570,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     cudaMemcpyAsync(d_jac_batch, jac_batch.data(), local_count * sizeof(ECPointJacobian), cudaMemcpyHostToDevice, stream);
                     int numBlocks = (local_count + BLOCK_SIZE - 1) / BLOCK_SIZE;
                     batchJacobianToAffineKernel<<<numBlocks, BLOCK_SIZE, 0, stream>>>(d_aff_batch, d_jac_batch, local_count);
+                    cudaError_t err = cudaGetLastError();
+                    if (err != cudaSuccess) { printf("KERNEL ERROR: %s\n", cudaGetErrorString(err)); }
                     cudaMemcpyAsync(aff_batch.data(), d_aff_batch, local_count * sizeof(ECPointAffine), cudaMemcpyDeviceToHost, stream);
                     cudaStreamSynchronize(stream);
                 } else {
