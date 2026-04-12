@@ -377,8 +377,50 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
     }
 }
 
+__device__ void copy_limbs(uint64_t* dst, const uint64_t* src) {
+    dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2]; dst[3] = src[3];
+}
+
 __global__ void batchJacobianToAffineKernel(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count) {
+    __shared__ uint64_t s_Z[BLOCK_SIZE][4];
+    __shared__ uint64_t s_prefix[BLOCK_SIZE][4];
+    __shared__ uint64_t s_inv[BLOCK_SIZE][4];
+
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int tx = threadIdx.x;
+    int num_elements = (blockIdx.x == gridDim.x - 1) ? (count - blockIdx.x * blockDim.x) : blockDim.x;
+
+    if (idx < count) {
+        if (jacobianIsInfinity(&jac_in[idx])) {
+            copy_limbs(s_Z[tx], ONE_MONT);
+        } else {
+            copy_limbs(s_Z[tx], jac_in[idx].Z);
+        }
+    }
+
+    __syncthreads();
+
+    if (tx == 0 && num_elements > 0) {
+        copy_limbs(s_prefix[0], s_Z[0]);
+        for (int i = 1; i < num_elements; i++) {
+            modMulMontP(s_prefix[i], s_prefix[i - 1], s_Z[i]);
+        }
+
+        uint64_t total_inv[4];
+        modExpMontP(total_inv, s_prefix[num_elements - 1], SUB2_FP);
+
+        uint64_t current_inv[4];
+        copy_limbs(current_inv, total_inv);
+
+        for (int i = num_elements - 1; i > 0; i--) {
+            modMulMontP(s_inv[i], current_inv, s_prefix[i - 1]);
+            modMulMontP(current_inv, current_inv, s_Z[i]);
+        }
+        copy_limbs(s_inv[0], current_inv);
+    }
+
+    __syncthreads();
+
     if (idx < count) {
         if (jacobianIsInfinity(&jac_in[idx])) {
             aff_out[idx].infinity = 1;
@@ -386,18 +428,14 @@ __global__ void batchJacobianToAffineKernel(ECPointAffine* aff_out, const ECPoin
                 aff_out[idx].x[i] = 0;
                 aff_out[idx].y[i] = 0;
             }
-            return;
+        } else {
+            uint64_t z2[4];
+            uint64_t tmp_mont[4];
+            modMulMontP(z2, s_inv[tx], s_inv[tx]);
+            modMulMontP(tmp_mont, jac_in[idx].X, z2);
+            fromMontgomeryP(aff_out[idx].x, tmp_mont);
+            aff_out[idx].infinity = 0;
         }
-
-        uint64_t z_inv[4];
-        uint64_t z2[4];
-        uint64_t tmp_mont[4];
-
-        modExpMontP(z_inv, jac_in[idx].Z, SUB2_FP);
-        modMulMontP(z2, z_inv, z_inv);
-        modMulMontP(tmp_mont, jac_in[idx].X, z2);
-        fromMontgomeryP(aff_out[idx].x, tmp_mont);
-        aff_out[idx].infinity = 0;
     }
 }
 
