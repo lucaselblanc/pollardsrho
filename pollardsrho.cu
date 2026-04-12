@@ -378,41 +378,49 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
 }
 
 __global__ void batchJacobianToAffineKernel(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count) {
-    __shared__ uint64_t s_data[BLOCK_SIZE][4];
     __shared__ uint64_t s_Z[BLOCK_SIZE][4];
+    __shared__ uint64_t s_data[BLOCK_SIZE][4];
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int tx = threadIdx.x;
 
     if (idx < count) {
         if (jacobianIsInfinity(&jac_in[idx])) {
-            for(int i=0; i<4; i++) s_Z[tx][i] = ONE_MONT[i];
+            *(uint4*)(s_Z[tx]) = *(uint4*)(ONE_MONT);
+            *((uint4*)(s_Z[tx]) + 1) = *((uint4*)(ONE_MONT) + 1);
         } else {
-            for(int i=0; i<4; i++) s_Z[tx][i] = jac_in[idx].Z[i];
+            *(uint4*)(s_Z[tx]) = *(uint4*)(jac_in[idx].Z);
+            *((uint4*)(s_Z[tx]) + 1) = *((uint4*)(jac_in[idx].Z) + 1);
         }
     } else {
-        for(int i=0; i<4; i++) s_Z[tx][i] = ONE_MONT[i];
+        *(uint4*)(s_Z[tx]) = *(uint4*)(ONE_MONT);
+        *((uint4*)(s_Z[tx]) + 1) = *((uint4*)(ONE_MONT) + 1);
     }
 
     __syncthreads();
 
     if (tx == 0) {
-        s_data[0] = s_Z[0]; s_data[1] = s_Z[1]; s_data[2] = s_Z[2]; s_data[3] = s_Z[3];
+        *(uint4*)(s_data[0]) = *(uint4*)(s_Z[0]);
+        *((uint4*)(s_data[0]) + 1) = *((uint4*)(s_Z[0]) + 1);
+
         for (int i = 1; i < BLOCK_SIZE; i++) {
             modMulMontP(s_data[i], s_data[i-1], s_Z[i]);
         }
 
         uint64_t inv_all[4];
-        modExpMontP(inv_all, s_data[BLOCK_SIZE-1], SUB2_FP_DEVICE); 
+        modExpMontP(inv_all, s_data[BLOCK_SIZE-1], SUB2_FP);
 
         for (int i = BLOCK_SIZE - 1; i > 0; i--) {
             uint64_t tmp_inv[4];
             modMulMontP(tmp_inv, inv_all, s_data[i-1]);
             modMulMontP(inv_all, inv_all, s_Z[i]);
-            s_data[0] = tmp_inv[0]; s_data[1] = tmp_inv[1]; s_data[2] = tmp_inv[2]; s_data[3] = tmp_inv[3];
+
+            *(uint4*)(s_data[i]) = *(uint4*)(tmp_inv);
+            *((uint4*)(s_data[i]) + 1) = *((uint4*)(tmp_inv) + 1);
         }
 
-        s_data[0] = inv_all[0]; s_data[1] = inv_all[1]; s_data[2] = inv_all[2]; s_data[3] = inv_all[3];
+        *(uint4*)(s_data[0]) = *(uint4*)(inv_all);
+        *((uint4*)(s_data[0]) + 1) = *((uint4*)(inv_all) + 1);
     }
 
     __syncthreads();
