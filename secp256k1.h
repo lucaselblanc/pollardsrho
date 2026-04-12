@@ -43,13 +43,13 @@ struct uint256_t {
     uint64_t limbs[4];
 };
 
-typedef struct {
+typedef struct __align__(32) {
     uint64_t x[4];
     uint64_t y[4];
     int infinity;
 } ECPointAffine;
 
-typedef struct {
+typedef struct __align__(32) {
     uint64_t X[4];
     uint64_t Y[4];
     uint64_t Z[4];
