@@ -378,63 +378,67 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
 }
 
 __global__ void batchJacobianToAffineKernel(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count) {
-    __shared__ __align__(16) uint64_t s_Z[BLOCK_SIZE][4];
-    __shared__ __align__(16) uint64_t s_data[BLOCK_SIZE][4];
+    __shared__ uint64_t s_prod[2 * BLOCK_SIZE][4];
+    __shared__ uint64_t s_inv[2 * BLOCK_SIZE][4];
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int tx = threadIdx.x;
-
-    if (idx < count) {
-        if (jacobianIsInfinity(&jac_in[idx])) {
-            *((uint4*)s_Z[tx]) = *((uint4*)ONE_MONT);
-            *((uint4*)s_Z[tx] + 1) = *((uint4*)ONE_MONT + 1);
-        } else {
-            *((uint4*)s_Z[tx]) = *((uint4*)jac_in[idx].Z);
-            *((uint4*)s_Z[tx] + 1) = *((uint4*)jac_in[idx].Z + 1);
-        }
+    int leaf_idx = BLOCK_SIZE + tx;
+    
+    if (idx < count && !jacobianIsInfinity(&jac_in[idx])) {
+        s_prod[leaf_idx][0] = jac_in[idx].Z[0];
+        s_prod[leaf_idx][1] = jac_in[idx].Z[1];
+        s_prod[leaf_idx][2] = jac_in[idx].Z[2];
+        s_prod[leaf_idx][3] = jac_in[idx].Z[3];
     } else {
-        *((uint4*)s_Z[tx]) = *((uint4*)ONE_MONT);
-        *((uint4*)s_Z[tx] + 1) = *((uint4*)ONE_MONT + 1);
+        s_prod[leaf_idx][0] = ONE_MONT[0];
+        s_prod[leaf_idx][1] = ONE_MONT[1];
+        s_prod[leaf_idx][2] = ONE_MONT[2];
+        s_prod[leaf_idx][3] = ONE_MONT[3];
     }
-
     __syncthreads();
+
+    for (int d = BLOCK_SIZE >> 1; d > 0; d >>= 1) {
+        if (tx < d) {
+            int node = d + tx;
+            modMulMontP(s_prod[node], s_prod[2 * node], s_prod[2 * node + 1]);
+        }
+        __syncthreads();
+    }
 
     if (tx == 0) {
-        *((uint4*)s_data[0]) = *((uint4*)s_Z[0]);
-        *((uint4*)s_data[0] + 1) = *((uint4*)s_Z[0] + 1);
-
-        for (int i = 1; i < BLOCK_SIZE; i++) {
-            modMulMontP(s_data[i], s_data[i-1], s_Z[i]);
-        }
-
-        __align__(16) uint64_t inv_all[4];
-        modExpMontP(inv_all, s_data[BLOCK_SIZE-1], SUB2_FP);
-
-        for (int i = BLOCK_SIZE - 1; i > 0; i--) {
-            __align__(16) uint64_t tmp_inv[4];
-            modMulMontP(tmp_inv, inv_all, s_data[i-1]);
-            modMulMontP(inv_all, inv_all, s_Z[i]);
-
-            *((uint4*)s_data[i]) = *((uint4*)tmp_inv);
-            *((uint4*)s_data[i] + 1) = *((uint4*)tmp_inv + 1);
-        }
-
-        *((uint4*)s_data[0]) = *((uint4*)inv_all);
-        *((uint4*)s_data[0] + 1) = *((uint4*)inv_all + 1);
+        modExpMontP(s_inv[1], s_prod[1], SUB2_FP);
     }
-
     __syncthreads();
+
+    for (int d = 1; d < BLOCK_SIZE; d <<= 1) {
+        if (tx < d) {
+            int node = d + tx;
+            int left = 2 * node;
+            int right = 2 * node + 1;
+
+            modMulMontP(s_inv[left], s_inv[node], s_prod[right]);
+            modMulMontP(s_inv[right], s_inv[node], s_prod[left]);
+        }
+        __syncthreads();
+    }
 
     if (idx < count) {
         if (!jacobianIsInfinity(&jac_in[idx])) {
-            __align__(16) uint64_t z2[4];
-            __align__(16) uint64_t tmp_mont[4];
-            modMulMontP(z2, s_data[tx], s_data[tx]);
+            uint64_t z2[4];
+            uint64_t tmp_mont[4];
+            uint64_t* z_inv = s_inv[leaf_idx];
+
+            modMulMontP(z2, z_inv, z_inv);
             modMulMontP(tmp_mont, jac_in[idx].X, z2);
             fromMontgomeryP(aff_out[idx].x, tmp_mont);
             aff_out[idx].infinity = 0;
         } else {
             aff_out[idx].infinity = 1;
+            aff_out[idx].x[0] = 0; 
+            aff_out[idx].x[1] = 0;
+            aff_out[idx].x[2] = 0; 
+            aff_out[idx].x[3] = 0;
         }
     }
 }
