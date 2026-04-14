@@ -251,14 +251,37 @@ void init_secp256k1(int key_range) {
 
     preCompG = new ECPointJacobian[1ULL << windowSize];
     preCompGphi = new ECPointJacobian[1ULL << windowSize];
-    preCompH = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
-    preCompHphi = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
-    jacNorm = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
-    jacNormH = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
-    jacEndo = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
-    jacEndoH = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
+    preCompH = new ECPointJacobian[1ULL << windowSize];
+    preCompHphi = new ECPointJacobian[1ULL << windowSize];
+    jacNorm = new ECPointJacobian[windowSize];
+    jacNormH = new ECPointJacobian[windowSize];
+    jacEndo = new ECPointJacobian[windowSize];
+    jacEndoH = new ECPointJacobian[windowSize];
 
     initPreCompG(windowSize);
+
+    size_t tableSize = (1ULL << windowSize) * sizeof(ECPointJacobian);
+    size_t normSize = windowSize * sizeof(ECPointJacobian);
+    ECPointJacobian *d_G, *d_Gphi, *d_H, *d_Hphi, *d_jN, *d_jNH, *d_jE, *d_jEH;
+
+    cudaMalloc((void**)&d_G, tableSize);
+    cudaMemcpy(d_G, preCompG, tableSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_Gphi, tableSize);
+    cudaMemcpy(d_Gphi, preCompGphi, tableSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_H, tableSize);
+    cudaMemcpy(d_H, preCompH, tableSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_Hphi, tableSize);
+    cudaMemcpy(d_Hphi, preCompHphi, tableSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_jN, normSize);
+    cudaMemcpy(d_jN, jacNorm, normSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_jNH, normSize);
+    cudaMemcpy(d_jNH, jacNormH, normSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_jE, normSize);
+    cudaMemcpy(d_jE, jacEndo, normSize, cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&d_jEH, normSize);
+    cudaMemcpy(d_jEH, jacEndoH, normSize, cudaMemcpyHostToDevice);
+
+    update_secp256k1_gpu_pointers(d_G, d_Gphi, d_H, d_Hphi, d_jN, d_jNH, d_jE, d_jEH);
 }
 
 uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
