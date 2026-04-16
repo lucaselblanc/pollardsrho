@@ -12,32 +12,6 @@
 
 #include "secp256k1.h"
 
-#undef P_CONST
-#undef N_CONST
-#undef N_STRUCT
-#undef GX_CONST
-#undef GY_CONST
-#undef R2_MOD_P
-#undef ZERO_MONT
-#undef ONE_MONT
-#undef SEVEN_MONT
-#undef SUB2_FP
-#undef LAMBDA_N
-#undef BETA_P
-#undef MINUS_B1
-#undef MINUS_B2
-#undef G1
-#undef G2
-#undef MU_P
-#undef preCompG
-#undef preCompGphi
-#undef preCompH
-#undef preCompHphi
-#undef jacNorm
-#undef jacEndo
-#undef jacNormH
-#undef jacEndoH
-
 extern "C" {
     __device__ __constant__ __align__(16) uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
     __device__ __constant__ __align__(16) uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -66,7 +40,7 @@ extern "C" {
     __device__ ECPointJacobian* jacEndoH = nullptr;
 }
 
-extern "C" void update_secp256k1_gpu_pointers(
+extern "C" void defGpuPointers(
     ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
     ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
     ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
@@ -82,63 +56,42 @@ extern "C" void update_secp256k1_gpu_pointers(
     cudaMemcpyToSymbol(jacEndoH, &d_jEH, sizeof(ECPointJacobian*));
 }
 
-#ifndef __CUDA_ARCH__
-    #define P_CONST P_CONST_HOST
-    #define N_CONST N_CONST_HOST
-    #define N_STRUCT N_STRUCT_HOST
-    #define GX_CONST GX_CONST_HOST
-    #define GY_CONST GY_CONST_HOST
-    #define R2_MOD_P R2_MOD_P_HOST
-    #define ZERO_MONT ZERO_MONT_HOST
-    #define ONE_MONT ONE_MONT_HOST
-    #define SEVEN_MONT SEVEN_MONT_HOST
-    #define SUB2_FP SUB2_FP_HOST
-    #define LAMBDA_N LAMBDA_N_HOST
-    #define BETA_P BETA_P_HOST
-    #define MINUS_B1 MINUS_B1_HOST
-    #define MINUS_B2 MINUS_B2_HOST
-    #define G1 G1_HOST
-    #define G2 G2_HOST
-    #define MU_P MU_P_HOST
-    #define preCompG preCompG_HOST
-    #define preCompGphi preCompGphi_HOST
-    #define preCompH preCompH_HOST
-    #define preCompHphi preCompHphi_HOST
-    #define jacNorm jacNorm_HOST
-    #define jacEndo jacEndo_HOST
-    #define jacNormH jacNormH_HOST
-    #define jacEndoH jacEndoH_HOST
-#endif
-
-#ifndef __CUDA_ARCH__
-        extern const uint64_t P_CONST_HOST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-        extern const uint64_t N_CONST_HOST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
-        extern const uint256_t N_STRUCT_HOST = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
-        extern const uint64_t GX_CONST_HOST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
-        extern const uint64_t GY_CONST_HOST[4] = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
-        extern const uint64_t R2_MOD_P_HOST[4] = { 0x000007A2000E90A1, 0x0000000000000001, 0x0ULL, 0x0ULL };
-        extern const uint64_t ZERO_MONT_HOST[4] = { 0x0ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-        extern const uint64_t ONE_MONT_HOST[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
-        extern const uint64_t SEVEN_MONT_HOST[4] = {0x700001AB7ULL, 0x0ULL, 0x0ULL, 0x0ULL};
-        extern const uint64_t SUB2_FP_HOST[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-        extern const uint64_t LAMBDA_N_HOST[4] = { 0xDF02967C1B23BD72ULL, 0xA5261C028812645AULL, 0xA5261C028812645AULL, 0x5363AD4CC05C30E0ULL };
-        extern const uint64_t BETA_P_HOST[4] = { 0xB315ECECBB640683ULL, 0x9CF0497512F58995ULL, 0x6E64479EAC3434E9ULL, 0x7AE96A2B657C0710ULL };
-        extern const uint64_t MINUS_B1_HOST[4] = { 0x6F547FA90ABFE4C3ULL, 0xE4437ED6010E8828ULL, 0x0ULL, 0x0ULL };
-        extern const uint64_t MINUS_B2_HOST[4] = { 0x8A280AC50774346DULL, 0xD765CDA83DB1562CULL, 0xCFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
-        extern const uint64_t G1_HOST[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
-        extern const uint64_t G2_HOST[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
-        extern const uint64_t MU_P_HOST = 0xD838091DD2253531ULL;
-        ECPointJacobian* preCompG_HOST = nullptr;
-        ECPointJacobian* preCompGphi_HOST = nullptr;
-        ECPointJacobian* preCompH_HOST = nullptr;
-        ECPointJacobian* preCompHphi_HOST = nullptr;
-        ECPointJacobian* jacNorm_HOST = nullptr;
-        ECPointJacobian* jacEndo_HOST = nullptr;
-        ECPointJacobian* jacNormH_HOST = nullptr;
-        ECPointJacobian* jacEndoH_HOST = nullptr;
-#endif
+extern const uint64_t P_CONST_HOST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+extern const uint64_t N_CONST_HOST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
+extern const uint256_t N_STRUCT_HOST = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
+extern const uint64_t GX_CONST_HOST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
+extern const uint64_t GY_CONST_HOST[4] = { 0x9C47D08FFB10D4B8ULL, 0xFD17B448A6855419ULL, 0x5DA4FBFC0E1108A8ULL, 0x483ADA7726A3C465ULL };
+extern const uint64_t R2_MOD_P_HOST[4] = { 0x000007A2000E90A1, 0x0000000000000001, 0x0ULL, 0x0ULL };
+extern const uint64_t ZERO_MONT_HOST[4] = { 0x0ULL, 0x0ULL, 0x0ULL, 0x0ULL };
+extern const uint64_t ONE_MONT_HOST[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
+extern const uint64_t SEVEN_MONT_HOST[4] = {0x700001AB7ULL, 0x0ULL, 0x0ULL, 0x0ULL};
+extern const uint64_t SUB2_FP_HOST[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
+extern const uint64_t LAMBDA_N_HOST[4] = { 0xDF02967C1B23BD72ULL, 0xA5261C028812645AULL, 0xA5261C028812645AULL, 0x5363AD4CC05C30E0ULL };
+extern const uint64_t BETA_P_HOST[4] = { 0xB315ECECBB640683ULL, 0x9CF0497512F58995ULL, 0x6E64479EAC3434E9ULL, 0x7AE96A2B657C0710ULL };
+extern const uint64_t MINUS_B1_HOST[4] = { 0x6F547FA90ABFE4C3ULL, 0xE4437ED6010E8828ULL, 0x0ULL, 0x0ULL };
+extern const uint64_t MINUS_B2_HOST[4] = { 0x8A280AC50774346DULL, 0xD765CDA83DB1562CULL, 0xCFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
+extern const uint64_t G1_HOST[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
+extern const uint64_t G2_HOST[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
+extern const uint64_t MU_P_HOST = 0xD838091DD2253531ULL;
+ECPointJacobian* preCompG_HOST = nullptr;
+ECPointJacobian* preCompGphi_HOST = nullptr;
+ECPointJacobian* preCompH_HOST = nullptr;
+ECPointJacobian* preCompHphi_HOST = nullptr;
+ECPointJacobian* jacNorm_HOST = nullptr;
+ECPointJacobian* jacEndo_HOST = nullptr;
+ECPointJacobian* jacNormH_HOST = nullptr;
+ECPointJacobian* jacEndoH_HOST = nullptr;
 
 __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&P_REF)[4] = P_CONST;
+        const uint64_t &MU_REF = MU_P;
+    #else
+        const uint64_t (&P_REF)[4] = P_CONST_HOST;
+        const uint64_t &MU_REF = MU_P_HOST;
+    #endif
+
     uint64_t temp[8];
     for (int i = 0; i < 4; i++) {
         temp[i]     =  inputLow[i];
@@ -148,10 +101,10 @@ __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inp
     uint64_t extra = 0;
 
     for (int i = 0; i < 4; i++) {
-        uint64_t ui = (uint64_t)((uint128_t)temp[i] * (uint128_t)MU_P);
+        uint64_t ui = (uint64_t)((uint128_t)temp[i] * (uint128_t)MU_REF);
         uint128_t carry = 0;
         for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)ui * (uint128_t)P_CONST[j] + (uint128_t)temp[i + j] + carry;
+            uint128_t prod = (uint128_t)ui * (uint128_t)P_REF[j] + (uint128_t)temp[i + j] + carry;
             temp[i + j] = (uint64_t)prod;
             carry = prod >> 64;
         }
@@ -174,7 +127,7 @@ __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inp
     uint64_t diff[4];
     uint128_t borrow = 0;
     for (int i = 0; i < 4; i++) {
-        uint128_t sub = (uint128_t)result[i] - (uint128_t)P_CONST[i] - borrow;
+        uint128_t sub = (uint128_t)result[i] - (uint128_t)P_REF[i] - borrow;
         diff[i] = (uint64_t)sub;
         borrow = (sub >> 127) & 1;
     }
@@ -185,6 +138,13 @@ __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inp
 }
 
 __host__ __device__ void toMontgomeryP(uint64_t *result, const uint64_t *a) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&R2_REF)[4] = R2_MOD_P;
+    #else
+        const uint64_t (&R2_REF)[4] = R2_MOD_P_HOST;
+    #endif
+
     uint64_t aLocal[4];
     for (int i = 0; i < 4; i++) aLocal[i] = a[i];
 
@@ -194,7 +154,7 @@ __host__ __device__ void toMontgomeryP(uint64_t *result, const uint64_t *a) {
         uint128_t carry = 0;
 
         for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)aLocal[i] * (uint128_t)R2_MOD_P[j] + (uint128_t)temp[i + j] + carry;
+            uint128_t prod = (uint128_t)aLocal[i] * (uint128_t)R2_REF[j] + (uint128_t)temp[i + j] + carry;
             temp[i + j] = (uint64_t)prod;
             carry = prod >> 64;
         }
@@ -225,6 +185,13 @@ __host__ __device__ void fromMontgomeryP(uint64_t *result, const uint64_t *a) {
 }
 
 __host__ __device__ void modAddP(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&P_REF)[4] = P_CONST;
+    #else
+        const uint64_t (&P_REF)[4] = P_CONST_HOST;
+    #endif
+
     uint128_t carry = 0;
     uint64_t res[4];
 
@@ -237,8 +204,8 @@ __host__ __device__ void modAddP(uint64_t *result, const uint64_t *a, const uint
     bool ge = (carry != 0);
     if (!ge) {
         for (int i = 3; i >= 0; --i) {
-            if (res[i] > P_CONST[i]) { ge = true; break; }
-            if (res[i] < P_CONST[i]) { ge = false; break; }
+            if (res[i] > P_REF[i]) { ge = true; break; }
+            if (res[i] < P_REF[i]) { ge = false; break; }
             if (i == 0) ge = true;
         }
     }
@@ -246,7 +213,7 @@ __host__ __device__ void modAddP(uint64_t *result, const uint64_t *a, const uint
     if (ge) {
         uint128_t borrow = 0;
         for (int i = 0; i < 4; ++i) {
-            uint128_t sub = (uint128_t)res[i] - P_CONST[i] - borrow;
+            uint128_t sub = (uint128_t)res[i] - P_REF[i] - borrow;
             result[i] = (uint64_t)sub;
             borrow = (sub >> 127) & 1;
         }
@@ -256,6 +223,13 @@ __host__ __device__ void modAddP(uint64_t *result, const uint64_t *a, const uint
 }
 
 __host__ __device__ void modSubP(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&P_REF)[4] = P_CONST;
+    #else
+        const uint64_t (&P_REF)[4] = P_CONST_HOST;
+    #endif
+
     uint128_t borrow = 0;
     uint64_t res[4];
 
@@ -268,7 +242,7 @@ __host__ __device__ void modSubP(uint64_t *result, const uint64_t *a, const uint
     if (borrow) {
         uint128_t carry = 0;
         for (int i = 0; i < 4; ++i) {
-            uint128_t s = (uint128_t)res[i] + P_CONST[i] + carry;
+            uint128_t s = (uint128_t)res[i] + P_REF[i] + carry;
             result[i] = (uint64_t)s;
             carry = s >> 64;
         }
@@ -302,16 +276,23 @@ __host__ __device__ void modSqrMontP(uint64_t *out, const uint64_t *in) {
 }
 
 __host__ __device__ void scalarReduceN(uint64_t *r, const uint64_t *k) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&N_REF)[4] = N_CONST;
+    #else
+        const uint64_t (&N_REF)[4] = N_CONST_HOST;
+    #endif
+
     bool ge = true;
     for (int i = 3; i >= 0; i--) {
-        if (k[i] > N_CONST[i]) { ge = true; break; }
-        if (k[i] < N_CONST[i]) { ge = false; break; }
+        if (k[i] > N_REF[i]) { ge = true; break; }
+        if (k[i] < N_REF[i]) { ge = false; break; }
     }
 
     if (ge) {
         uint128_t borrow = 0;
         for (int i = 0; i < 4; i++) {
-            uint128_t res = (uint128_t)k[i] - N_CONST[i] - borrow;
+            uint128_t res = (uint128_t)k[i] - N_REF[i] - borrow;
             r[i] = (uint64_t)res;
             borrow = (res >> 127) & 1;
         }
@@ -341,6 +322,7 @@ __host__ __device__ void modExpMontP(uint64_t *res, const uint64_t *base, const 
 }
 
 __host__ __device__ void sqrtModP(uint64_t y[4], const uint64_t v[4]) {
+
     uint64_t exp[4];
 
     exp[0] = 0xFFFFFFFFBFFFFF0CULL;
@@ -352,9 +334,16 @@ __host__ __device__ void sqrtModP(uint64_t y[4], const uint64_t v[4]) {
 }
 
 __host__ __device__ void jacobianSetInfinity(ECPointJacobian *point) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&ONE_REF)[4] = ONE_MONT;
+    #else
+        const uint64_t (&ONE_REF)[4] = ONE_MONT_HOST;
+    #endif
+
     for (int i = 0; i < 4; i++) {
-        point->X[i] = ONE_MONT[i];
-        point->Y[i] = ONE_MONT[i];
+        point->X[i] = ONE_REF[i];
+        point->Y[i] = ONE_REF[i];
         point->Z[i] = 0;
     }
     point->infinity = 1;
@@ -370,6 +359,12 @@ __host__ __device__ bool jacobianIsInfinity(const ECPointJacobian *point) {
 
 __host__ __device__ void jacobianToAffine(ECPointAffine *aff, const ECPointJacobian *jac) {
 
+   #ifdef __CUDA_ARCH__
+        const uint64_t (&SUB2_REF)[4] = SUB2_FP;
+    #else
+        const uint64_t (&SUB2_REF)[4] = SUB2_FP_HOST;
+    #endif
+
     if (jacobianIsInfinity(jac)) {
         for (int i = 0; i < 4; i++)
             aff->x[i] = aff->y[i] = 0;
@@ -381,7 +376,7 @@ __host__ __device__ void jacobianToAffine(ECPointAffine *aff, const ECPointJacob
     uint64_t zInv2[4];
     uint64_t zInv3[4];
 
-    modExpMontP(zInv, jac->Z, SUB2_FP);
+    modExpMontP(zInv, jac->Z, SUB2_REF);
     modMulMontP(zInv2, zInv, zInv);
     modMulMontP(zInv3, zInv2, zInv);
     modMulMontP(aff->x, jac->X, zInv2);
@@ -394,6 +389,12 @@ __host__ __device__ void jacobianToAffine(ECPointAffine *aff, const ECPointJacob
 
 __host__ __device__ void affineToJacobian(ECPointJacobian *jac, const ECPointAffine *aff) {
 
+   #ifdef __CUDA_ARCH__
+        const uint64_t (&ONE_REF)[4] = ONE_MONT;
+    #else
+        const uint64_t (&ONE_REF)[4] = ONE_MONT_HOST;
+    #endif
+
     if (aff->infinity) {
         jacobianSetInfinity(jac);
         return;
@@ -402,7 +403,7 @@ __host__ __device__ void affineToJacobian(ECPointJacobian *jac, const ECPointAff
     toMontgomeryP(jac->X, aff->x);
     toMontgomeryP(jac->Y, aff->y);
 
-    for (int i = 0; i < 4; i++) { jac->Z[i] = ONE_MONT[i]; }
+    for (int i = 0; i < 4; i++) { jac->Z[i] = ONE_REF[i]; }
 
     jac->infinity = 0;
 }
@@ -489,8 +490,15 @@ __host__ __device__ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *
 }
 
 __host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobian *P) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&BETA_REF)[4] = BETA_P;
+    #else
+        const uint64_t (&BETA_REF)[4] = BETA_P_HOST;
+    #endif
+
     uint64_t beta_mont[4];
-    toMontgomeryP(beta_mont, BETA_P);
+    toMontgomeryP(beta_mont, BETA_REF);
     modMulMontP(R->X, P->X, beta_mont);
 
     if (R != P) {
@@ -503,66 +511,98 @@ __host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobi
 }
 
 __host__ __device__ void initPreCompG(int windowSize) {
+
+    #ifdef __CUDA_ARCH__
+	const uint64_t (&GX_REF)[4]  = GX_CONST;
+        const uint64_t (&GY_REF)[4]  = GY_CONST;
+        const uint64_t (&ONE_REF)[4] = ONE_MONT;
+	ECPointJacobian* &preCompG_REF    = preCompG;
+    	ECPointJacobian* &preCompGphi_REF = preCompGphi;
+    	ECPointJacobian* &jacNorm_REF     = jacNorm;
+    	ECPointJacobian* &jacEndo_REF     = jacEndo;
+    #else
+	const uint64_t (&GX_REF)[4]  = GX_CONST_HOST;
+    	const uint64_t (&GY_REF)[4]  = GY_CONST_HOST;
+    	const uint64_t (&ONE_REF)[4] = ONE_MONT_HOST;
+	ECPointJacobian* &preCompG_REF    = preCompG_HOST;
+    	ECPointJacobian* &preCompGphi_REF = preCompGphi_HOST;
+    	ECPointJacobian* &jacNorm_REF     = jacNorm_HOST;
+    	ECPointJacobian* &jacEndo_REF     = jacEndo_HOST;
+    #endif
+
     int dnorm = (128 + windowSize - 1) / windowSize;
     int dphi = (128 + windowSize - 1) / windowSize;
     int tableSize = (1 << windowSize) - 1;
 
     uint64_t gxMont[4], gyMont[4];
-    toMontgomeryP(gxMont, GX_CONST);
-    toMontgomeryP(gyMont, GY_CONST);
+    toMontgomeryP(gxMont, GX_REF);
+    toMontgomeryP(gyMont, GY_REF);
 
     ECPointJacobian g, ge;
     for (int i = 0; i < 4; i++) {
         g.X[i]  = gxMont[i];
         g.Y[i]  = gyMont[i];
-        g.Z[i]  = ONE_MONT[i];
+        g.Z[i]  = ONE_REF[i];
         ge.X[i] = gxMont[i];
         ge.Y[i] = gyMont[i];
-        ge.Z[i] = ONE_MONT[i];
+        ge.Z[i] = ONE_REF[i];
     }
     g.infinity  = 0;
     ge.infinity = 0;
 
     endomorphismMap(&ge, &ge);
 
-    jacNorm[0]  = g;
-    jacEndo[0] = ge;
+    jacNorm_REF[0]  = g;
+    jacEndo_REF[0] = ge;
 
     for (int j = 1; j < windowSize; j++) {
-        jacNorm[j]  = jacNorm[j - 1];
-        jacEndo[j]  = jacEndo[j - 1];
+        jacNorm_REF[j]  = jacNorm_REF[j - 1];
+        jacEndo_REF[j]  = jacEndo_REF[j - 1];
 
         for (int i = 0; i < dnorm; i++)
-            jacobianDouble(&jacNorm[j], &jacNorm[j]);
+            jacobianDouble(&jacNorm_REF[j], &jacNorm_REF[j]);
 
         for (int i = 0; i < dphi; i++)
-            jacobianDouble(&jacEndo[j], &jacEndo[j]);
+            jacobianDouble(&jacEndo_REF[j], &jacEndo_REF[j]);
     }
 
     for (int i = 1; i <= tableSize; i++) {
-        jacobianSetInfinity(&preCompG[i - 1]);
+        jacobianSetInfinity(&preCompG_REF[i - 1]);
 
         for (int j = 0; j < windowSize; j++) {
             if ((i >> j) & 1) {
                 ECPointJacobian tmp;
-                jacobianAdd(&tmp, &preCompG[i - 1], &jacNorm[j]);
-                preCompG[i - 1] = tmp;
+                jacobianAdd(&tmp, &preCompG_REF[i - 1], &jacNorm_REF[j]);
+                preCompG_REF[i - 1] = tmp;
             }
         }
 
-        jacobianSetInfinity(&preCompGphi[i - 1]);
+        jacobianSetInfinity(&preCompGphi_REF[i - 1]);
 
         for (int j = 0; j < windowSize; j++) {
             if ((i >> j) & 1) {
                 ECPointJacobian tmp;
-                jacobianAdd(&tmp, &preCompGphi[i - 1], &jacEndo[j]);
-                preCompGphi[i - 1] = tmp;
+                jacobianAdd(&tmp, &preCompGphi_REF[i - 1], &jacEndo_REF[j]);
+                preCompGphi_REF[i - 1] = tmp;
             }
         }
     }
 }
 
 __host__ __device__ void initPreCompH(const ECPointJacobian *h, int windowSize) {
+
+    #ifdef __CUDA_ARCH__
+        ECPointJacobian* &preCompH_REF    = preCompH;
+        ECPointJacobian* &preCompHphi_REF = preCompHphi;
+        ECPointJacobian* &jacNormH_REF    = jacNormH;
+        ECPointJacobian* &jacEndoH_REF    = jacEndoH;
+    #else
+        ECPointJacobian* &preCompH_REF    = preCompH_HOST;
+        ECPointJacobian* &preCompHphi_REF = preCompHphi_HOST;
+        ECPointJacobian* &jacNormH_REF    = jacNormH_HOST;
+        ECPointJacobian* &jacEndoH_REF    = jacEndoH_HOST;
+    #endif
+
     int dnorm = (128 + windowSize - 1) / windowSize;
     int dphi = (128 + windowSize - 1) / windowSize;
     int tableSize = (1 << windowSize) - 1;
@@ -581,38 +621,38 @@ __host__ __device__ void initPreCompH(const ECPointJacobian *h, int windowSize) 
 
     endomorphismMap(&HE, &HE);
 
-    jacNormH[0] = H;
-    jacEndoH[0] = HE;
+    jacNormH_REF[0] = H;
+    jacEndoH_REF[0] = HE;
 
     for (int j = 1; j < windowSize; j++) {
-        jacNormH[j]  = jacNormH[j - 1];
-        jacEndoH[j]  = jacEndoH[j - 1];
+        jacNormH_REF[j]  = jacNormH_REF[j - 1];
+        jacEndoH_REF[j]  = jacEndoH_REF[j - 1];
 
         for (int i = 0; i < dnorm; i++)
-            jacobianDouble(&jacNormH[j], &jacNormH[j]);
+            jacobianDouble(&jacNormH_REF[j], &jacNormH_REF[j]);
 
         for (int i = 0; i < dphi; i++)
-            jacobianDouble(&jacEndoH[j], &jacEndoH[j]);
+            jacobianDouble(&jacEndoH_REF[j], &jacEndoH_REF[j]);
     }
 
     for (int i = 1; i <= tableSize; i++) {
-        jacobianSetInfinity(&preCompH[i - 1]);
+        jacobianSetInfinity(&preCompH_REF[i - 1]);
 
         for (int j = 0; j < windowSize; j++) {
             if ((i >> j) & 1) {
                 ECPointJacobian tmp;
-                jacobianAdd(&tmp, &preCompH[i - 1], &jacNormH[j]);
-                preCompH[i - 1] = tmp;
+                jacobianAdd(&tmp, &preCompH_REF[i - 1], &jacNormH_REF[j]);
+                preCompH_REF[i - 1] = tmp;
             }
         }
 
-        jacobianSetInfinity(&preCompHphi[i - 1]);
+        jacobianSetInfinity(&preCompHphi_REF[i - 1]);
 
         for (int j = 0; j < windowSize; j++) {
             if ((i >> j) & 1) {
                 ECPointJacobian tmp;
-                jacobianAdd(&tmp, &preCompHphi[i - 1], &jacEndoH[j]);
-                preCompHphi[i - 1] = tmp;
+                jacobianAdd(&tmp, &preCompHphi_REF[i - 1], &jacEndoH_REF[j]);
+                preCompHphi_REF[i - 1] = tmp;
             }
         }
     }
@@ -646,6 +686,13 @@ __host__ __device__ void scalarMulShiftVar(uint64_t r[4], const uint64_t a[4], c
 }
 
 __host__ __device__ void scalarMul(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&N_REF)[4] = N_CONST;
+    #else
+        const uint64_t (&N_REF)[4] = N_CONST_HOST;
+    #endif
+
     uint64_t t[8] = {0};
 
     for (int i = 0; i < 4; i++) {
@@ -698,7 +745,7 @@ __host__ __device__ void scalarMul(uint64_t r[4], const uint64_t a[4], const uin
         uint64_t borrow = 0;
         uint64_t diff[4];
         for (int i = 0; i < 4; i++) {
-            uint128_t sub = (uint128_t)acc[i] - N_CONST[i] - borrow;
+            uint128_t sub = (uint128_t)acc[i] - N_REF[i] - borrow;
             diff[i] = (uint64_t)sub;
             borrow = (sub >> 127) & 1;
         }
@@ -714,6 +761,13 @@ __host__ __device__ void scalarMul(uint64_t r[4], const uint64_t a[4], const uin
 }
 
 __host__ __device__ void scalarAdd(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&N_REF)[4] = N_CONST;
+    #else
+        const uint64_t (&N_REF)[4] = N_CONST_HOST;
+    #endif
+
     uint128_t carry = 0;
     for (int i = 0; i < 4; i++) {
         uint128_t sum = (uint128_t)a[i] + (uint128_t)b[i] + carry;
@@ -724,7 +778,7 @@ __host__ __device__ void scalarAdd(uint64_t r[4], const uint64_t a[4], const uin
     if (carry) {
         uint128_t borrow = 0;
         for (int i = 0; i < 4; i++) {
-            uint128_t res = (uint128_t)r[i] - N_CONST[i] - borrow;
+            uint128_t res = (uint128_t)r[i] - N_REF[i] - borrow;
             r[i] = (uint64_t)res;
             borrow = (res >> 127) & 1;
         }
@@ -734,6 +788,13 @@ __host__ __device__ void scalarAdd(uint64_t r[4], const uint64_t a[4], const uin
 }
 
 __host__ __device__ void scalarSub(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&N_REF)[4] = N_CONST;
+    #else
+        const uint64_t (&N_REF)[4] = N_CONST_HOST;
+    #endif
+
     uint128_t borrow = 0;
     for (int i = 0; i < 4; i++) {
         uint128_t sub = (uint128_t)a[i] - (uint128_t)b[i] - borrow;
@@ -744,7 +805,7 @@ __host__ __device__ void scalarSub(uint64_t r[4], const uint64_t a[4], const uin
     if (borrow) {
         uint128_t carry = 0;
         for (int i = 0; i < 4; i++) {
-            uint128_t sum = (uint128_t)r[i] + N_CONST[i] + carry;
+            uint128_t sum = (uint128_t)r[i] + N_REF[i] + carry;
             r[i] = (uint64_t)sum;
             carry = sum >> 64;
         }
@@ -760,6 +821,13 @@ __host__ __device__ int scalarIsZero(const uint64_t a[4]) {
 }
 
 __host__ __device__ void scalarNeg(uint64_t r[4], const uint64_t a[4]) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&N_REF)[4] = N_CONST;
+    #else
+        const uint64_t (&N_REF)[4] = N_CONST_HOST;
+    #endif
+
     if (scalarIsZero(a)) {
         for(int i=0; i<4; i++) r[i] = 0;
         return;
@@ -767,21 +835,36 @@ __host__ __device__ void scalarNeg(uint64_t r[4], const uint64_t a[4]) {
 
     uint128_t borrow = 0;
     for (int i = 0; i < 4; i++) {
-        uint128_t sub = (uint128_t)N_CONST[i] - (uint128_t)a[i] - borrow;
+        uint128_t sub = (uint128_t)N_REF[i] - (uint128_t)a[i] - borrow;
         r[i] = (uint64_t)sub;
         borrow = (sub >> 127) & 1;
     }
 }
 
 __host__ __device__ void scalarSplitLambda(uint64_t r1[4], uint64_t r2[4], const uint64_t k[4]) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&G1_REF)[4] = G1;
+        const uint64_t (&G2_REF)[4] = G2;
+        const uint64_t (&B1_REF)[4] = MINUS_B1;
+	const uint64_t (&B2_REF)[4] = MINUS_B2;
+	const uint64_t (&LAMBDA_REF)[4] = LAMBDA_N;
+    #else
+        const uint64_t (&G1_REF)[4] = G1_HOST;
+        const uint64_t (&G2_REF)[4] = G2_HOST;
+        const uint64_t (&B1_REF)[4] = MINUS_B1_HOST;
+	const uint64_t (&B2_REF)[4] = MINUS_B2_HOST;
+	const uint64_t (&LAMBDA_REF)[4] = LAMBDA_N_HOST;
+    #endif
+
     uint64_t c1[4], c2[4], t1[4], t2[4];
 
-    scalarMulShiftVar(c1, k, G1, 384);
-    scalarMulShiftVar(c2, k, G2, 384);
-    scalarMul(t1, c1, MINUS_B1);
-    scalarMul(t2, c2, MINUS_B2);
+    scalarMulShiftVar(c1, k, G1_REF, 384);
+    scalarMulShiftVar(c2, k, G2_REF, 384);
+    scalarMul(t1, c1, B1_REF);
+    scalarMul(t2, c2, B2_REF);
     scalarAdd(r2, t1, t2);
-    scalarMul(t1, r2, LAMBDA_N);
+    scalarMul(t1, r2, LAMBDA_REF);
     scalarNeg(t1, t1);
     scalarAdd(r1, t1, k);
 }
@@ -855,6 +938,15 @@ __host__ __device__ void generatePublicKey(ECPointJacobian *preCompTable, ECPoin
 }
 
 __host__ __device__ void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33]) {
+
+    #ifdef __CUDA_ARCH__
+        const uint64_t (&SEVEN_REF)[4] = SEVEN_MONT;
+	const uint64_t (&P_REF)[4] = P_CONST;
+    #else
+        const uint64_t (&SEVEN_REF)[4] = SEVEN_MONT_HOST;
+	const uint64_t (&P_REF)[4] = P_CONST_HOST;
+    #endif
+
     unsigned char prefix = compressed[0];
 
     for (int i = 0; i < 4; i++) {
@@ -870,7 +962,7 @@ __host__ __device__ void decompressPublicKey(ECPointAffine* out, const unsigned 
     toMontgomeryP(x_mont, out->x);
     modMulMontP(x2, x_mont, x_mont);
     modMulMontP(x3, x2, x_mont);
-    modAddP(rhs, x3, SEVEN_MONT);
+    modAddP(rhs, x3, SEVEN_REF);
 
     uint64_t y_mont[4];
     sqrtModP(y_mont, rhs);
@@ -880,7 +972,7 @@ __host__ __device__ void decompressPublicKey(ECPointAffine* out, const unsigned 
     uint64_t want_odd = (prefix == 0x03);
 
     if (is_odd != want_odd) {
-        modSubP(out->y, P_CONST, out->y);
+        modSubP(out->y, P_REF, out->y);
     }
 
     out->infinity = 0;
