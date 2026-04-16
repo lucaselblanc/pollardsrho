@@ -13,6 +13,8 @@
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
+#define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
+
 #ifndef __CUDACC__
     #include <boost/multiprecision/cpp_int.hpp>
     typedef boost::multiprecision::cpp_int BigInt;
@@ -156,6 +158,15 @@ extern "C" void defGpuPointers(
 );
 
 uint256_t almostinverse(uint256_t base, uint256_t mod);
+
+inline void check_cuda(cudaError_t result, char const *const func, const char *const file, int const line) {
+    if (result != cudaSuccess) {
+        fprintf(stderr, "\033[1;31mCUDA Error em %s:%d\033[0m\n", file, line);
+        fprintf(stderr, "Causa: %s\n", cudaGetErrorString(result));
+        fprintf(stderr, "Chamada: %s\n", func);
+        exit(1);
+    }
+}
 
 __host__ __device__ void affineToJacobian(ECPointJacobian *jac, const ECPointAffine *aff);
 __host__ __device__ void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33]);
