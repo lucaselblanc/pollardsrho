@@ -122,8 +122,6 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-
-#ifndef __CUDA_ARCH__
 	extern const uint64_t P_CONST_HOST[4];
 	extern const uint64_t N_CONST_HOST[4];
 	extern const uint256_t N_STRUCT_HOST;
@@ -150,62 +148,7 @@ extern "C" {
 	extern ECPointJacobian* jacNormH_HOST;
  	extern ECPointJacobian* jacEndoH_HOST;
 
-
-#ifndef __CUDA_ARCH__
-        #undef P_CONST
-        #define P_CONST P_CONST_HOST
-        #undef N_CONST
-        #define N_CONST N_CONST_HOST
-        #undef N_STRUCT
-        #define N_STRUCT N_STRUCT_HOST
-        #undef GX_CONST
-        #define GX_CONST GX_CONST_HOST
-        #undef GY_CONST
-        #define GY_CONST GY_CONST_HOST
-        #undef R2_MOD_P
-        #define R2_MOD_P R2_MOD_P_HOST
-        #undef ZERO_MONT
-        #define ZERO_MONT ZERO_MONT_HOST
-        #undef ONE_MONT
-        #define ONE_MONT ONE_MONT_HOST
-        #undef SEVEN_MONT
-        #define SEVEN_MONT SEVEN_MONT_HOST
-        #undef SUB2_FP
-        #define SUB2_FP SUB2_FP_HOST
-        #undef LAMBDA_N
-        #define LAMBDA_N LAMBDA_N_HOST
-        #undef BETA_P
-        #define BETA_P BETA_P_HOST
-        #undef MINUS_B1
-        #define MINUS_B1 MINUS_B1_HOST
-        #undef MINUS_B2
-        #define MINUS_B2 MINUS_B2_HOST
-        #undef G1
-        #define G1 G1_HOST
-        #undef G2
-        #define G2 G2_HOST
-        #undef MU_P
-        #define MU_P MU_P_HOST
-        #undef preCompG
-        #define preCompG preCompG_HOST
-        #undef preCompGphi
-        #define preCompGphi preCompGphi_HOST
-        #undef preCompH
-        #define preCompH preCompH_HOST
-        #undef preCompHphi
-        #define preCompHphi preCompHphi_HOST
-        #undef jacNorm
-        #define jacNorm jacNorm_HOST
-        #undef jacEndo
-        #define jacEndo jacEndo_HOST
-        #undef jacNormH
-        #define jacNormH jacNormH_HOST
-        #undef jacEndoH
-        #define jacEndoH jacEndoH_HOST
-#endif
-#endif
-
-extern "C" void update_secp256k1_gpu_pointers(
+extern "C" void defGpuPointers(
     ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
     ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
     ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
