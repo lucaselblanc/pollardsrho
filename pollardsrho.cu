@@ -252,52 +252,51 @@ void initScalarSteps(uint64_t* steps, int windowSize) {
 void init_secp256k1(int key_range) {
     getfcw(key_range);
 
-    #ifdef __CUDA_ARCH__
-        preCompG = new ECPointJacobian[1ULL << windowSize];
-        preCompGphi = new ECPointJacobian[1ULL << windowSize];
-        preCompH = new ECPointJacobian[1ULL << windowSize];
-        preCompHphi = new ECPointJacobian[1ULL << windowSize];
-        jacNorm = new ECPointJacobian[windowSize];
-        jacNormH = new ECPointJacobian[windowSize];
-        jacEndo = new ECPointJacobian[windowSize];
-        jacEndoH = new ECPointJacobian[windowSize];
+    size_t tableCount = 1ULL << windowSize;
+    
+    preCompG_HOST     = new ECPointJacobian[tableCount];
+    preCompGphi_HOST  = new ECPointJacobian[tableCount];
+    preCompH_HOST     = new ECPointJacobian[tableCount];
+    preCompHphi_HOST  = new ECPointJacobian[tableCount];
+    
+    jacNorm_HOST      = new ECPointJacobian[windowSize];
+    jacEndo_HOST      = new ECPointJacobian[windowSize];
+    jacNormH_HOST     = new ECPointJacobian[windowSize];
+    jacEndoH_HOST     = new ECPointJacobian[windowSize];
 
-        initPreCompG(windowSize);
+    initPreCompG(windowSize); 
 
-        size_t tableSize = (1ULL << windowSize) * sizeof(ECPointJacobian);
-        size_t normSize = windowSize * sizeof(ECPointJacobian);
+    if (deviceCount > 0) { 
+        size_t tableSize = tableCount * sizeof(ECPointJacobian);
+        size_t normSize  = windowSize * sizeof(ECPointJacobian);
+        
         ECPointJacobian *d_G, *d_Gphi, *d_H, *d_Hphi, *d_jN, *d_jNH, *d_jE, *d_jEH;
 
         cudaMalloc((void**)&d_G, tableSize);
-        cudaMemcpy(d_G, preCompG, tableSize, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_G, preCompG_HOST, tableSize, cudaMemcpyHostToDevice);
+        
         cudaMalloc((void**)&d_Gphi, tableSize);
-        cudaMemcpy(d_Gphi, preCompGphi, tableSize, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_Gphi, preCompGphi_HOST, tableSize, cudaMemcpyHostToDevice);
+        
         cudaMalloc((void**)&d_H, tableSize);
-        cudaMemcpy(d_H, preCompH, tableSize, cudaMemcpyHostToDevice);
         cudaMalloc((void**)&d_Hphi, tableSize);
-        cudaMemcpy(d_Hphi, preCompHphi, tableSize, cudaMemcpyHostToDevice);
+        
         cudaMalloc((void**)&d_jN, normSize);
-        cudaMemcpy(d_jN, jacNorm, normSize, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_jN, jacNorm_HOST, normSize, cudaMemcpyHostToDevice);
+        
         cudaMalloc((void**)&d_jNH, normSize);
-        cudaMemcpy(d_jNH, jacNormH, normSize, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_jNH, jacNormH_HOST, normSize, cudaMemcpyHostToDevice);
+        
         cudaMalloc((void**)&d_jE, normSize);
-        cudaMemcpy(d_jE, jacEndo, normSize, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_jE, jacEndo_HOST, normSize, cudaMemcpyHostToDevice);
+        
         cudaMalloc((void**)&d_jEH, normSize);
-        cudaMemcpy(d_jEH, jacEndoH, normSize, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_jEH, jacEndoH_HOST, normSize, cudaMemcpyHostToDevice);
 
         defGpuPointers(d_G, d_Gphi, d_H, d_Hphi, d_jN, d_jNH, d_jE, d_jEH);
-    #else
-    	preCompG_HOST = new ECPointJacobian[1ULL << windowSize];
-    	preCompGphi_HOST = new ECPointJacobian[1ULL << windowSize];
-    	preCompH_HOST = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
-    	preCompHphi_HOST = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
-    	jacNorm_HOST = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
-    	jacNormH_HOST = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
-    	jacEndo_HOST = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
-    	jacEndoH_HOST = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
 
-    	initPreCompG(windowSize);
-    #endif
+        cudaDeviceSynchronize();
+    }
 }
 
 uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
