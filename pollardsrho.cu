@@ -15,17 +15,6 @@
 #define BLOCK_SIZE 128
 #include "secp256k1.h"
 
-#ifdef __CUDA_ARCH__
-    extern ECPointJacobian* preCompG_HOST;
-    extern ECPointJacobian* preCompGphi_HOST;
-    extern ECPointJacobian* preCompH_HOST;
-    extern ECPointJacobian* preCompHphi_HOST;
-    extern ECPointJacobian* jacNorm_HOST;
-    extern ECPointJacobian* jacNormH_HOST;
-    extern ECPointJacobian* jacEndo_HOST;
-    extern ECPointJacobian* jacEndoH_HOST;
-#endif
-
 const std::string& RED = "\033[91m";
 const std::string& GREEN = "\033[92m";
 const std::string& BLUE = "\033[94m";
@@ -132,6 +121,13 @@ std::vector<unsigned char> hex_to_bytes(const std::string& hex) {
 }
 
 uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
+
+    #ifdef __CUDA_ARCH__
+        const uint256_t &N_REF = N_STRUCT;
+    #else
+        const uint256_t &N_REF = N_STRUCT_HOST;
+    #endif
+
     uint256_t res;
     uint64_t carry = 0;
     for(int i = 0; i < 4; i++) {
@@ -141,14 +137,14 @@ uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
     }
     bool ge = true;
     for (int i = 3; i >= 0; i--) {
-        if (res.limbs[i] > N_STRUCT.limbs[i]) break;
-        if (res.limbs[i] < N_STRUCT.limbs[i]) { ge = false; break; }
+        if (res.limbs[i] > N_REF.limbs[i]) break;
+        if (res.limbs[i] < N_REF.limbs[i]) { ge = false; break; }
     }
     if (ge) {
         uint64_t borrow = 0;
         for (int i = 0; i < 4; i++) {
-            uint64_t diff = res.limbs[i] - N_STRUCT.limbs[i] - borrow;
-            borrow = (res.limbs[i] < N_STRUCT.limbs[i]) || (borrow && res.limbs[i] == N_STRUCT.limbs[i]);
+            uint64_t diff = res.limbs[i] - N_REF.limbs[i] - borrow;
+            borrow = (res.limbs[i] < N_REF.limbs[i]) || (borrow && res.limbs[i] == N_REF.limbs[i]);
             res.limbs[i] = diff;
         }
     }
@@ -156,13 +152,20 @@ uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
 }
 
 uint256_t mod_neg_N(const uint256_t& a) {
+
+    #ifdef __CUDA_ARCH__
+        const uint256_t &N_REF = N_STRUCT;
+    #else
+        const uint256_t &N_REF = N_STRUCT_HOST;
+    #endif
+
     bool is_zero = (a.limbs[0] | a.limbs[1] | a.limbs[2] | a.limbs[3]) == 0;
     if (is_zero) return a;
     uint256_t res;
     uint64_t borrow = 0;
     for (int i = 0; i < 4; i++) {
-        uint64_t diff = N_STRUCT.limbs[i] - a.limbs[i] - borrow;
-        borrow = (N_STRUCT.limbs[i] < a.limbs[i]) || (borrow && N_STRUCT.limbs[i] == a.limbs[i]);
+        uint64_t diff = N_REF.limbs[i] - a.limbs[i] - borrow;
+        borrow = (N_REF.limbs[i] < a.limbs[i]) || (borrow && N_REF.limbs[i] == a.limbs[i]);
         res.limbs[i] = diff;
     }
     return res;
@@ -249,39 +252,52 @@ void initScalarSteps(uint64_t* steps, int windowSize) {
 void init_secp256k1(int key_range) {
     getfcw(key_range);
 
-    preCompG = new ECPointJacobian[1ULL << windowSize];
-    preCompGphi = new ECPointJacobian[1ULL << windowSize];
-    preCompH = new ECPointJacobian[1ULL << windowSize];
-    preCompHphi = new ECPointJacobian[1ULL << windowSize];
-    jacNorm = new ECPointJacobian[windowSize];
-    jacNormH = new ECPointJacobian[windowSize];
-    jacEndo = new ECPointJacobian[windowSize];
-    jacEndoH = new ECPointJacobian[windowSize];
+    #ifdef __CUDA_ARCH__
+        preCompG = new ECPointJacobian[1ULL << windowSize];
+        preCompGphi = new ECPointJacobian[1ULL << windowSize];
+        preCompH = new ECPointJacobian[1ULL << windowSize];
+        preCompHphi = new ECPointJacobian[1ULL << windowSize];
+        jacNorm = new ECPointJacobian[windowSize];
+        jacNormH = new ECPointJacobian[windowSize];
+        jacEndo = new ECPointJacobian[windowSize];
+        jacEndoH = new ECPointJacobian[windowSize];
 
-    initPreCompG(windowSize);
+        initPreCompG(windowSize);
 
-    size_t tableSize = (1ULL << windowSize) * sizeof(ECPointJacobian);
-    size_t normSize = windowSize * sizeof(ECPointJacobian);
-    ECPointJacobian *d_G, *d_Gphi, *d_H, *d_Hphi, *d_jN, *d_jNH, *d_jE, *d_jEH;
+        size_t tableSize = (1ULL << windowSize) * sizeof(ECPointJacobian);
+        size_t normSize = windowSize * sizeof(ECPointJacobian);
+        ECPointJacobian *d_G, *d_Gphi, *d_H, *d_Hphi, *d_jN, *d_jNH, *d_jE, *d_jEH;
 
-    cudaMalloc((void**)&d_G, tableSize);
-    cudaMemcpy(d_G, preCompG, tableSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_Gphi, tableSize);
-    cudaMemcpy(d_Gphi, preCompGphi, tableSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_H, tableSize);
-    cudaMemcpy(d_H, preCompH, tableSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_Hphi, tableSize);
-    cudaMemcpy(d_Hphi, preCompHphi, tableSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_jN, normSize);
-    cudaMemcpy(d_jN, jacNorm, normSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_jNH, normSize);
-    cudaMemcpy(d_jNH, jacNormH, normSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_jE, normSize);
-    cudaMemcpy(d_jE, jacEndo, normSize, cudaMemcpyHostToDevice);
-    cudaMalloc((void**)&d_jEH, normSize);
-    cudaMemcpy(d_jEH, jacEndoH, normSize, cudaMemcpyHostToDevice);
+        cudaMalloc((void**)&d_G, tableSize);
+        cudaMemcpy(d_G, preCompG, tableSize, cudaMemcpyHostToDevice);
+        cudaMalloc((void**)&d_Gphi, tableSize);
+        cudaMemcpy(d_Gphi, preCompGphi, tableSize, cudaMemcpyHostToDevice);
+        cudaMalloc((void**)&d_H, tableSize);
+        cudaMemcpy(d_H, preCompH, tableSize, cudaMemcpyHostToDevice);
+        cudaMalloc((void**)&d_Hphi, tableSize);
+        cudaMemcpy(d_Hphi, preCompHphi, tableSize, cudaMemcpyHostToDevice);
+        cudaMalloc((void**)&d_jN, normSize);
+        cudaMemcpy(d_jN, jacNorm, normSize, cudaMemcpyHostToDevice);
+        cudaMalloc((void**)&d_jNH, normSize);
+        cudaMemcpy(d_jNH, jacNormH, normSize, cudaMemcpyHostToDevice);
+        cudaMalloc((void**)&d_jE, normSize);
+        cudaMemcpy(d_jE, jacEndo, normSize, cudaMemcpyHostToDevice);
+        cudaMalloc((void**)&d_jEH, normSize);
+        cudaMemcpy(d_jEH, jacEndoH, normSize, cudaMemcpyHostToDevice);
 
-    update_secp256k1_gpu_pointers(d_G, d_Gphi, d_H, d_Hphi, d_jN, d_jNH, d_jE, d_jEH);
+        defGpuPointers(d_G, d_Gphi, d_H, d_Hphi, d_jN, d_jNH, d_jE, d_jEH);
+    #else
+    	preCompG_HOST = new ECPointJacobian[1ULL << windowSize];
+    	preCompGphi_HOST = new ECPointJacobian[1ULL << windowSize];
+    	preCompH_HOST = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
+    	preCompHphi_HOST = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
+    	jacNorm_HOST = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
+    	jacNormH_HOST = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
+    	jacEndo_HOST = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
+    	jacEndoH_HOST = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
+
+    	initPreCompG(windowSize);
+    #endif
 }
 
 uint256_t add_uint256(const uint256_t& a, const uint256_t& b) {
@@ -351,7 +367,7 @@ bool DP(const uint64_t* affine_x, int DP_BITS) {
 void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in, int count, uint64_t* scratch_prefix, uint64_t* scratch_inv) {
     if (count <= 0) return;
     if (jacobianIsInfinity(&jac_in[0])) {
-        memcpy(&scratch_prefix[0], ONE_MONT, 32);
+        memcpy(&scratch_prefix[0], ONE_MONT_HOST, 32);
     } else {
         memcpy(&scratch_prefix[0], jac_in[0].Z, 32);
     }
@@ -365,7 +381,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
     }
 
     uint64_t total_inv[4];
-    modExpMontP(total_inv, &scratch_prefix[(count - 1) * 4], SUB2_FP);
+    modExpMontP(total_inv, &scratch_prefix[(count - 1) * 4], SUB2_FP_HOST);
     uint64_t current_inv[4];
     memcpy(current_inv, total_inv, 32);
 
@@ -407,7 +423,7 @@ __global__ void batchJacobianToAffineKernel(ECPointAffine* aff_out, const ECPoin
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int tx = threadIdx.x;
     int leaf_idx = BLOCK_SIZE + tx;
-    
+
     if (idx < count && !jacobianIsInfinity(&jac_in[idx])) {
         s_prod[leaf_idx][0] = jac_in[idx].Z[0];
         s_prod[leaf_idx][1] = jac_in[idx].Z[1];
@@ -458,15 +474,32 @@ __global__ void batchJacobianToAffineKernel(ECPointAffine* aff_out, const ECPoin
             aff_out[idx].infinity = 0;
         } else {
             aff_out[idx].infinity = 1;
-            aff_out[idx].x[0] = 0; 
+            aff_out[idx].x[0] = 0;
             aff_out[idx].x[1] = 0;
-            aff_out[idx].x[2] = 0; 
+            aff_out[idx].x[2] = 0;
             aff_out[idx].x[3] = 0;
         }
     }
 }
 
 uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, const int DP_BITS) {
+
+    #ifdef __CUDA_ARCH__
+        ECPointJacobian* &preCompG_REF = preCompG;
+	ECPointJacobian* &preCompGphi_REF = preCompGphi;
+	//ECPointJacobian* &preCompHphi_REF = preCompHphi;
+        //ECPointJacobian* &preCompH_REF = preCompH;
+        const uint256_t &N_REF = N_STRUCT;
+	const uint64_t (&ZERO_REF)[4] = ZERO_MONT;
+    #else
+        ECPointJacobian* &preCompG_REF = preCompG_HOST;
+	ECPointJacobian* &preCompGphi_REF = preCompGphi_HOST;
+	//ECPointJacobian* &preCompHphi_REF = preCompHphi_HOST;
+        //ECPointJacobian* &preCompH_REF = preCompH_HOST;
+        const uint256_t &N_REF = N_STRUCT_HOST;
+	const uint64_t (&ZERO_REF)[4] = ZERO_MONT_HOST;
+    #endif
+
     std::atomic<bool> search_in_progress(true);
     std::atomic<unsigned long long> total_iters{0};
     std::atomic<unsigned long long> total_cycles{0};
@@ -489,8 +522,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     initPreCompH(&target_affine_jac, windowSize);
 
     ECPointJacobian G_OFFSET;
-    jacobianScalarMultPhi(&G_OFFSET, preCompG, preCompGphi, max_scalar.limbs, windowSize);
-    if (!jacobianIsInfinity(&G_OFFSET)) { modSubP(G_OFFSET.Y, ZERO_MONT, G_OFFSET.Y); }
+    jacobianScalarMultPhi(&G_OFFSET, preCompG_REF, preCompGphi_REF, max_scalar.limbs, windowSize);
+    if (!jacobianIsInfinity(&G_OFFSET)) { modSubP(G_OFFSET.Y, ZERO_REF, G_OFFSET.Y); }
 
     const uint32_t N_STEPS = 2048;
     struct LocalStep { ECPointJacobian point; uint256_t a; uint256_t b; };
@@ -504,7 +537,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         localStepTable[i].b = uint256_t{};
         uint64_t a_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
-        jacobianScalarMultPhi(&localStepTable[i].point, preCompG, preCompGphi, a_tmp, windowSize);
+        jacobianScalarMultPhi(&localStepTable[i].point, preCompG_REF, preCompGphi_REF, a_tmp, windowSize);
         ECPointAffine aff_step;
         jacobianToAffine(&aff_step, &localStepTable[i].point);
         affineToJacobian(&localStepTable[i].point, &aff_step);
@@ -541,7 +574,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         uint64_t a_arr[4];
         uint256_to_uint64_array(a_arr, walkers_state[i].a);
         ECPointJacobian Ra;
-        jacobianScalarMultPhi(&Ra, preCompG, preCompGphi, a_arr, windowSize);
+        jacobianScalarMultPhi(&Ra, preCompG_REF, preCompGphi_REF, a_arr, windowSize);
 
         if (i % 2 == 0) {
             walkers_state[i].R = Ra;
@@ -698,16 +731,16 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                         if (cl) {
                             uint256_t da, db, inv_db;
                             if (compare_uint256(w->a, found_dp.a) >= 0) da = sub_uint256(w->a, found_dp.a);
-                            else da = sub_uint256(N_STRUCT, sub_uint256(found_dp.a, w->a));
+                            else da = sub_uint256(N_REF, sub_uint256(found_dp.a, w->a));
                             if (compare_uint256(found_dp.b, w->b) >= 0) db = sub_uint256(found_dp.b, w->b);
-                            else db = sub_uint256(N_STRUCT, sub_uint256(w->b, found_dp.b));
+                            else db = sub_uint256(N_REF, sub_uint256(w->b, found_dp.b));
 
                             if (!scalarIsZero(db.limbs)) {
-                                inv_db = almostinverse(db, N_STRUCT);
+                                inv_db = almostinverse(db, N_REF);
                                 uint64_t res_k[4];
                                 scalarMul(res_k, da.limbs, inv_db.limbs);
                                 unsigned char test_pub[33];
-                                generatePublicKey(preCompG, preCompGphi, test_pub, res_k, windowSize);
+                                generatePublicKey(preCompG_REF, preCompGphi_REF, test_pub, res_k, windowSize);
                                 if (memcmp(test_pub, target_pubkey.data(), 33) == 0) {
                                     memcpy(k.limbs, res_k, 32);
                                     search_in_progress.store(false, std::memory_order_release);
@@ -848,6 +881,15 @@ std::string HexToWif(const std::string& hexKey) {
 }
 
 int main(int argc, char* argv[]) {
+
+    #ifdef __CUDA_ARCH__
+        ECPointJacobian* &preCompG_REF = preCompG;
+        ECPointJacobian* &preCompGphi_REF = preCompGphi;
+    #else
+        ECPointJacobian* &preCompG_REF = preCompG_HOST;
+        ECPointJacobian* &preCompGphi_REF = preCompGphi_HOST;
+    #endif
+
     std::string pub_key_hex;
     int key_range;
     int walkers;
@@ -927,7 +969,7 @@ int main(int argc, char* argv[]) {
 
     unsigned char test_pub[33];
     auto target_pubkey = hex_to_bytes(pub_key_hex);
-    generatePublicKey(preCompG, preCompGphi, test_pub, found_key.limbs, windowSize);
+    generatePublicKey(preCompG_REF, preCompGphi_REF, test_pub, found_key.limbs, windowSize);
 
     if (memcmp(test_pub, target_pubkey.data(), 33) != 0) {
         std::cout << RED << "[ERROR!] Incorrect Public Key: " << RESET;
@@ -957,13 +999,24 @@ int main(int argc, char* argv[]) {
 
     std::cout << CYAN << "[% Of The Range]: " << RESET << PINK << std::fixed << std::setprecision(2) << percentage << "%" << RESET << std::endl;
 
-    delete[] preCompG;
-    delete[] preCompGphi;
-    delete[] preCompH;
-    delete[] preCompHphi;
-    delete[] jacNorm;
-    delete[] jacNormH;
-    delete[] jacEndo;
-    delete[] jacEndoH;
+    #ifdef __CUDA_ARCH__
+	delete[] preCompG;
+        delete[] preCompGphi;
+        delete[] preCompH;
+        delete[] preCompHphi;
+        delete[] jacNorm;
+        delete[] jacNormH;
+        delete[] jacEndo;
+        delete[] jacEndoH;
+    #else
+	delete[] preCompG_HOST;
+        delete[] preCompGphi_HOST;
+        delete[] preCompH_HOST;
+        delete[] preCompHphi_HOST;
+        delete[] jacNorm_HOST;
+        delete[] jacNormH_HOST;
+        delete[] jacEndo_HOST;
+        delete[] jacEndoH_HOST;
+    #endif
     return 0;
 }
