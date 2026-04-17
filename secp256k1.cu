@@ -40,38 +40,20 @@ extern "C" {
     __device__ ECPointJacobian* jacEndoH = nullptr;
 }
 
-/*
 extern "C" void defGpuPointers(
     ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
     ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
     ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
     ECPointJacobian* d_jE, ECPointJacobian* d_jEH
 ) {
-    cudaMemcpyToSymbol(preCompG, &d_G, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(preCompGphi, &d_Gphi, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(preCompH, &d_H, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(preCompHphi, &d_Hphi, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(jacNorm, &d_jN, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(jacNormH, &d_jNH, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(jacEndo, &d_jE, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol(jacEndoH, &d_jEH, sizeof(ECPointJacobian*));
-}
-*/
-
-extern "C" void defGpuPointers(
-    ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
-    ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
-    ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
-    ECPointJacobian* d_jE, ECPointJacobian* d_jEH
-) {
-    checkCudaErrors(cudaMemcpyToSymbol(preCompG, &d_G, sizeof(ECPointJacobian*)));
-    checkCudaErrors(cudaMemcpyToSymbol(preCompGphi, &d_Gphi, sizeof(ECPointJacobian*)));
-    checkCudaErrors(cudaMemcpyToSymbol(preCompH, &d_H, sizeof(ECPointJacobian*)));
-    checkCudaErrors(cudaMemcpyToSymbol(preCompHphi, &d_Hphi, sizeof(ECPointJacobian*)));
-    checkCudaErrors(cudaMemcpyToSymbol(jacNorm, &d_jN, sizeof(ECPointJacobian*)));
-    checkCudaErrors(cudaMemcpyToSymbol(jacNormH, &d_jNH, sizeof(ECPointJacobian*)));
-    checkCudaErrors(cudaMemcpyToSymbol(jacEndo, &d_jE, sizeof(ECPointJacobian*)));
-    checkCudaErrors(cudaMemcpyToSymbol(jacEndoH, &d_jEH, sizeof(ECPointJacobian*)));
+    cudaMemcpyToSymbol("preCompG", &d_G, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol("preCompGphi", &d_Gphi, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol("preCompH", &d_H, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol("preCompHphi", &d_Hphi, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol("jacNorm", &d_jN, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol("jacNormH", &d_jNH, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol("jacEndo", &d_jE, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol("jacEndoH", &d_jEH, sizeof(ECPointJacobian*));
 }
 
 extern const uint64_t P_CONST_HOST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
