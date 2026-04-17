@@ -91,9 +91,6 @@ struct uint128_t {
 using uint128_t = unsigned __int128;
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 	extern __device__ __constant__ __align__(16) uint64_t P_CONST[4];
 	extern __device__ __constant__ __align__(16) uint64_t N_CONST[4];
 	extern __device__ __constant__ __align__(16) uint256_t N_STRUCT;
@@ -119,9 +116,7 @@ extern "C" {
 	extern __device__ ECPointJacobian* jacEndo;
 	extern __device__ ECPointJacobian* jacNormH;
 	extern __device__ ECPointJacobian* jacEndoH;
-#ifdef __cplusplus
-}
-#endif
+
 	extern const uint64_t P_CONST_HOST[4];
 	extern const uint64_t N_CONST_HOST[4];
 	extern const uint256_t N_STRUCT_HOST;
