@@ -40,22 +40,6 @@ extern "C" {
     __device__ ECPointJacobian* jacEndoH = nullptr;
 }
 
-extern "C" void defGpuPointers(
-    ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
-    ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
-    ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
-    ECPointJacobian* d_jE, ECPointJacobian* d_jEH
-) {
-    cudaMemcpyToSymbol("preCompG", &d_G, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol("preCompGphi", &d_Gphi, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol("preCompH", &d_H, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol("preCompHphi", &d_Hphi, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol("jacNorm", &d_jN, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol("jacNormH", &d_jNH, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol("jacEndo", &d_jE, sizeof(ECPointJacobian*));
-    cudaMemcpyToSymbol("jacEndoH", &d_jEH, sizeof(ECPointJacobian*));
-}
-
 extern const uint64_t P_CONST_HOST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 extern const uint64_t N_CONST_HOST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 extern const uint256_t N_STRUCT_HOST = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -81,6 +65,22 @@ ECPointJacobian* jacNorm_HOST = nullptr;
 ECPointJacobian* jacEndo_HOST = nullptr;
 ECPointJacobian* jacNormH_HOST = nullptr;
 ECPointJacobian* jacEndoH_HOST = nullptr;
+
+extern "C" void defGpuPointers(
+    ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
+    ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
+    ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
+    ECPointJacobian* d_jE, ECPointJacobian* d_jEH
+) {
+    cudaMemcpyToSymbol(preCompG, &d_G, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(preCompGphi, &d_Gphi, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(preCompH, &d_H, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(preCompHphi, &d_Hphi, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacNorm, &d_jN, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacNormH, &d_jNH, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacEndo, &d_jE, sizeof(ECPointJacobian*));
+    cudaMemcpyToSymbol(jacEndoH, &d_jEH, sizeof(ECPointJacobian*));
+}
 
 __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
 
