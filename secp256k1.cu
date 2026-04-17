@@ -977,3 +977,33 @@ __host__ __device__ void decompressPublicKey(ECPointAffine* out, const unsigned 
 
     out->infinity = 0;
 }
+
+__global__ void keep_symbols() {
+    if (blockIdx.x == 0x7FFFFFFF) {
+        (void)P_CONST[0];
+        (void)N_CONST[0];
+        (void)N_STRUCT.limbs[0];
+        (void)GX_CONST[0];
+        (void)GY_CONST[0];
+        (void)R2_MOD_P[0];
+        (void)ZERO_MONT[0];
+        (void)ONE_MONT[0];
+        (void)SEVEN_MONT[0];
+        (void)SUB2_FP[0];
+        (void)LAMBDA_N[0];
+        (void)BETA_P[0];
+        (void)MINUS_B1[0];
+        (void)MINUS_B2[0];
+        (void)G1[0];
+        (void)G2[0];
+        (void)MU_P;
+        (void)preCompG;
+        (void)preCompGphi;
+        (void)preCompH;
+        (void)preCompHphi;
+        (void)jacNorm;
+        (void)jacNormH;
+        (void)jacEndo;
+        (void)jacEndoH;
+    }
+}
