@@ -143,12 +143,18 @@ using uint128_t = unsigned __int128;
 	extern ECPointJacobian* jacNormH_HOST;
  	extern ECPointJacobian* jacEndoH_HOST;
 
-extern "C" void defGpuPointers(
+#ifdef __cplusplus
+extern "C" {
+#endif
+void defGpuPointers(
     ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
     ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
     ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
     ECPointJacobian* d_jE, ECPointJacobian* d_jEH
 );
+#ifdef __cplusplus
+}
+#endif
 
 uint256_t almostinverse(uint256_t base, uint256_t mod);
 
