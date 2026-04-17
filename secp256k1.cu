@@ -29,14 +29,14 @@
     __device__ __constant__ __align__(16) uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
     __device__ __constant__ __align__(16) uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
     __device__ __constant__ __align__(16) uint64_t MU_P = 0xD838091DD2253531ULL;
-    __device__ ECPointJacobian* preCompG = nullptr;
-    __device__ ECPointJacobian* preCompGphi = nullptr;
-    __device__ ECPointJacobian* preCompH = nullptr;
-    __device__ ECPointJacobian* preCompHphi = nullptr;
-    __device__ ECPointJacobian* jacNorm = nullptr;
-    __device__ ECPointJacobian* jacEndo = nullptr;
-    __device__ ECPointJacobian* jacNormH = nullptr;
-    __device__ ECPointJacobian* jacEndoH = nullptr;
+    __device__ ECPointJacobian* preCompG;
+    __device__ ECPointJacobian* preCompGphi;
+    __device__ ECPointJacobian* preCompH;
+    __device__ ECPointJacobian* preCompHphi;
+    __device__ ECPointJacobian* jacNorm;
+    __device__ ECPointJacobian* jacEndo;
+    __device__ ECPointJacobian* jacNormH;
+    __device__ ECPointJacobian* jacEndoH;
 
 extern const uint64_t P_CONST_HOST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 extern const uint64_t N_CONST_HOST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -55,14 +55,14 @@ extern const uint64_t MINUS_B2_HOST[4] = { 0x8A280AC50774346DULL, 0xD765CDA83DB1
 extern const uint64_t G1_HOST[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
 extern const uint64_t G2_HOST[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
 extern const uint64_t MU_P_HOST = 0xD838091DD2253531ULL;
-ECPointJacobian* preCompG_HOST = nullptr;
-ECPointJacobian* preCompGphi_HOST = nullptr;
-ECPointJacobian* preCompH_HOST = nullptr;
-ECPointJacobian* preCompHphi_HOST = nullptr;
-ECPointJacobian* jacNorm_HOST = nullptr;
-ECPointJacobian* jacEndo_HOST = nullptr;
-ECPointJacobian* jacNormH_HOST = nullptr;
-ECPointJacobian* jacEndoH_HOST = nullptr;
+ECPointJacobian* preCompG_HOST;
+ECPointJacobian* preCompGphi_HOST;
+ECPointJacobian* preCompH_HOST;
+ECPointJacobian* preCompHphi_HOST;
+ECPointJacobian* jacNorm_HOST;
+ECPointJacobian* jacEndo_HOST;
+ECPointJacobian* jacNormH_HOST;
+ECPointJacobian* jacEndoH_HOST;
 
 /*
 extern "C" void defGpuPointers(
