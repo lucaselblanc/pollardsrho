@@ -64,6 +64,7 @@ ECPointJacobian* jacEndo_HOST = nullptr;
 ECPointJacobian* jacNormH_HOST = nullptr;
 ECPointJacobian* jacEndoH_HOST = nullptr;
 
+/*
 extern "C" void defGpuPointers(
     ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
     ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
@@ -78,6 +79,34 @@ extern "C" void defGpuPointers(
     cudaMemcpyToSymbol(jacNormH, &d_jNH, sizeof(ECPointJacobian*));
     cudaMemcpyToSymbol(jacEndo, &d_jE, sizeof(ECPointJacobian*));
     cudaMemcpyToSymbol(jacEndoH, &d_jEH, sizeof(ECPointJacobian*));
+}
+*/
+
+extern "C" void defGpuPointers(
+    ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
+    ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
+    ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
+    ECPointJacobian* d_jE, ECPointJacobian* d_jEH
+) {
+    auto safeCopy = [](const char* name, void* symbolPtr, void* h_data) {
+        void* devAddr = nullptr;
+        cudaError_t err = cudaGetSymbolAddress(&devAddr, symbolPtr);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERRO CRÍTICO: Símbolo '%s' não encontrado! (%s)\n", name, cudaGetErrorString(err));
+            exit(1);
+        }
+
+        cudaMemcpy(devAddr, h_data, sizeof(ECPointJacobian*), cudaMemcpyHostToDevice);
+    };
+
+    safeCopy("preCompG",    &preCompG,    &d_G);
+    safeCopy("preCompGphi", &preCompGphi, &d_Gphi);
+    safeCopy("preCompH",    &preCompH,    &d_H);
+    safeCopy("preCompHphi", &preCompHphi, &d_Hphi);
+    safeCopy("jacNorm",     &jacNorm,     &d_jN);
+    safeCopy("jacNormH",    &jacNormH,    &d_jNH);
+    safeCopy("jacEndo",     &jacEndo,     &d_jE);
+    safeCopy("jacEndoH",    &jacEndoH,    &d_jEH);
 }
 
 __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
