@@ -881,6 +881,9 @@ std::string HexToWif(const std::string& hexKey) {
 
 int main(int argc, char* argv[]) {
 
+    cudaSetDevice(0);
+    cudaFree(0);
+
     #ifdef __CUDA_ARCH__
         ECPointJacobian* &preCompG_REF = preCompG;
         ECPointJacobian* &preCompGphi_REF = preCompGphi;
