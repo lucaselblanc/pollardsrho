@@ -64,7 +64,6 @@ ECPointJacobian* jacEndo_HOST;
 ECPointJacobian* jacNormH_HOST;
 ECPointJacobian* jacEndoH_HOST;
 
-/*
 extern "C" void defGpuPointers(
     ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
     ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
@@ -80,33 +79,39 @@ extern "C" void defGpuPointers(
     cudaMemcpyToSymbol(jacEndo, &d_jE, sizeof(ECPointJacobian*));
     cudaMemcpyToSymbol(jacEndoH, &d_jEH, sizeof(ECPointJacobian*));
 }
-*/
 
-extern "C" void defGpuPointers(
-    ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
-    ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
-    ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
-    ECPointJacobian* d_jE, ECPointJacobian* d_jEH
-) {
-    auto safeCopy = [](const char* name, void* symbolPtr, void* h_data) {
-        void* devAddr = nullptr;
-        cudaError_t err = cudaGetSymbolAddress(&devAddr, symbolPtr);
-        if (err != cudaSuccess) {
-            fprintf(stderr, "ERRO CRÍTICO: Símbolo '%s' não encontrado! (%s)\n", name, cudaGetErrorString(err));
-            exit(1);
-        }
+__global__ void cudaGetSymbols() {
+    if (blockIdx.x == 0x7FFFFFFF) {
+        (void)P_CONST[0];
+        (void)N_CONST[0];
+        (void)N_STRUCT.limbs[0];
+        (void)GX_CONST[0];
+        (void)GY_CONST[0];
+        (void)R2_MOD_P[0];
+        (void)ZERO_MONT[0];
+        (void)ONE_MONT[0];
+        (void)SEVEN_MONT[0];
+        (void)SUB2_FP[0];
+        (void)LAMBDA_N[0];
+        (void)BETA_P[0];
+        (void)MINUS_B1[0];
+        (void)MINUS_B2[0];
+        (void)G1[0];
+        (void)G2[0];
+        (void)MU_P;
+        (void)preCompG;
+        (void)preCompGphi;
+        (void)preCompH;
+        (void)preCompHphi;
+        (void)jacNorm;
+        (void)jacNormH;
+        (void)jacEndo;
+        (void)jacEndoH;
+    }
+}
 
-        cudaMemcpy(devAddr, h_data, sizeof(ECPointJacobian*), cudaMemcpyHostToDevice);
-    };
-
-    safeCopy("preCompG",    &preCompG,    &d_G);
-    safeCopy("preCompGphi", &preCompGphi, &d_Gphi);
-    safeCopy("preCompH",    &preCompH,    &d_H);
-    safeCopy("preCompHphi", &preCompHphi, &d_Hphi);
-    safeCopy("jacNorm",     &jacNorm,     &d_jN);
-    safeCopy("jacNormH",    &jacNormH,    &d_jNH);
-    safeCopy("jacEndo",     &jacEndo,     &d_jE);
-    safeCopy("jacEndoH",    &jacEndoH,    &d_jEH);
+void cudaLoadSymbols() {
+    void* _ = (void*)cudaGetSymbols;
 }
 
 __host__ __device__ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
@@ -1003,34 +1008,4 @@ __host__ __device__ void decompressPublicKey(ECPointAffine* out, const unsigned 
     }
 
     out->infinity = 0;
-}
-
-__global__ void keep_symbols() {
-    if (blockIdx.x == 0x7FFFFFFF) {
-        (void)P_CONST[0];
-        (void)N_CONST[0];
-        (void)N_STRUCT.limbs[0];
-        (void)GX_CONST[0];
-        (void)GY_CONST[0];
-        (void)R2_MOD_P[0];
-        (void)ZERO_MONT[0];
-        (void)ONE_MONT[0];
-        (void)SEVEN_MONT[0];
-        (void)SUB2_FP[0];
-        (void)LAMBDA_N[0];
-        (void)BETA_P[0];
-        (void)MINUS_B1[0];
-        (void)MINUS_B2[0];
-        (void)G1[0];
-        (void)G2[0];
-        (void)MU_P;
-        (void)preCompG;
-        (void)preCompGphi;
-        (void)preCompH;
-        (void)preCompHphi;
-        (void)jacNorm;
-        (void)jacNormH;
-        (void)jacEndo;
-        (void)jacEndoH;
-    }
 }
