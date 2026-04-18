@@ -63,7 +63,7 @@ endif
 	$(NVCC) $(NVCCFLAGS) $< -o $@
 
 dlink.o: $(OBJ_CU)
-        $(NVCC) $(DLINKFLAGS) $(INCLUDES) -rdc=true -dlink $(OBJ_CU) -o dlink.o $(LDFLAGS) -ccbin $(CXX)
+	$(NVCC) $(DLINKFLAGS) $(INCLUDES) -rdc=true -dlink $(OBJ_CU) -o dlink.o $(LDFLAGS) -ccbin $(CXX)
 
 $(TARGET): $(OBJ) dlink.o
 	$(CXX) $(CXXFLAGS) $(OBJ) dlink.o -o $@ $(LDFLAGS) $(LDLIBS)
