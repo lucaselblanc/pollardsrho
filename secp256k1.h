@@ -119,31 +119,31 @@ using uint128_t = unsigned __int128;
 	extern __device__ ECPointJacobian* jacEndoH;
 #endif
 
-	extern const uint64_t P_CONST_HOST[4];
-	extern const uint64_t N_CONST_HOST[4];
-	extern const uint256_t N_STRUCT_HOST;
-	extern const uint64_t GX_CONST_HOST[4];
-	extern const uint64_t GY_CONST_HOST[4];
-	extern const uint64_t R2_MOD_P_HOST[4];
-	extern const uint64_t ZERO_MONT_HOST[4];
-	extern const uint64_t ONE_MONT_HOST[4];
-	extern const uint64_t SEVEN_MONT_HOST[4];
- extern const uint64_t SUB2_FP_HOST[4];
- extern const uint64_t LAMBDA_N_HOST[4];
-	extern const uint64_t BETA_P_HOST[4];
- extern const uint64_t MINUS_B1_HOST[4];
- extern const uint64_t MINUS_B2_HOST[4];
- extern const uint64_t G1_HOST[4];
- extern const uint64_t G2_HOST[4];
- extern const uint64_t MU_P_HOST;
- extern ECPointJacobian* preCompG_HOST;
-	extern ECPointJacobian* preCompGphi_HOST;
- extern ECPointJacobian* preCompH_HOST;
- extern ECPointJacobian* preCompHphi_HOST;
- extern ECPointJacobian* jacNorm_HOST;
- extern ECPointJacobian* jacEndo_HOST;
-	extern ECPointJacobian* jacNormH_HOST;
- extern ECPointJacobian* jacEndoH_HOST;
+extern const uint64_t P_CONST_HOST[4];
+extern const uint64_t N_CONST_HOST[4];
+extern const uint256_t N_STRUCT_HOST;
+extern const uint64_t GX_CONST_HOST[4];
+extern const uint64_t GY_CONST_HOST[4];
+extern const uint64_t R2_MOD_P_HOST[4];
+extern const uint64_t ZERO_MONT_HOST[4];
+extern const uint64_t ONE_MONT_HOST[4];
+extern const uint64_t SEVEN_MONT_HOST[4];
+extern const uint64_t SUB2_FP_HOST[4];
+extern const uint64_t LAMBDA_N_HOST[4];
+extern const uint64_t BETA_P_HOST[4];
+extern const uint64_t MINUS_B1_HOST[4];
+extern const uint64_t MINUS_B2_HOST[4];
+extern const uint64_t G1_HOST[4];
+extern const uint64_t G2_HOST[4];
+extern const uint64_t MU_P_HOST;
+extern ECPointJacobian* preCompG_HOST;
+extern ECPointJacobian* preCompGphi_HOST;
+extern ECPointJacobian* preCompH_HOST;
+extern ECPointJacobian* preCompHphi_HOST;
+extern ECPointJacobian* jacNorm_HOST;
+extern ECPointJacobian* jacEndo_HOST;
+extern ECPointJacobian* jacNormH_HOST;
+extern ECPointJacobian* jacEndoH_HOST;
 
 #ifdef __cplusplus
 extern "C" {
