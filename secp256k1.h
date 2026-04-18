@@ -160,6 +160,8 @@ void defGpuPointers(
 
 uint256_t almostinverse(uint256_t base, uint256_t mod);
 
+void cudaLoadSymbols();
+
 __host__ __device__ void affineToJacobian(ECPointJacobian *jac, const ECPointAffine *aff);
 __host__ __device__ void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33]);
 __host__ __device__ void endomorphismMap(ECPointJacobian *R, const ECPointJacobian *P);
