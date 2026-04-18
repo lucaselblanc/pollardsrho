@@ -253,48 +253,39 @@ void init_secp256k1(int key_range) {
     getfcw(key_range);
 
     size_t tableCount = 1ULL << windowSize;
-    
+
     preCompG_HOST     = new ECPointJacobian[tableCount];
     preCompGphi_HOST  = new ECPointJacobian[tableCount];
     preCompH_HOST     = new ECPointJacobian[tableCount];
     preCompHphi_HOST  = new ECPointJacobian[tableCount];
-    
     jacNorm_HOST      = new ECPointJacobian[windowSize];
     jacEndo_HOST      = new ECPointJacobian[windowSize];
     jacNormH_HOST     = new ECPointJacobian[windowSize];
     jacEndoH_HOST     = new ECPointJacobian[windowSize];
 
-    initPreCompG(windowSize); 
+    initPreCompG(windowSize);
 
-    if (deviceCount > 0) { 
+    if (deviceCount > 0) {
         size_t tableSize = tableCount * sizeof(ECPointJacobian);
         size_t normSize  = windowSize * sizeof(ECPointJacobian);
-        
+
         ECPointJacobian *d_G, *d_Gphi, *d_H, *d_Hphi, *d_jN, *d_jNH, *d_jE, *d_jEH;
 
         cudaMalloc((void**)&d_G, tableSize);
         cudaMemcpy(d_G, preCompG_HOST, tableSize, cudaMemcpyHostToDevice);
-        
         cudaMalloc((void**)&d_Gphi, tableSize);
         cudaMemcpy(d_Gphi, preCompGphi_HOST, tableSize, cudaMemcpyHostToDevice);
-        
         cudaMalloc((void**)&d_H, tableSize);
         cudaMalloc((void**)&d_Hphi, tableSize);
-        
         cudaMalloc((void**)&d_jN, normSize);
         cudaMemcpy(d_jN, jacNorm_HOST, normSize, cudaMemcpyHostToDevice);
-        
         cudaMalloc((void**)&d_jNH, normSize);
         cudaMemcpy(d_jNH, jacNormH_HOST, normSize, cudaMemcpyHostToDevice);
-        
         cudaMalloc((void**)&d_jE, normSize);
         cudaMemcpy(d_jE, jacEndo_HOST, normSize, cudaMemcpyHostToDevice);
-        
         cudaMalloc((void**)&d_jEH, normSize);
         cudaMemcpy(d_jEH, jacEndoH_HOST, normSize, cudaMemcpyHostToDevice);
-
         defGpuPointers(d_G, d_Gphi, d_H, d_Hphi, d_jN, d_jNH, d_jE, d_jEH);
-
         cudaDeviceSynchronize();
     }
 }
@@ -485,18 +476,18 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
 
     #ifdef __CUDA_ARCH__
         ECPointJacobian* &preCompG_REF = preCompG;
-	ECPointJacobian* &preCompGphi_REF = preCompGphi;
-	//ECPointJacobian* &preCompHphi_REF = preCompHphi;
+	    ECPointJacobian* &preCompGphi_REF = preCompGphi;
+	    //ECPointJacobian* &preCompHphi_REF = preCompHphi;
         //ECPointJacobian* &preCompH_REF = preCompH;
         const uint256_t &N_REF = N_STRUCT;
-	const uint64_t (&ZERO_REF)[4] = ZERO_MONT;
+	    const uint64_t (&ZERO_REF)[4] = ZERO_MONT;
     #else
         ECPointJacobian* &preCompG_REF = preCompG_HOST;
-	ECPointJacobian* &preCompGphi_REF = preCompGphi_HOST;
-	//ECPointJacobian* &preCompHphi_REF = preCompHphi_HOST;
+	    ECPointJacobian* &preCompGphi_REF = preCompGphi_HOST;
+	    //ECPointJacobian* &preCompHphi_REF = preCompHphi_HOST;
         //ECPointJacobian* &preCompH_REF = preCompH_HOST;
         const uint256_t &N_REF = N_STRUCT_HOST;
-	const uint64_t (&ZERO_REF)[4] = ZERO_MONT_HOST;
+	    const uint64_t (&ZERO_REF)[4] = ZERO_MONT_HOST;
     #endif
 
     std::atomic<bool> search_in_progress(true);
@@ -881,6 +872,8 @@ std::string HexToWif(const std::string& hexKey) {
 
 int main(int argc, char* argv[]) {
 
+    cudaLoadSymbols();
+    cudaGetDeviceCount(&deviceCount);
     cudaSetDevice(0);
     cudaFree(0);
 
@@ -944,8 +937,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    cudaGetDeviceCount(&deviceCount);
-
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
     if(deviceCount > 0) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "GPU ON" << RESET << std::endl;
@@ -1002,7 +993,7 @@ int main(int argc, char* argv[]) {
     std::cout << CYAN << "[% Of The Range]: " << RESET << PINK << std::fixed << std::setprecision(2) << percentage << "%" << RESET << std::endl;
 
     #ifdef __CUDA_ARCH__
-	delete[] preCompG;
+	    delete[] preCompG;
         delete[] preCompGphi;
         delete[] preCompH;
         delete[] preCompHphi;
@@ -1011,7 +1002,7 @@ int main(int argc, char* argv[]) {
         delete[] jacEndo;
         delete[] jacEndoH;
     #else
-	delete[] preCompG_HOST;
+	    delete[] preCompG_HOST;
         delete[] preCompGphi_HOST;
         delete[] preCompH_HOST;
         delete[] preCompHphi_HOST;
