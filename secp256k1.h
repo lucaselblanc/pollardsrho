@@ -92,6 +92,9 @@ using uint128_t = unsigned __int128;
 #endif
 
 #ifdef __CUDACC__
+    #ifdef __cplusplus
+    extern "C" {
+    #endif
 	extern __device__ __constant__ __align__(16) uint64_t P_CONST[4];
 	extern __device__ __constant__ __align__(16) uint64_t N_CONST[4];
 	extern __device__ __constant__ __align__(16) uint256_t N_STRUCT;
@@ -117,50 +120,53 @@ using uint128_t = unsigned __int128;
 	extern __device__ ECPointJacobian* jacEndo;
 	extern __device__ ECPointJacobian* jacNormH;
 	extern __device__ ECPointJacobian* jacEndoH;
+    #ifdef __cplusplus
+    }
+    #endif
 #endif
-
-extern const uint64_t P_CONST_HOST[4];
-extern const uint64_t N_CONST_HOST[4];
-extern const uint256_t N_STRUCT_HOST;
-extern const uint64_t GX_CONST_HOST[4];
-extern const uint64_t GY_CONST_HOST[4];
-extern const uint64_t R2_MOD_P_HOST[4];
-extern const uint64_t ZERO_MONT_HOST[4];
-extern const uint64_t ONE_MONT_HOST[4];
-extern const uint64_t SEVEN_MONT_HOST[4];
-extern const uint64_t SUB2_FP_HOST[4];
-extern const uint64_t LAMBDA_N_HOST[4];
-extern const uint64_t BETA_P_HOST[4];
-extern const uint64_t MINUS_B1_HOST[4];
-extern const uint64_t MINUS_B2_HOST[4];
-extern const uint64_t G1_HOST[4];
-extern const uint64_t G2_HOST[4];
-extern const uint64_t MU_P_HOST;
-extern ECPointJacobian* preCompG_HOST;
-extern ECPointJacobian* preCompGphi_HOST;
-extern ECPointJacobian* preCompH_HOST;
-extern ECPointJacobian* preCompHphi_HOST;
-extern ECPointJacobian* jacNorm_HOST;
-extern ECPointJacobian* jacEndo_HOST;
-extern ECPointJacobian* jacNormH_HOST;
-extern ECPointJacobian* jacEndoH_HOST;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-void defGpuPointers(
-    ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
-    ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
-    ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
-    ECPointJacobian* d_jE, ECPointJacobian* d_jEH
-);
-#ifdef __cplusplus
+    extern const uint64_t P_CONST_HOST[4];
+    extern const uint64_t N_CONST_HOST[4];
+    extern const uint256_t N_STRUCT_HOST;
+    extern const uint64_t GX_CONST_HOST[4];
+    extern const uint64_t GY_CONST_HOST[4];
+    extern const uint64_t R2_MOD_P_HOST[4];
+    extern const uint64_t ZERO_MONT_HOST[4];
+    extern const uint64_t ONE_MONT_HOST[4];
+    extern const uint64_t SEVEN_MONT_HOST[4];
+    extern const uint64_t SUB2_FP_HOST[4];
+    extern const uint64_t LAMBDA_N_HOST[4];
+    extern const uint64_t BETA_P_HOST[4];
+    extern const uint64_t MINUS_B1_HOST[4];
+    extern const uint64_t MINUS_B2_HOST[4];
+    extern const uint64_t G1_HOST[4];
+    extern const uint64_t G2_HOST[4];
+    extern const uint64_t MU_P_HOST;
+    extern ECPointJacobian* preCompG_HOST;
+    extern ECPointJacobian* preCompGphi_HOST;
+    extern ECPointJacobian* preCompH_HOST;
+    extern ECPointJacobian* preCompHphi_HOST;
+    extern ECPointJacobian* jacNorm_HOST;
+    extern ECPointJacobian* jacEndo_HOST;
+    extern ECPointJacobian* jacNormH_HOST;
+    extern ECPointJacobian* jacEndoH_HOST;
+
+    void defGpuPointers(
+        ECPointJacobian* d_G, ECPointJacobian* d_Gphi,
+        ECPointJacobian* d_H, ECPointJacobian* d_Hphi,
+        ECPointJacobian* d_jN, ECPointJacobian* d_jNH,
+        ECPointJacobian* d_jE, ECPointJacobian* d_jEH
+    );
+
+    void cudaLoadSymbols();
+    #ifdef __cplusplus
 }
 #endif
 
 uint256_t almostinverse(uint256_t base, uint256_t mod);
-
-void cudaLoadSymbols();
 
 __host__ __device__ void affineToJacobian(ECPointJacobian *jac, const ECPointAffine *aff);
 __host__ __device__ void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33]);
