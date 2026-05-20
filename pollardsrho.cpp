@@ -729,16 +729,38 @@ std::string HexToWif(const std::string& hexKey) {
 }
 
 int main(int argc, char* argv[]) {
+    std::string pub_key_hex;
+    int key_range;
+    int walkers;
+    int dp = -1;
 
-    if (argc < 4) {
-        std::cerr << ORANGE << "[Use]: " << RESET << argv[0] << PINK << " <Compressed Public Key(Hex)> " << "<Key Range(int)> " << "<Walkers(int)>" << RESET << std::endl;
+    if (argc == 1) {
+        std::cout << "The Parameters Cannot Be Empty!" << std::endl;
         return 1;
     }
 
-    std::string pub_key_hex(argv[1]);
-    int key_range = std::stoi(argv[2]);
-    int walkers = std::stoi(argv[3]);
-    int dp = 0;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        if (arg == "--pubkey" && i + 1 < argc) {
+            pub_key_hex = argv[++i];
+        } else if (arg == "--keyrange" && i + 1 < argc) {
+            key_range = std::stoi(argv[++i]);
+        } else if (arg == "--walkers" && i + 1 < argc) {
+            walkers = std::stoi(argv[++i]);
+        } else if (arg == "--dp" && i + 1 < argc) {
+            dp = std::stoi(argv[++i]);
+        } else {
+            std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+            std::cerr << ORANGE << "[USAGE]: " << RESET << GREEN << argv[0] << RESET << " --? <?> --? <?> --? <?>\n"
+            << GREEN << "*" << RESET << " --pubkey        => Compressed Public Key        <hex> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --keyrange        => Key Range Bits                <int> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --walkers        => Number Of Walkers                 <int> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --dp                => Distinguished Points Bits        <int> ("<< GREEN << "*" << RESET << "Optional)\n";
+            std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+            return 1;
+        }
+    }
 
     if (pub_key_hex.length() != 66) {
         std::cerr << RED << "[ERROR] The Compressed Public Key Must Be Exactly 66 Characters Long, Prefix 02/03 + 64 Hex." << RESET << std::endl;
@@ -759,18 +781,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (argc >= 5) {
-        try {
-            dp = std::stoi(argv[4]);
-        } catch (...) {
-            std::cerr << RED << "Unknown Error Parsing Arguments!" << RESET << std::endl;
-        }
-    }
-
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
     if (dp <= 0) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
-        dp = (int)std::round(std::sqrt(key_range));
+        dp = (int)std::round((double)key_range / 2.0 - 10.0);
     }
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
@@ -779,7 +793,7 @@ int main(int argc, char* argv[]) {
     }
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
 
-    init_secp256k1(std::stoi(argv[2]));
+    init_secp256k1(key_range);
     uint256_t found_key = prho(pub_key_hex, key_range, walkers, dp);
 
     std::cout << GREEN << "[SUCCESS!] " << RESET << "Collision Found!" << std::endl;
