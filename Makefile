@@ -16,50 +16,62 @@ NVCC      := $(CUDA_HOME)/bin/nvcc
 
 export PATH := $(CUDA_HOME)/bin:$(CUDA_HOME)/nvvm/bin:$(PATH)
 
-INCLUDES  := -I$(CUDA_HOME)/include -I$(CUDA_HOME)/bin
+INCLUDES  := -I$(CUDA_HOME)/include -I$(CUDA_HOME)
 LDFLAGS   := -L$(CUDA_HOME)/lib64 -L$(CUDA_HOME)
-LDLIBS    := -lcudart_static -lcudadevrt -lpthread -ldl -lrt -lcrypto
-SRC_CPP   := pollardsrho.cpp almostinverse.cpp
-SRC_CU    := secp256k1.cu
-OBJ       := $(SRC_CPP:.cpp=.o) $(SRC_CU:.cu=.o)
+LDLIBS    := -lcudadevrt -lcudart_static -lpthread -ldl -lrt -lcrypto
 
-.PHONY: all gpu_arch recurse set_perms
+SRC_CPP   := almostinverse.cpp
+SRC_CU    := pollardsrho.cu secp256k1.cu
+OBJ_CPP   := $(SRC_CPP:.cpp=.o)
+OBJ_CU    := $(SRC_CU:.cu=.o)
+OBJ       := $(OBJ_CPP) $(OBJ_CU)
 
-all: set_perms gpu_arch
+.PHONY: all fresh set_perms recurse gpu_arch clean
+
+all: fresh
+
+fresh: set_perms gpu_arch
 	@$(MAKE) recurse
 
 set_perms:
 	@echo "Configuring CUDA Toolkit Permissions..."
 	@find $(CUDA_HOME) -type f -path "*/bin/*" -exec chmod +x {} + 2>/dev/null || true
 
-arch: arch.cu
-	$(NVCC) $(INCLUDES) $(LDFLAGS) -ccbin $(CXX) arch.cu -o arch $(LDLIBS)
-
 gpu_arch: arch
 	@RESULT=$$(./arch 2>/dev/null | grep -E '^[0-9]+$$' || echo "0"); \
-	echo "GPU_ARCH := $$RESULT" > gpu_arch
+ 	echo "GPU_ARCH := $$RESULT" > gpu_arch
+
+arch: arch.cu | set_perms
+	$(NVCC) $(INCLUDES) $(LDFLAGS) -ccbin $(CXX) arch.cu -o arch $(LDLIBS)
 
 recurse: $(TARGET)
 
 -include gpu_arch
 
-NVCCFLAGS := -O3 -std=c++14 -ccbin $(CXX) $(INCLUDES) \
-             -Xcompiler "-O3 -pthread -fpermissive -I$(CUDA_HOME)/include" \
-             --expt-relaxed-constexpr -MD
+CXXFLAGS  := -g -O3 -std=c++14 -pthread -I. $(INCLUDES)
+NVCCFLAGS := -g -G -O3 -std=c++14 -rdc=true -dc -ccbin $(CXX) $(INCLUDES) \
+             -Xcompiler "-g -O3 -pthread -fpermissive -fPIC" \
+             --expt-relaxed-constexpr --maxrregcount=96 -MD
 
+DLINKFLAGS :=
 ifneq ($(filter-out 0,$(strip $(GPU_ARCH))),)
     NVCCFLAGS += -gencode arch=compute_$(strip $(GPU_ARCH)),code=sm_$(strip $(GPU_ARCH))
+    DLINKFLAGS := -gencode arch=compute_$(strip $(GPU_ARCH)),code=sm_$(strip $(GPU_ARCH))
 endif
 
 %.o: %.cpp
-	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 %.o: %.cu
-	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+	$(NVCC) $(NVCCFLAGS) $< -o $@
 
-$(TARGET): $(OBJ)
-	$(NVCC) $(OBJ) -o $@ $(LDFLAGS) $(LDLIBS) -Xcompiler "-I$(CUDA_HOME)/include"
+dlink.o: $(OBJ_CU)
+	$(NVCC) $(DLINKFLAGS) $(INCLUDES) -rdc=true -dlink $(OBJ_CU) -o dlink.o $(LDFLAGS) -ccbin $(CXX)
+
+$(TARGET): $(OBJ) dlink.o
+	$(NVCC) $(DLINKFLAGS) $(OBJ) dlink.o -o $@ $(LDFLAGS) $(LDLIBS) -ccbin $(CXX) -Xcompiler "-I$(CUDA_HOME)/include -I$(CUDA_HOME)"
 
 clean:
 	@echo "Cleaning..."
-	rm -f pollardsrho arch gpu_arch *.o *.d
+	rm -f pollardsrho arch gpu_arch dlink.o
+	find . -type f \( -name "*.o" -o -name "*.d" \) -delete
