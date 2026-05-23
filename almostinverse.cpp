@@ -13,9 +13,6 @@
 //Based on the Paper Almost-Inverse/Bernstein-Yang, REF: https://eprint.iacr.org/2019/266.pdf
 
 #include "secp256k1.h"
-#include <iostream>
-#include <tuple>
-#include <boost/multiprecision/cpp_int.hpp>
 
 using boost::multiprecision::cpp_int;
 using BigInt = cpp_int;
