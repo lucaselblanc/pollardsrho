@@ -1,16 +1,16 @@
-./pollardsrho 02352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d5 5
-./pollardsrho 03a7a4c30291ac1db24b4ab00c442aa832f7794b5a0959bec6e8d7fee802289dcd 10
-./pollardsrho 02352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d5 15
-./pollardsrho 033c4a45cbd643ff97d77f41ea37e843648d50fd894b864b0d52febc62f6454f7c 20
-./pollardsrho 03057fbea3a2623382628dde556b2a0698e32428d3cd225f3bd034dca82dd7455a 25
-./pollardsrho 030d282cf2ff536d2c42f105d0b8588821a915dc3f9a05bd98bb23af67a2e92a5b 30
-./pollardsrho 02f6a8148a62320e149cb15c544fe8a25ab483a0095d2280d03b8a00a7feada13d 35
-./pollardsrho 03a2efa402fd5268400c77c20e574ba86409ededee7c4020e4b9f0edbee53de0d4 40
-./pollardsrho 026ecabd2d22fdb737be21975ce9a694e108eb94f3649c586cc7461c8abf5da71a 45
-./pollardsrho 03f46f41027bbf44fafd6b059091b900dad41e6845b2241dc3254c7cdd3c5a16c6 50
-./pollardsrho 0385a30d8413af4f8f9e6312400f2d194fe14f02e719b24c3f83bf1fd233a8f963 55
-./pollardsrho 0348e843dc5b1bd246e6309b4924b81543d02b16c8083df973a89ce2c7eb89a10d 60
-./pollardsrho 0230210c23b1a047bc9bdbb13448e67deddc108946de6de639bcc75d47c0216b1b 65
-./pollardsrho 0290e6900a58d33393bc1097b5aed31f2e4e7cbd3e5466af958665bc0121248483 70
-./pollardsrho 03726b574f193e374686d8e12bc6e4142adeb06770e0a2856f5e4ad89f66044755 75
-./pollardsrho 037e1238f7b1ce757df94faa9a2eb261bf0aeb9f84dbf81212104e78931c2a19dc 80
+./pollardsrho --pubkey 02352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d5 --walkers 4096 --keyrange 5
+./pollardsrho --pubkey 03a7a4c30291ac1db24b4ab00c442aa832f7794b5a0959bec6e8d7fee802289dcd --walkers 4096 --keyrange 10
+./pollardsrho --pubkey 02352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d5 --walkers 4096 --keyrange 15
+./pollardsrho --pubkey 033c4a45cbd643ff97d77f41ea37e843648d50fd894b864b0d52febc62f6454f7c --walkers 4096 --keyrange 20
+./pollardsrho --pubkey 03057fbea3a2623382628dde556b2a0698e32428d3cd225f3bd034dca82dd7455a --walkers 4096 --keyrange 25
+./pollardsrho --pubkey 030d282cf2ff536d2c42f105d0b8588821a915dc3f9a05bd98bb23af67a2e92a5b --walkers 4096 --keyrange 30
+./pollardsrho --pubkey 02f6a8148a62320e149cb15c544fe8a25ab483a0095d2280d03b8a00a7feada13d --walkers 4096 --keyrange 35
+./pollardsrho --pubkey 03a2efa402fd5268400c77c20e574ba86409ededee7c4020e4b9f0edbee53de0d4 --walkers 4096 --keyrange 40
+./pollardsrho --pubkey 026ecabd2d22fdb737be21975ce9a694e108eb94f3649c586cc7461c8abf5da71a --walkers 4096 --keyrange 45
+./pollardsrho --pubkey 03f46f41027bbf44fafd6b059091b900dad41e6845b2241dc3254c7cdd3c5a16c6 --walkers 4096 --keyrange 50
+./pollardsrho --pubkey 0385a30d8413af4f8f9e6312400f2d194fe14f02e719b24c3f83bf1fd233a8f963 --walkers 4096 --keyrange 55
+./pollardsrho --pubkey 0348e843dc5b1bd246e6309b4924b81543d02b16c8083df973a89ce2c7eb89a10d --walkers 4096 --keyrange 60
+./pollardsrho --pubkey 0230210c23b1a047bc9bdbb13448e67deddc108946de6de639bcc75d47c0216b1b --walkers 4096 --keyrange 65
+./pollardsrho --pubkey 0290e6900a58d33393bc1097b5aed31f2e4e7cbd3e5466af958665bc0121248483 --walkers 4096 --keyrange 70
+./pollardsrho --pubkey 03726b574f193e374686d8e12bc6e4142adeb06770e0a2856f5e4ad89f66044755 --walkers 4096 --keyrange 75
+./pollardsrho --pubkey 037e1238f7b1ce757df94faa9a2eb261bf0aeb9f84dbf81212104e78931c2a19dc --walkers 4096 --keyrange 80
