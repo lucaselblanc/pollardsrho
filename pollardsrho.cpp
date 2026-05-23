@@ -13,21 +13,6 @@
 /* --- POLLARD'S RHO LAMBDA (ρλ) --- */
 
 #include "secp256k1.h"
-#include "parallel_hashmap/phmap.h"
-#include <openssl/sha.h>
-#include <fstream>
-#include <unistd.h>
-#include <iostream>
-#include <iomanip>
-#include <sstream>
-#include <random>
-#include <thread>
-#include <atomic>
-#include <mutex>
-#include <chrono>
-#include <ctime>
-#include <cmath>
-#include <cstring>
 
 constexpr uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 constexpr uint256_t P = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
@@ -387,6 +372,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
 
 uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, const int DP_BITS) {
     std::atomic<bool> search_in_progress(true);
+    std::atomic<int> loaded_walkers{0};
     std::atomic<unsigned long long> total_iters{0};
     std::atomic<unsigned long long> total_cycles{0};
     auto start_time = std::chrono::system_clock::now();
@@ -450,6 +436,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     initScalarSteps(sharedScalarStepsH.data(), windowSize);
 
     std::string header = "\033[96m[!] Loading Walkers... \033[0m";
+
     for (int i = 0; i < WALKERS; i++) {
         walkers_state[i].rng.seed(std::random_device{}() ^ (uint64_t)i);
         walkers_state[i].buffers = new Buffers();
@@ -484,7 +471,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     }
 
     auto last_print = std::chrono::steady_clock::now();
-
     auto worker = [&](int id_start, int id_end) {
         try {
             int local_count = id_end - id_start;
