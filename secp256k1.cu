@@ -11,8 +11,6 @@
 ******************************************/
 
 #include "secp256k1.h"
-#include <cuda_runtime.h>
-#include <cuda.h>
 
 #ifdef __CUDA_ARCH__
 __device__ __constant__ uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
