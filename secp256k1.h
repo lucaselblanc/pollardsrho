@@ -13,9 +13,31 @@
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
 
+#ifndef __CUDACC__
+    #include <boost/multiprecision/cpp_int.hpp>
+    typedef boost::multiprecision::cpp_int BigInt;
+#endif
+
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <device_launch_parameters.h>
 #include <stdint.h>
+#include "parallel_hashmap/phmap.h"
+#include <openssl/sha.h>
+#include <fstream>
+#include <unistd.h>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+#include <random>
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <chrono>
+#include <ctime>
+#include <cmath>
+#include <cstring>
+#include <tuple>
 
 struct uint256_t {
     uint64_t limbs[4];
