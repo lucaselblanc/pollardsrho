@@ -771,8 +771,7 @@ int main(int argc, char* argv[]) {
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
     if (dp <= 0) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
-        dp = (int)std::round((double)key_range / 2.0 - 10.0);
-        if(dp < 0) {dp = 0;}
+        dp = std::abs((int)std::round((double)key_range / 2.0 - 10.0));
     }
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
