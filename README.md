@@ -85,18 +85,7 @@ int dp = (key_range / 2.0) - math.log2(RAM_BYTES / POINT_BYTES);
 Simple Abstraction:
 
 ```
-int dp = math.sqrt(key_range);
-```
-
-```
-k2 ≈ 1
-k4 = 2
-k8 ≈ 3
-k16 ≈ 4
-k32 ≈ 6
-k64 = 8
-k128 ≈ 11
-K256 = 16
+int dp = (int)std::round((double)key_range / 2.0 - 10.0);
 ```
 
 ## Algorithm Complexity
@@ -142,7 +131,7 @@ K256 = 16
 
     Example usage:
     ```bash
-    ~/pollardsrho$ ./pollardsrho 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 135 1000000 12
+    ~/pollardsrho$ ./pollardsrho --pubkey 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 --keyrange 135 --walkers 1000000 --dp 12
     ```
 
 ## Commands
