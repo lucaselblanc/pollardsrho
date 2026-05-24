@@ -31,6 +31,10 @@
 
 [External Libraries Used](https://github.com/lucaselblanc/pollardsrho/tree/main#external-libraries-used)
 
+## Notice
+
+ This project is still full CPU, migration to GPU is being analyzed.
+
 ## Description
 
  This repository contains a high-performance implementation of Pollard’s Rho Lambda algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve.
