@@ -83,13 +83,14 @@
 Theoretical Calculus:
 
 ```
-int dp = (key_range / 2.0) - math.log2(RAM_BYTES / POINT_BYTES);
+unsigned long long RAM_BYTES = (unsigned long long) sysconf(_SC_PAGESIZE) * (unsigned long long) sysconf(_SC_PHYS_PAGES);
+int dp = std::max(1, (int)std::floor((key_range / 2.0) - std::log2((double)RAM_BYTES / sizeof(ECPointJacobian))));
 ```
 
 Simple Abstraction:
 
 ```
-int dp = (int)std::round((double)key_range / 2.0 - 10.0);
+int dp = std::abs((int)std::round((double)key_range / 2.0 - 10.0));
 ```
 
 ## Algorithm Complexity
