@@ -129,14 +129,14 @@ int dp = std::abs((int)std::round((double)key_range / 2.0 - 10.0));
 
 4. Run the program:
     ```bash
-    ~/pollardsrho$ ./pollardsrho <compressed public key(hex)> <key range(int)> <walkers(int)> <OPTIONAL DP(int)>
+    ~/pollardsrho$ ./pollardsrho <compressed public key(hex)> <key range(int)> <walkers(int)> <OPTIONAL DP(int)> <OPTIONAL Threads(int)>
     ```
 
     Replace `<compressed public key>` with the point \(G\) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \(k\).
 
     Example usage:
     ```bash
-    ~/pollardsrho$ ./pollardsrho --pubkey 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 --keyrange 135 --walkers 1000000 --dp 12
+    ~/pollardsrho$ ./pollardsrho --pubkey 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 --keyrange 135 --walkers 1000000 --dp 12 --t 8
     ```
 
 ## Commands
@@ -145,6 +145,16 @@ int dp = std::abs((int)std::round((double)key_range / 2.0 - 10.0));
 ```bash
 ~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <walkers> <dp bits>
 ```
+
+--pubkey: The public key derived from the private key (discrete logarithm k) G = Q.
+
+--keyrange: The range covering the regions of the elliptic curve where the discrete logarithm k resides.
+
+--walkers: The walkers have the mission of traversing the elliptic curve point by point, they carry information such as the current point R and the coefficients a and b used to recover k in the event of a collision.
+
+--dp: The Distinguished Points strategy is a memory-saving filter. Instead of storing every step of the walk (which would crash your RAM).
+
+--t: Number of CPU threads/cores used to run the program.
 
 ## External Libraries Used
 
