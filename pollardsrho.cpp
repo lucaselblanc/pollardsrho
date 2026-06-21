@@ -391,8 +391,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     }
 
     std::cout << CYAN << "Started at: " << RESET << PINK << std::put_time(&start_tm, "%H:%M:%S") << RESET << std::endl;
-    std::cout << CYAN << "WALKERS: " << RESET << PINK << WALKERS << RESET << std::endl;
-    std::cout << CYAN << "DP BITS: " << RESET << PINK << DP_BITS << RESET << std::endl;
+    std::cout << CYAN << "Threads: " << RESET << PINK << cores << RESET << std::endl;
+    std::cout << CYAN << "Walkers: " << RESET << PINK << WALKERS << RESET << std::endl;
+    std::cout << CYAN << "DP Bits: " << RESET << PINK << DP_BITS << RESET << std::endl;
     std::cout << CYAN << "Key Range: " << RESET << PINK << (key_range) << RESET << std::endl;
     std::cout << CYAN << "Min Range: " << RESET << gradient_zeros(uint256_to_hex(min_scalar), DARK_PINK, PINK) << std::endl;
     std::cout << CYAN << "Max Range: " << RESET << gradient_zeros(uint256_to_hex(max_scalar), DARK_PINK, PINK) << std::endl;
@@ -611,7 +612,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                 long double x = std::log2((k * k) / (2.0L * M));
                 long double d = (x <= 1.0L) ? 0.0L : x;
                 long double prob = (1.0L - expl(-d)) * 100.0L;
-                std::string healthWalking = total_cycles.load() == 0 ? " - \033[91mGood\033[0m" : " - \033[92mBad\033[0m";
+                std::string healthWalking = total_cycles.load() == 0 ? " - \033[92mGood\033[0m" : " - \033[91mBad\033[0m";
                 std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/10s: " << RESET << GREEN << total_iters.load() << RESET << "\n" << CYAN << "\033[2KSelf-Collision Cycles: " << RESET << GREEN << total_cycles.load() << healthWalking << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%\n" << RESET << std::flush;
                 last_print = now;
             }
@@ -737,13 +738,18 @@ int main(int argc, char* argv[]) {
             walkers = std::stoi(argv[++i]);
         } else if (arg == "--dp" && i + 1 < argc) {
             dp = std::stoi(argv[++i]);
-        } else {
+        }
+          else if (arg == "--t" && i + 1 < argc) {
+            cores = std::stoi(argv[++i]);
+        }
+        else {
             std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
             std::cerr << ORANGE << "[USAGE]: " << RESET << GREEN << argv[0] << RESET << " --? <?> --? <?> --? <?>\n"
             << GREEN << "*" << RESET << " --pubkey        => Compressed Public Key        <hex> ("<< RED << "*" << RESET << "Required)\n"
-            << GREEN << "*" << RESET << " --keyrange        => Key Range Bits                <int> ("<< RED << "*" << RESET << "Required)\n"
-            << GREEN << "*" << RESET << " --walkers        => Number Of Walkers                 <int> ("<< RED << "*" << RESET << "Required)\n"
-            << GREEN << "*" << RESET << " --dp                => Distinguished Points Bits        <int> ("<< GREEN << "*" << RESET << "Optional)\n";
+            << GREEN << "*" << RESET << " --keyrange      => Key Range Bits               <int> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --walkers       => Number Of Walkers            <int> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --dp            => Distinguished Points Bits    <int> ("<< GREEN << "*" << RESET << "Optional)\n"
+            << GREEN << "*" << RESET << " --t             => Work Threads                 <int> ("<< GREEN << "*" << RESET << "Optional)\n";
             std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
             return 1;
         }
@@ -775,8 +781,10 @@ int main(int argc, char* argv[]) {
     }
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
-    if (walkers != (cores * 512)) {
-        std::cout << ORANGE << "[WRNG] For its " << PINK << cores << RESET << ORANGE << " Cores, The Ideal Number Of Walkers Is: " << RESET << PINK << (cores * 512) << RESET << "." << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "For DP: " << PINK << dp << RESET << GREEN << " the rarity is \033[35m1\033[0m \033[92min " << RESET << PINK << (1ULL << dp) << RESET << GREEN << " points" << RESET << std::endl;
+    uint64_t max_throughput = cores * 512ULL;
+    if (walkers != max_throughput) {
+        std::cout << ORANGE << "[WRNG] For its " << PINK << cores << RESET << ORANGE << " Cores, Maximum Throughput Reached At: ~" << RESET << PINK << max_throughput << RESET << "." << std::endl;
     }
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
 
