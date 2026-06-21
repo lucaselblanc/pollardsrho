@@ -28,8 +28,10 @@ const std::string& DARK_PINK = "\033[38;2;140;70;140m";
 const std::string& PINK = "\033[35m";
 const std::string& ORANGE = "\033[38;2;255;128;0m";
 const std::string& RESET = "\033[0m";
-
 const char* BASE_58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+unsigned long long ops;
+long double sqrtM, kFactor;
 
 struct Buffers {
     uint64_t* scalarStepsG;
@@ -407,10 +409,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     affineToJacobian(&target_affine_jac, &target_affine);
     initPreCompH(&target_affine_jac, windowSize);
 
-    ECPointJacobian G_OFFSET;
-    jacobianScalarMultPhi(&G_OFFSET, preCompG, preCompGphi, max_scalar.limbs, windowSize);
-    if (!jacobianIsInfinity(&G_OFFSET)) { modSubP(G_OFFSET.Y, ZERO, G_OFFSET.Y); }
-
     const uint32_t N_STEPS = 2048;
     struct StepLocal { ECPointJacobian point; uint256_t a; uint256_t b; };
     std::vector<StepLocal> localStepTable(N_STEPS);
@@ -443,9 +441,13 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         walkers_state[i].buffers = new Buffers();
         walkers_state[i].buffers->scalarStepsG = sharedScalarStepsG.data();
         walkers_state[i].buffers->scalarStepsH = sharedScalarStepsH.data();
-        walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
-        walkers_state[i].b = uint256_t{};
-        if (i % 2 != 0) {
+
+        if (i % 2 == 0) {
+            walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
+            walkers_state[i].b = uint256_t{};
+        } else {
+            walkers_state[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, walkers_state[i].rng);
+            walkers_state[i].b = uint256_t{};
             walkers_state[i].b.limbs[0] = 1;
         }
 
@@ -483,6 +485,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             for (int i = 0; i < local_count; i++) {
                 jac_batch[i] = walkers_state[id_start + i].R;
             }
+
             batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
 
             while (search_in_progress.load(std::memory_order_acquire)) {
@@ -491,18 +494,12 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                     WalkState* w = &walkers_state[id_start + i];
                     memcpy(w->prev_x2, w->prev_x1, 32);
                     memcpy(w->prev_x1, aff_batch[i].x, 32);
-
                     uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
                     pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
                     scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
-
-                    if (compare_uint256(w->a, max_scalar) >= 0) {
-                        w->a = mod_sub_N(w->a, max_scalar);
-                        pointAddJacobian(&w->R, &w->R, &G_OFFSET);
-                    }
-
                     jac_batch[i] = w->R;
                 }
+
                 batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
 
                 for (int i = 0; i < local_count; i++) {
@@ -512,12 +509,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                         uint32_t idx = static_cast<uint32_t>(hasher(aff_batch[i].x[0] ^ 0xABCDEFULL) % N_STEPS);
                         pointAddJacobian(&w->R, &w->R, &localStepTable[idx].point);
                         scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
-
-                        if (compare_uint256(w->a, max_scalar) >= 0) {
-                            w->a = mod_sub_N(w->a, max_scalar);
-                            pointAddJacobian(&w->R, &w->R, &G_OFFSET);
-                        }
-
                         ECPointAffine aff_jump;
                         jacobianToAffine(&aff_jump, &w->R);
                         aff_batch[i] = aff_jump;
@@ -609,7 +600,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             auto now = std::chrono::steady_clock::now();
             if (now - last_print >= std::chrono::seconds(10)) {
                 long double k = (long double)total_iters.load(std::memory_order_relaxed);
-                long double x = std::log2((k * k) / (2.0L * M));
+                long double x = (k * k) / (2.0L * M);
                 long double d = (x <= 1.0L) ? 0.0L : x;
                 long double prob = (1.0L - expl(-d)) * 100.0L;
                 std::string healthWalking = total_cycles.load() == 0 ? " - \033[92mGood\033[0m" : " - \033[91mBad\033[0m";
@@ -643,6 +634,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
 
     search_in_progress.store(false, std::memory_order_release);
     if(progress_thread.joinable()) progress_thread.join();
+
+    { ops = total_iters.load(); sqrtM = powl(2.0L, key_range / 2.0L); kFactor = (long double)ops / sqrtM; }
 
     for (auto& w : walkers_state) {
         if (w.buffers != nullptr) {
@@ -823,7 +816,10 @@ int main(int argc, char* argv[]) {
     double relative_pos = (key_val - range_start) / (range_end - range_start);
     double percentage = relative_pos * 100.0;
 
+    std::string healthK = kFactor < 2 ? " - \033[92mStatistics Luck!\033[0m" : " - \033[91mStatistical Bad Luck!\033[0m";
     std::cout << CYAN << "[% Of The Range]: " << RESET << PINK << std::fixed << std::setprecision(2) << percentage << "%" << RESET << std::endl;
+    std::cout << CYAN << "[K-Factor] : " << RESET << PINK << std::fixed << std::setprecision(4) << (double)kFactor << healthK << RESET << std::endl;
+    std::cout << CYAN << "[Total OPS]: " << RESET << PINK << ops << RESET << std::endl;
 
     delete[] preCompG;
     delete[] preCompGphi;
