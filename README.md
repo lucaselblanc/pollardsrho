@@ -114,8 +114,8 @@ int dp = std::abs((int)std::round((double)key_range / 2.0 - 10.0));
     ```bash
     sudo apt update
     sudo apt install build-essential g++ -y
-    sudo apt install libboost-dev -y
-    sudo apt install libssl-dev
+    sudo apt install libboost-all-dev -y
+    sudo apt install libssl-dev -y
     ```
 
 3. Compile the project:
