@@ -115,6 +115,7 @@ int dp = std::abs((int)std::round((double)key_range / 2.0 - 10.0));
 2. Install the necessary libraries:
     ```bash
     sudo apt update
+    sudo apt install cuda-toolkit -y
     sudo apt install build-essential g++ -y
     sudo apt install libboost-all-dev -y
     sudo apt install libssl-dev -y
