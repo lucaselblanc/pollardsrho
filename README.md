@@ -61,6 +61,7 @@
 55 bits ≈ 00:00:04
 60 bits ≈ 00:00:07
 65 bits ≈ 00:00:49
+70 bits ≈ 00:02:40
 ```
 
 ## Technical Features
