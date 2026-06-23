@@ -3,16 +3,17 @@
 
 int main() {
     int deviceCount = 0;
-    cudaGetDeviceCount(&deviceCount);
+    cudaError_t err = cudaGetDeviceCount(&deviceCount);
 
-    if (deviceCount == 0) {
-        printf("$(error no NVIDIA GPUs were detected!)\n");
-        return 1;
+    if (err != cudaSuccess || deviceCount == 0) {
+        fprintf(stderr, "No NVIDIA GPUs were detected, compiling for CPU...\n");
+        printf("%d\n", 75);
+        return 0;
     }
 
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, 0);
 
-    printf("GPU_ARCH := %d%d\n", prop.major, prop.minor);
+    printf("%d%d\n", prop.major, prop.minor);
     return 0;
 }
