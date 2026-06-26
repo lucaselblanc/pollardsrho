@@ -601,7 +601,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             if (now - last_print >= std::chrono::seconds(10)) {
                 long double k = (long double)total_iters.load(std::memory_order_relaxed);
                 long double x = (k * k) / (2.0L * M);
-                long double d = (x <= 1.0L) ? 0.0L : x;
+                long double d = x;
                 long double prob = (1.0L - expl(-d)) * 100.0L;
                 std::string healthWalking = total_cycles.load() == 0 ? " - \033[92mGood\033[0m" : " - \033[91mBad\033[0m";
                 std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/10s: " << RESET << GREEN << total_iters.load() << RESET << "\n" << CYAN << "\033[2KSelf-Collision Cycles: " << RESET << GREEN << total_cycles.load() << healthWalking << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%\n" << RESET << std::flush;
