@@ -34,6 +34,7 @@
 #include <atomic>
 #include <mutex>
 #include <chrono>
+#include <climits>
 #include <ctime>
 #include <cmath>
 #include <cstring>
