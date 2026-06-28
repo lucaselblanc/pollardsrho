@@ -85,14 +85,15 @@
 Theoretical Calculus:
 
 ```
-unsigned long long RAM_BYTES = (unsigned long long) sysconf(_SC_PAGESIZE) * (unsigned long long) sysconf(_SC_PHYS_PAGES);
-int dp = std::max(1, (int)std::floor((key_range / 2.0) - std::log2((double)RAM_BYTES / sizeof(ECPointJacobian))));
+unsigned long long RAM_BYTES = (unsigned long long)sysconf(_SC_PAGESIZE) * (unsigned long long)sysconf(_SC_AVPHYS_PAGES);
+
+int dp = std::max(1, std::max((int)std::ceil((key_range / 2.0) - std::log2((double)RAM_BYTES / 128.0 /*128 bytes*/)), key_range >> 2));
 ```
 
 Simple Abstraction:
 
 ```
-int dp = std::abs((int)std::round((double)key_range / 2.0 - 10.0));
+int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT))) -1;
 ```
 
 ## Algorithm Complexity
@@ -132,21 +133,21 @@ int dp = std::abs((int)std::round((double)key_range / 2.0 - 10.0));
 
 4. Run the program:
     ```bash
-    ~/pollardsrho$ ./pollardsrho <compressed public key(hex)> <key range(int)> <walkers(int)> <OPTIONAL DP(int)> <OPTIONAL Threads(int)>
+    ~/pollardsrho$ ./pollardsrho <compressed public key(hex)> <key range(int)> <walkers(int)> <OPTIONAL DP(int)> <OPTIONAL Threads(int)> <OPTIONAL snaptime(int)>
     ```
 
     Replace `<compressed public key>` with the point \(G\) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \(k\).
 
     Example usage:
     ```bash
-    ~/pollardsrho$ ./pollardsrho --pubkey 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 --keyrange 135 --walkers 1000000 --dp 12 --t 8
+    ~/pollardsrho$ ./pollardsrho --pubkey 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 --keyrange 135 --walkers 1000000 --dp 12 --t 8 --snaptime 15
     ```
 
 ## Commands
 
  The random walk begins using the public point of the compressed public key as the parameter H, the target private key range for initializing the initial probability space, and the optional distinguished points parameter, which will be calculated automatically if not defined:
 ```bash
-~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <walkers> <dp bits>
+~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <walkers> <dp bits> <threads> <snaptime>
 ```
 
 --pubkey: The public key derived from the private key (discrete logarithm k) G = Q.
@@ -158,6 +159,8 @@ int dp = std::abs((int)std::round((double)key_range / 2.0 - 10.0));
 --dp: The Distinguished Points strategy is a memory-saving filter. Instead of storing every step of the walk (which would crash your RAM).
 
 --t: Number of CPU threads/cores used to run the program.
+
+--snaptime: Interval between each progress save.
 
 ## External Libraries Used
 
