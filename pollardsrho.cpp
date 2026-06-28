@@ -48,8 +48,6 @@ struct WalkState {
     uint64_t prev_x2[4];
 };
 
-//checkpoint
-
 struct MurmurHash3 {
     //MurmurHash3<Avalanche constants>
     size_t operator()(uint64_t x) const {
