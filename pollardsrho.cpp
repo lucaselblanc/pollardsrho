@@ -768,6 +768,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << CYAN << "Add a Star to Support this Project ;)\n" << RESET;
     if (dp <= 0 || dp > static_cast<int>(sizeof(int32_t) * CHAR_BIT)) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
         dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT))) -1;
