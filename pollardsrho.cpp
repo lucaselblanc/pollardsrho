@@ -15,10 +15,8 @@
 #include "secp256k1.h"
 
 constexpr uint256_t N = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
-constexpr uint256_t P = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 constexpr uint64_t ONE_MONT[4] = { 0x00000001000003D1ULL, 0x0ULL, 0x0ULL, 0x0ULL };
 constexpr uint64_t SUB2_FP[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-constexpr uint64_t ZERO[4] = {0x0ULL, 0x0ULL, 0x0ULL, 0x0ULL};
 
 const std::string& RED = "\033[91m";
 const std::string& GREEN = "\033[92m";
@@ -50,6 +48,8 @@ struct WalkState {
     uint64_t prev_x2[4];
 };
 
+//checkpoint
+
 struct MurmurHash3 {
     //MurmurHash3<Avalanche constants>
     size_t operator()(uint64_t x) const {
@@ -67,6 +67,298 @@ struct DPEntry {
     uint256_t b;
     uint64_t x;
 };
+
+using DPTable = phmap::parallel_flat_hash_map<uint64_t, std::vector<DPEntry>, MurmurHash3, phmap::priv::hash_default_eq<uint64_t>, std::allocator<std::pair<const uint64_t, std::vector<DPEntry>>>, 8, std::mutex >;
+
+const char SNAPOINT_CONSTANTS[8] = {'P', 'R', 'H', 'O', 'C', 'K', '1', '\0'};
+const uint64_t SNAPOINT_HASH_OFFSET = 1469598103934665603ULL;
+const uint64_t SNAPOINT_HASH_PRIME = 1099511628211ULL;
+
+bool snapoint_walkers_state(
+    bool save_snapoint,
+    const std::string& snapoint_file,
+    const std::string& target_pubkey_hex,
+    int key_range,
+    int walkers,
+    int dp_bits,
+    int saved_window_size,
+    uint32_t n_steps,
+    std::vector<WalkState>& walkers_state,
+    DPTable& dp_table,
+    unsigned long long& total_iters,
+    unsigned long long& total_cycles
+)
+
+{
+    if (snapoint_file.empty()) return save_snapoint;
+
+    auto update_checksum = [](uint64_t& checksum, const void* data, size_t size) {
+        const unsigned char* bytes = static_cast<const unsigned char*>(data);
+        for (size_t i = 0; i < size; i++) {
+            checksum ^= bytes[i];
+            checksum *= SNAPOINT_HASH_PRIME;
+        }
+    };
+
+    auto snapoint_directory = [](const std::string& file) {
+        size_t slash = file.find_last_of('/');
+        if (slash == std::string::npos) return std::string(".");
+        if (slash == 0) return std::string("/");
+        return file.substr(0, slash);
+    };
+
+    auto sync_snapoint_directory = [&](const std::string& file) {
+        int directory_fd = ::open(snapoint_directory(file).c_str(), O_RDONLY | O_DIRECTORY);
+        if (directory_fd < 0) return false;
+        bool synced = (::fsync(directory_fd) == 0);
+        ::close(directory_fd);
+        return synced;
+    };
+
+    if (save_snapoint) {
+        std::string temporary_file = snapoint_file + ".tmp." + std::to_string(static_cast<unsigned long long>(::getpid()));
+        int snapoint_fd = ::open(temporary_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        if (snapoint_fd < 0) return false;
+
+        uint64_t checksum = SNAPOINT_HASH_OFFSET;
+        auto write_bytes = [&](const void* data, size_t size, bool include_in_checksum = true) {
+            if (include_in_checksum) update_checksum(checksum, data, size);
+            const unsigned char* bytes = static_cast<const unsigned char*>(data);
+            while (size > 0) {
+                ssize_t written = ::write(snapoint_fd, bytes, size);
+                if (written < 0) {
+                    if (errno == EINTR) continue;
+                    return false;
+                }
+                if (written == 0) return false;
+                bytes += written;
+                size -= static_cast<size_t>(written);
+            }
+            return true;
+        };
+
+        auto write_value = [&](const auto& value) {
+            return write_bytes(&value, sizeof(value));
+        };
+
+        auto write_string = [&](const std::string& value) {
+            if (value.size() > std::numeric_limits<uint32_t>::max()) return false;
+            uint32_t string_size = static_cast<uint32_t>(value.size());
+            return write_value(string_size) && (string_size == 0 || write_bytes(value.data(), string_size));
+        };
+
+        auto write_uint256 = [&](const uint256_t& value) {
+            return write_bytes(value.limbs, sizeof(value.limbs));
+        };
+
+        auto write_jacobian = [&](const ECPointJacobian& point) {
+            int32_t infinity = point.infinity;
+            return write_bytes(point.X, sizeof(point.X)) &&
+                   write_bytes(point.Y, sizeof(point.Y)) &&
+                   write_bytes(point.Z, sizeof(point.Z)) &&
+                   write_value(infinity);
+        };
+
+        auto write_dp_entry = [&](const DPEntry& entry) {
+            return write_uint256(entry.a) && write_uint256(entry.b) && write_value(entry.x);
+        };
+
+        uint32_t version = 1;
+        int32_t saved_key_range = key_range;
+        int32_t saved_walkers = walkers;
+        int32_t saved_dp_bits = dp_bits;
+        int32_t snapoint_window_size = saved_window_size;
+        uint64_t saved_total_iters = total_iters;
+        uint64_t saved_total_cycles = total_cycles;
+        uint64_t walkers_count = static_cast<uint64_t>(walkers_state.size());
+        uint64_t dp_bucket_count = static_cast<uint64_t>(dp_table.size());
+
+        bool ok =
+            write_bytes(SNAPOINT_CONSTANTS, sizeof(SNAPOINT_CONSTANTS)) &&
+            write_value(version) &&
+            write_string(target_pubkey_hex) &&
+            write_value(saved_key_range) &&
+            write_value(saved_walkers) &&
+            write_value(saved_dp_bits) &&
+            write_value(snapoint_window_size) &&
+            write_value(n_steps) &&
+            write_value(saved_total_iters) &&
+            write_value(saved_total_cycles) &&
+            write_value(walkers_count
+        );
+
+        for (size_t i = 0; ok && i < walkers_state.size(); i++) {
+            WalkState& walker = walkers_state[i];
+            ok =
+                write_value(walker.walk_id) &&
+                write_uint256(walker.a) &&
+                write_uint256(walker.b) &&
+                write_jacobian(walker.R) &&
+                write_value(walker.snapshot_steps) &&
+                write_bytes(walker.snapshot_x, sizeof(walker.snapshot_x)) &&
+                write_bytes(walker.prev_x1, sizeof(walker.prev_x1)) &&
+                write_bytes(walker.prev_x2, sizeof(walker.prev_x2)
+            );
+        }
+
+        ok = ok && write_value(dp_bucket_count);
+        for (auto it = dp_table.cbegin(); ok && it != dp_table.cend(); ++it) {
+            uint64_t dp_x0 = it->first;
+            uint64_t dp_count = static_cast<uint64_t>(it->second.size());
+            ok = write_value(dp_x0) && write_value(dp_count);
+            for (size_t i = 0; ok && i < it->second.size(); i++) {
+                ok = write_dp_entry(it->second[i]);
+            }
+        }
+
+        ok = ok && write_bytes(&checksum, sizeof(checksum), false);
+        ok = ok && (::fsync(snapoint_fd) == 0);
+        if (::close(snapoint_fd) != 0) ok = false;
+
+        if (!ok) {
+            ::unlink(temporary_file.c_str());
+            return false;
+        }
+        if (::rename(temporary_file.c_str(), snapoint_file.c_str()) != 0) {
+            ::unlink(temporary_file.c_str());
+            return false;
+        }
+        return sync_snapoint_directory(snapoint_file);
+    }
+
+    struct stat snapoint_stat {};
+    if (::stat(snapoint_file.c_str(), &snapoint_stat) != 0 || snapoint_stat.st_size < 64) return false;
+
+    std::ifstream snapoint(snapoint_file.c_str(), std::ios::binary);
+    if (!snapoint.good()) return false;
+
+    uint64_t checksum = SNAPOINT_HASH_OFFSET;
+    auto read_bytes = [&](void* data, size_t size, bool include_in_checksum = true) {
+        snapoint.read(static_cast<char*>(data), size);
+        if (!snapoint) return false;
+        if (include_in_checksum) update_checksum(checksum, data, size);
+        return true;
+    };
+
+    auto read_value = [&](auto& value) {
+        return read_bytes(&value, sizeof(value));
+    };
+
+    auto read_string = [&](std::string& value, uint32_t max_size) {
+        uint32_t string_size = 0;
+        if (!read_value(string_size) || string_size > max_size) return false;
+        value.assign(string_size, '\0');
+        return string_size == 0 || read_bytes(&value[0], string_size);
+    };
+
+    auto read_uint256 = [&](uint256_t& value) {
+        return read_bytes(value.limbs, sizeof(value.limbs));
+    };
+
+    auto read_jacobian = [&](ECPointJacobian& point) {
+        int32_t infinity = 0;
+        if (!read_bytes(point.X, sizeof(point.X)) ||
+            !read_bytes(point.Y, sizeof(point.Y)) ||
+            !read_bytes(point.Z, sizeof(point.Z)) ||
+            !read_value(infinity)) {
+            return false;
+        }
+        point.infinity = infinity;
+        return true;
+    };
+
+    auto read_dp_entry = [&](DPEntry& entry) {
+        return read_uint256(entry.a) && read_uint256(entry.b) && read_value(entry.x);
+    };
+
+    char magic[8] = {};
+    uint32_t version = 0;
+    std::string saved_target;
+    int32_t saved_key_range = 0;
+    int32_t saved_walkers = 0;
+    int32_t saved_dp_bits = 0;
+    int32_t snapoint_window_size = 0;
+    uint32_t saved_n_steps = 0;
+    uint64_t saved_total_iters = 0;
+    uint64_t saved_total_cycles = 0;
+    uint64_t walkers_count = 0;
+
+    if (!read_bytes(magic, sizeof(magic)) ||
+        memcmp(magic, SNAPOINT_CONSTANTS, sizeof(SNAPOINT_CONSTANTS)) != 0 ||
+        !read_value(version) ||
+        version != 1 ||
+        !read_string(saved_target, 128) ||
+        !read_value(saved_key_range) ||
+        !read_value(saved_walkers) ||
+        !read_value(saved_dp_bits) ||
+        !read_value(snapoint_window_size) ||
+        !read_value(saved_n_steps) ||
+        !read_value(saved_total_iters) ||
+        !read_value(saved_total_cycles) ||
+        !read_value(walkers_count)) {
+        return false;
+    }
+
+    if (saved_target != target_pubkey_hex ||
+        saved_key_range != key_range ||
+        saved_walkers != walkers ||
+        saved_dp_bits != dp_bits ||
+        snapoint_window_size != saved_window_size ||
+        saved_n_steps != n_steps ||
+        walkers_count != static_cast<uint64_t>(walkers)) {
+        return false;
+    }
+
+    std::vector<WalkState> loaded_walkers(static_cast<size_t>(walkers_count));
+    for (size_t i = 0; i < loaded_walkers.size(); i++) {
+        WalkState walker{};
+        if (!read_value(walker.walk_id) ||
+            !read_uint256(walker.a) ||
+            !read_uint256(walker.b) ||
+            !read_jacobian(walker.R) ||
+            !read_value(walker.snapshot_steps) ||
+            !read_bytes(walker.snapshot_x, sizeof(walker.snapshot_x)) ||
+            !read_bytes(walker.prev_x1, sizeof(walker.prev_x1)) ||
+            !read_bytes(walker.prev_x2, sizeof(walker.prev_x2))) {
+            return false;
+        }
+        if (walker.walk_id != i) return false;
+        walker.buffers = nullptr;
+        loaded_walkers[i] = walker;
+    }
+
+    uint64_t dp_bucket_count = 0;
+    if (!read_value(dp_bucket_count) || dp_bucket_count > static_cast<uint64_t>(snapoint_stat.st_size) / sizeof(uint64_t)) return false;
+
+    DPTable loaded_dp_table;
+    for (uint64_t bucket_idx = 0; bucket_idx < dp_bucket_count; bucket_idx++) {
+        uint64_t dp_x0 = 0;
+        uint64_t dp_count = 0;
+        if (!read_value(dp_x0) || !read_value(dp_count)) return false;
+        if (dp_count > static_cast<uint64_t>(snapoint_stat.st_size) / sizeof(DPEntry)) return false;
+
+        std::vector<DPEntry> dp_entries;
+        dp_entries.reserve(static_cast<size_t>(dp_count));
+        for (uint64_t entry_idx = 0; entry_idx < dp_count; entry_idx++) {
+            DPEntry entry;
+            if (!read_dp_entry(entry)) return false;
+            dp_entries.push_back(entry);
+        }
+        loaded_dp_table.emplace(dp_x0, std::move(dp_entries));
+    }
+
+    uint64_t expected_checksum = 0;
+    char extra = 0;
+    if (!read_bytes(&expected_checksum, sizeof(expected_checksum), false)) return false;
+    snapoint.read(&extra, 1);
+    if (!snapoint.eof() || expected_checksum != checksum) return false;
+
+    walkers_state = std::move(loaded_walkers);
+    dp_table.swap(loaded_dp_table);
+    total_iters = saved_total_iters;
+    total_cycles = saved_total_cycles;
+    return true;
+}
 
 void loading_bar(uint64_t current, uint64_t total, const std::string& label) {
     if (total == 0) return;
@@ -372,7 +664,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
     }
 }
 
-uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, const int DP_BITS) {
+uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, const int DP_BITS, const std::string& snapoint_path, int snaptime_sec) {
     std::atomic<bool> search_in_progress(true);
     std::atomic<int> loaded_walkers{0};
     std::atomic<unsigned long long> total_iters{0};
@@ -427,20 +719,26 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         affineToJacobian(&localStepTable[i].point, &aff_step);
     }
 
-    phmap::parallel_flat_hash_map<uint64_t, std::vector<DPEntry>, MurmurHash3, phmap::priv::hash_default_eq<uint64_t>, std::allocator<std::pair<const uint64_t, std::vector<DPEntry>>>, 8, std::mutex > dp_table;
+    DPTable dp_table;
     std::vector<WalkState> walkers_state(WALKERS);
     std::vector<uint64_t> sharedScalarStepsG((1ULL << windowSize) * 4);
     std::vector<uint64_t> sharedScalarStepsH((1ULL << windowSize) * 4);
     initScalarSteps(sharedScalarStepsG.data(), windowSize);
     initScalarSteps(sharedScalarStepsH.data(), windowSize);
 
+    unsigned long long restored_iters = 0;
+    unsigned long long restored_cycles = 0;
+    bool resumed_snapoint = snapoint_walkers_state(false, snapoint_path, target_pubkey_hex, key_range, WALKERS, DP_BITS, windowSize, N_STEPS, walkers_state, dp_table, restored_iters, restored_cycles);
+    if (resumed_snapoint) {
+        total_iters.store(restored_iters, std::memory_order_relaxed);
+        total_cycles.store(restored_cycles, std::memory_order_relaxed);
+    }
+
     std::string header = "\033[96m[!] Loading Walkers... \033[0m";
 
-    for (int i = 0; i < WALKERS; i++) {
+    for (int i = 0; !resumed_snapoint && i < WALKERS; i++) {
         walkers_state[i].rng.seed(std::random_device{}() ^ (uint64_t)i);
-        walkers_state[i].buffers = new Buffers();
-        walkers_state[i].buffers->scalarStepsG = sharedScalarStepsG.data();
-        walkers_state[i].buffers->scalarStepsH = sharedScalarStepsH.data();
+        walkers_state[i].buffers = nullptr;
 
         if (i % 2 == 0) {
             walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
@@ -473,7 +771,79 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         }
     }
 
+    for (auto& walker : walkers_state) {
+        if (walker.buffers == nullptr) walker.buffers = new Buffers();
+        walker.buffers->scalarStepsG = sharedScalarStepsG.data();
+        walker.buffers->scalarStepsH = sharedScalarStepsH.data();
+    }
+
+    std::atomic<unsigned long long> snapoint_saves{0};
+    std::atomic<unsigned long long> snapoint_errors{0};
+    if (!resumed_snapoint && !snapoint_path.empty()) {
+        unsigned long long saved_iters = total_iters.load(std::memory_order_relaxed);
+        unsigned long long saved_cycles = total_cycles.load(std::memory_order_relaxed);
+        bool saved = snapoint_walkers_state(true, snapoint_path, target_pubkey_hex, key_range, WALKERS, DP_BITS, windowSize, N_STEPS, walkers_state, dp_table, saved_iters, saved_cycles);
+        if (saved) snapoint_saves.fetch_add(1, std::memory_order_relaxed);
+        else snapoint_errors.fetch_add(1, std::memory_order_relaxed);
+    }
+
     auto last_print = std::chrono::steady_clock::now();
+    std::mutex snapoint_mutex;
+    std::condition_variable snapoint_cv;
+    bool snapoint_requested = false;
+    unsigned int snapoint_paused = 0;
+    unsigned int snapoint_thread_count = 0;
+
+    auto snapoint_pause = [&]() {
+        if (snapoint_path.empty() || snaptime_sec <= 0) return;
+        std::unique_lock<std::mutex> lock(snapoint_mutex);
+        if (!snapoint_requested) return;
+        snapoint_paused++;
+        snapoint_cv.notify_all();
+        snapoint_cv.wait(lock, [&]() {
+            return !snapoint_requested || !search_in_progress.load(std::memory_order_acquire);
+        });
+        snapoint_paused--;
+        snapoint_cv.notify_all();
+    };
+
+    auto save_coordinated_snapoint = [&]() {
+        if (snapoint_path.empty() || snaptime_sec <= 0 || snapoint_thread_count == 0) return false;
+        {
+            std::unique_lock<std::mutex> lock(snapoint_mutex);
+            snapoint_requested = true;
+            snapoint_cv.notify_all();
+            snapoint_cv.wait(lock, [&]() {
+                return snapoint_paused >= snapoint_thread_count || !search_in_progress.load(std::memory_order_acquire);
+            });
+            if (!search_in_progress.load(std::memory_order_acquire)) {
+                snapoint_requested = false;
+                lock.unlock();
+                snapoint_cv.notify_all();
+                return false;
+            }
+        }
+
+        unsigned long long saved_iters = total_iters.load(std::memory_order_relaxed);
+        unsigned long long saved_cycles = total_cycles.load(std::memory_order_relaxed);
+        bool ok = snapoint_walkers_state(true, snapoint_path, target_pubkey_hex, key_range, WALKERS, DP_BITS, windowSize, N_STEPS, walkers_state, dp_table, saved_iters, saved_cycles);
+        if (ok) snapoint_saves.fetch_add(1, std::memory_order_relaxed);
+        else snapoint_errors.fetch_add(1, std::memory_order_relaxed);
+
+        {
+            std::unique_lock<std::mutex> lock(snapoint_mutex);
+            snapoint_requested = false;
+            lock.unlock();
+            snapoint_cv.notify_all();
+            lock.lock();
+            snapoint_cv.wait(lock, [&]() {
+                return snapoint_paused == 0;
+            });
+        }
+        snapoint_cv.notify_all();
+        return ok;
+    };
+
     auto worker = [&](int id_start, int id_end) {
         try {
             int local_count = id_end - id_start;
@@ -489,6 +859,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
             batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
 
             while (search_in_progress.load(std::memory_order_acquire)) {
+                snapoint_pause();
+                if (!search_in_progress.load(std::memory_order_acquire)) break;
                 total_iters.fetch_add(local_count, std::memory_order_relaxed);
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
@@ -604,7 +976,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
                 long double d = x;
                 long double prob = (1.0L - expl(-d)) * 100.0L;
                 std::string healthWalking = total_cycles.load() == 0 ? " - \033[92mGood\033[0m" : " - \033[91mBad\033[0m";
-                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/10s: " << RESET << GREEN << total_iters.load() << RESET << "\n" << CYAN << "\033[2KSelf-Collision Cycles: " << RESET << GREEN << total_cycles.load() << healthWalking << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%\n" << RESET << std::flush;
+                std::string snapointStatus = snapoint_path.empty() ? "Off" : (resumed_snapoint ? "Restored/" : "") + std::to_string(snapoint_saves.load(std::memory_order_relaxed));
+                if (snapoint_errors.load(std::memory_order_relaxed) > 0) snapointStatus += " Err:" + std::to_string(snapoint_errors.load(std::memory_order_relaxed));
+                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/10s: " << RESET << GREEN << total_iters.load() << RESET << "\n" << CYAN << "\033[2KSelf-Collision Cycles: " << RESET << GREEN << total_cycles.load() << healthWalking << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
                 last_print = now;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -621,6 +995,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
     if (cores == 0) cores = 2;
     cores = std::min<unsigned int>(cores, WALKERS);
     int chunk = WALKERS / cores;
+    snapoint_thread_count = cores;
 
     for (unsigned int t = 0; t < cores; t++) {
         int start = t * chunk;
@@ -628,11 +1003,33 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         threads.emplace_back(worker, start, end);
     }
 
+    std::thread snapoint_thread;
+    if (!snapoint_path.empty() && snaptime_sec > 0) {
+        snapoint_thread = std::thread([&]() {
+            while (search_in_progress.load(std::memory_order_acquire)) {
+                int waited_ms = 0;
+                int interval_ms = snaptime_sec * 1000;
+                while (waited_ms < interval_ms && search_in_progress.load(std::memory_order_acquire)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    waited_ms += 200;
+                }
+                if (!search_in_progress.load(std::memory_order_acquire)) break;
+                save_coordinated_snapoint();
+            }
+        });
+    }
+
     for (auto& th : threads) {
         if (th.joinable()) th.join();
     }
 
     search_in_progress.store(false, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lock(snapoint_mutex);
+        snapoint_requested = false;
+    }
+    snapoint_cv.notify_all();
+    if(snapoint_thread.joinable()) snapoint_thread.join();
     if(progress_thread.joinable()) progress_thread.join();
 
     { ops = total_iters.load(); sqrtM = powl(2.0L, key_range / 2.0L); kFactor = (long double)ops / sqrtM; }
@@ -714,6 +1111,8 @@ int main(int argc, char* argv[]) {
     int key_range;
     int walkers;
     int dp = -1;
+    std::string snapoint_path;
+    int snaptime_sec = 20;
 
     if (argc == 1) {
         std::cout << "The Parameters Cannot Be Empty!" << std::endl;
@@ -732,6 +1131,9 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--dp" && i + 1 < argc) {
             dp = std::stoi(argv[++i]);
         }
+          else if (arg == "--snaptime" && i + 1 < argc) {
+            snaptime_sec = std::stoi(argv[++i]);
+        }
           else if (arg == "--t" && i + 1 < argc) {
             cores = std::stoi(argv[++i]);
         }
@@ -742,6 +1144,7 @@ int main(int argc, char* argv[]) {
             << GREEN << "*" << RESET << " --keyrange      => Key Range Bits               <int> ("<< RED << "*" << RESET << "Required)\n"
             << GREEN << "*" << RESET << " --walkers       => Number Of Walkers            <int> ("<< RED << "*" << RESET << "Required)\n"
             << GREEN << "*" << RESET << " --dp            => Distinguished Points Bits    <int> ("<< GREEN << "*" << RESET << "Optional)\n"
+            << GREEN << "*" << RESET << " --snaptime      => Snapoints Seconds            <int> 0 disables periodic saves ("<< GREEN << "*" << RESET << "Optional)\n"
             << GREEN << "*" << RESET << " --t             => Work Threads                 <int> ("<< GREEN << "*" << RESET << "Optional)\n";
             std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
             return 1;
@@ -771,11 +1174,18 @@ int main(int argc, char* argv[]) {
     std::cout << ORANGE << "[INFO] " << RESET << CYAN << "Add a Star to Support this Project ;)\n" << RESET;
     if (dp <= 0 || dp > static_cast<int>(sizeof(int32_t) * CHAR_BIT)) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
-        dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT))) -1;
+        dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT)));
     }
+
+    if (snapoint_path.empty()) {
+        snapoint_path = pub_key_hex + ".saved";
+    }
+
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "For DP: " << PINK << dp << RESET << GREEN << " the rarity is \033[35m1\033[0m \033[92min " << RESET << PINK << (1ULL << dp) << RESET << GREEN << " points" << RESET << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snapoints File: " << RESET << BLUE << snapoint_path << RESET << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snaptime Interval: " << RESET << PINK << snaptime_sec << RESET << GREEN << "s" << RESET << std::endl;
     uint64_t max_throughput = cores * 512ULL;
     if (walkers != max_throughput) {
         std::cout << ORANGE << "[WRNG] For its " << PINK << cores << RESET << ORANGE << " Cores, Maximum Throughput Reached At: ~" << RESET << PINK << max_throughput << RESET << "." << std::endl;
@@ -783,7 +1193,7 @@ int main(int argc, char* argv[]) {
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
 
     init_secp256k1(key_range);
-    uint256_t found_key = prho(pub_key_hex, key_range, walkers, dp);
+    uint256_t found_key = prho(pub_key_hex, key_range, walkers, dp, snapoint_path, snaptime_sec);
 
     std::cout << GREEN << "[SUCCESS!] " << RESET << "Collision Found!" << std::endl;
 
