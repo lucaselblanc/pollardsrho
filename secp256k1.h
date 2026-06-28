@@ -23,6 +23,7 @@
 #include <device_launch_parameters.h>
 #include <stdint.h>
 #include "parallel_hashmap/phmap.h"
+#include <condition_variable>
 #include <openssl/sha.h>
 #include <fstream>
 #include <unistd.h>
@@ -34,11 +35,18 @@
 #include <atomic>
 #include <mutex>
 #include <chrono>
+#include <limits>
 #include <climits>
 #include <ctime>
 #include <cmath>
 #include <cstring>
 #include <tuple>
+#include <algorithm>
+#include <cerrno>
+#include <cstdio>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 struct uint256_t {
     uint64_t limbs[4];
