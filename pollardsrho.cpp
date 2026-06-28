@@ -652,7 +652,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
         }
 
         uint64_t* z_inv = &scratch_inv[i * 4];
-        uint64_t z2[4], z3[4], tmp_mont[4];
+        uint64_t z2[4], tmp_mont[4];
 
         modMulMontP(z2, z_inv, z_inv);
         modMulMontP(tmp_mont, jac_in[i].X, z2);
