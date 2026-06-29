@@ -70,7 +70,7 @@
 
  Inversions in finite fields are computationally expensive. Both versions utilize Batch Inversion, processing multiple walkers simultaneously. This allows the algorithm to perform only one modular inversion per batch, converting Jacobian coordinates to Affine at a fraction of the usual cost, only the x coordinate is calculated to maintain efficiency.
 
-#### Snapoints — Resumable Search State
+#### Snapoints / Resumable Search State
 
  The entire search state: walker positions, scalar coefficients, and the
 distinguished-point table, can be saved to disk and restored exactly where it left off. Saves are written atomically via a PID-namespaced temporary file promoted by a single `rename(2)`, with `fsync` on both the file and its parent directory before commit, guaranteeing full recovery even after a hard power loss. Every snapshot carries an integrity checksum and is validated against the current run parameters before any state is touched, so neither corruption nor a configuration mismatch can produce a silent incorrect resume.
