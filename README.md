@@ -70,6 +70,11 @@
 
  Inversions in finite fields are computationally expensive. Both versions utilize Batch Inversion, processing multiple walkers simultaneously. This allows the algorithm to perform only one modular inversion per batch, converting Jacobian coordinates to Affine at a fraction of the usual cost, only the x coordinate is calculated to maintain efficiency.
 
+#### Snapoints — Resumable Search State
+
+ The entire search state: walker positions, scalar coefficients, and the
+distinguished-point table, can be saved to disk and restored exactly where it left off. Saves are written atomically via a PID-namespaced temporary file promoted by a single `rename(2)`, with `fsync` on both the file and its parent directory before commit, guaranteeing full recovery even after a hard power loss. Every snapshot carries an integrity checksum and is validated against the current run parameters before any state is touched, so neither corruption nor a configuration mismatch can produce a silent incorrect resume.
+
 #### Pre-Computed Points ```windowSize``` in L2/L3 Caches
 
  For small ranges where collisions occur quickly, ```windowSize``` is calculated to have a larger table points that can occupy L3, since it is not necessary to extract the best performance for a collision that occurs in a few steps, with the use of a larger table, there are more points, reducing the chance of walkers entering short loops, because the entropy is greater. As the range increases, the walkers will have more space to explore, and it is at this point that the use of lower L2 latency is necessary. If expected steps > lSize, ```windowSize``` starts to fit in L2, slightly overflowing into L3, which allows the ops/s speed to increase by ~50%, with less entropy of points in a much larger probability space, the path correlation of the walkers increases, and the state space of the transitions decreases, favoring the birthday paradox, as the trajectory of the walkers becomes more predictable.
