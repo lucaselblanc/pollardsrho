@@ -76,9 +76,9 @@ bool snapoint_walkers_state(
     bool save_snapoint,
     const std::string& snapoint_file,
     const std::string& target_pubkey_hex,
-    int key_range,
-    int walkers,
-    int dp_bits,
+    int& key_range,
+    int& walkers,
+    int& dp_bits,
     int saved_window_size,
     uint32_t n_steps,
     std::vector<WalkState>& walkers_state,
@@ -297,14 +297,8 @@ bool snapoint_walkers_state(
         return false;
     }
 
-    if (saved_target != target_pubkey_hex ||
-        saved_key_range != key_range ||
-        saved_walkers != walkers ||
-        saved_dp_bits != dp_bits ||
-        snapoint_window_size != saved_window_size ||
-        saved_n_steps != n_steps ||
-        walkers_count != static_cast<uint64_t>(walkers)) {
-        return false;
+    if (saved_target != target_pubkey_hex) {
+	return false;
     }
 
     std::vector<WalkState> loaded_walkers(static_cast<size_t>(walkers_count));
@@ -355,6 +349,9 @@ bool snapoint_walkers_state(
     dp_table.swap(loaded_dp_table);
     total_iters = saved_total_iters;
     total_cycles = saved_total_cycles;
+    key_range = saved_key_range;
+    walkers   = saved_walkers;
+    dp_bits   = saved_dp_bits;
     return true;
 }
 
@@ -662,7 +659,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
     }
 }
 
-uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, const int DP_BITS, const std::string& snapoint_path, int snaptime_sec) {
+uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP_BITS, const std::string& snapoint_path, int snaptime_sec) {
     std::atomic<bool> search_in_progress(true);
     std::atomic<int> loaded_walkers{0};
     std::atomic<unsigned long long> total_iters{0};
@@ -681,16 +678,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
         for (int i = 0; i < limb; i++) max_scalar.limbs[i] = ~0ULL;
         max_scalar.limbs[limb] = (bit == 63) ? ~0ULL : (1ULL << (bit + 1)) - 1;
     }
-
-    std::cout << CYAN << "Started at: " << RESET << PINK << std::put_time(&start_tm, "%H:%M:%S") << RESET << std::endl;
-    std::cout << CYAN << "Threads: " << RESET << PINK << cores << RESET << std::endl;
-    std::cout << CYAN << "Walkers: " << RESET << PINK << WALKERS << RESET << std::endl;
-    std::cout << CYAN << "DP Bits: " << RESET << PINK << DP_BITS << RESET << std::endl;
-    std::cout << CYAN << "Key Range: " << RESET << PINK << (key_range) << RESET << std::endl;
-    std::cout << CYAN << "Min Range: " << RESET << gradient_zeros(uint256_to_hex(min_scalar), DARK_PINK, PINK) << std::endl;
-    std::cout << CYAN << "Max Range: " << RESET << gradient_zeros(uint256_to_hex(max_scalar), DARK_PINK, PINK) << std::endl;
-    std::cout << BLUE << "---------------------------------------------------------------------------" << RESET;
-    std::cout << "\n\n\n\n";
 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
     ECPointAffine target_affine{};
@@ -726,11 +713,37 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, const int WALKERS, 
 
     unsigned long long restored_iters = 0;
     unsigned long long restored_cycles = 0;
-    bool resumed_snapoint = snapoint_walkers_state(false, snapoint_path, target_pubkey_hex, key_range, WALKERS, DP_BITS, windowSize, N_STEPS, walkers_state, dp_table, restored_iters, restored_cycles);
+    int dyn_key_range = key_range;
+    int dyn_walkers = WALKERS;
+    int dyn_dp_bits = DP_BITS;
+
+    bool resumed_snapoint = snapoint_walkers_state(false, snapoint_path, target_pubkey_hex, dyn_key_range, dyn_walkers, dyn_dp_bits, windowSize, N_STEPS, walkers_state, dp_table, restored_iters, restored_cycles);
+
     if (resumed_snapoint) {
+        if(WALKERS != dyn_walkers){
+            std::cout << ORANGE << "[WRNG] The number of walkers has been overwritten by the file configuration: " << RESET << CYAN << target_pubkey_hex << ".saved\n"  << RESET;
+        }
+
+        if(DP_BITS != dyn_dp_bits){
+            std::cout << ORANGE << "[WRNG] The number of DP's has been overwritten by the file configuration: " << RESET << CYAN << target_pubkey_hex << ".saved\n\n"  << RESET;
+        }
+
+        key_range = dyn_key_range;
+	    WALKERS = dyn_walkers;
+	    DP_BITS = dyn_dp_bits;
         total_iters.store(restored_iters, std::memory_order_relaxed);
         total_cycles.store(restored_cycles, std::memory_order_relaxed);
     }
+
+    std::cout << CYAN << "Started at: " << RESET << PINK << std::put_time(&start_tm, "%H:%M:%S") << RESET << std::endl;
+    std::cout << CYAN << "Threads: " << RESET << PINK << cores << RESET << std::endl;
+    std::cout << CYAN << "Walkers: " << RESET << PINK << WALKERS << RESET << std::endl;
+    std::cout << CYAN << "DP Bits: " << RESET << PINK << DP_BITS << RESET << std::endl;
+    std::cout << CYAN << "Key Range: " << RESET << PINK << (key_range) << RESET << std::endl;
+    std::cout << CYAN << "Min Range: " << RESET << gradient_zeros(uint256_to_hex(min_scalar), DARK_PINK, PINK) << std::endl;
+    std::cout << CYAN << "Max Range: " << RESET << gradient_zeros(uint256_to_hex(max_scalar), DARK_PINK, PINK) << std::endl;
+    std::cout << BLUE << "---------------------------------------------------------------------------" << RESET;
+    std::cout << "\n\n\n\n";
 
     std::string header = "\033[96m[!] Loading Walkers... \033[0m";
 
@@ -1182,7 +1195,7 @@ int main(int argc, char* argv[]) {
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "For DP: " << PINK << dp << RESET << GREEN << " the rarity is \033[35m1\033[0m \033[92min " << RESET << PINK << (1ULL << dp) << RESET << GREEN << " points" << RESET << std::endl;
-    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snapoints File: " << RESET << BLUE << snapoint_path << RESET << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snapoints File: " << RESET << CYAN << snapoint_path << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snaptime Interval: " << RESET << PINK << snaptime_sec << RESET << GREEN << "s" << RESET << std::endl;
     uint64_t max_throughput = cores * 512ULL;
     if (walkers != max_throughput) {
