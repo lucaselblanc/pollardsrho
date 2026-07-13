@@ -1,8 +1,6 @@
 # Pollard's Rho Lambda Algorithm for SECP256K1 Curve (ρλ)
 
 ![C++](https://img.shields.io/badge/Language-C++-blue)
-![CUDA](https://img.shields.io/badge/Language-CUDA-green)
-![CUDA](https://img.shields.io/badge/Arch-GPU%20&%20CPU-orange)
 ![Linux](https://img.shields.io/badge/Platform-Linux-white)
 
 ## Fast Links:
@@ -121,7 +119,6 @@ int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(
 2. Install the necessary libraries:
     ```bash
     sudo apt update
-    sudo apt install nvidia-cuda-toolkit -y
     sudo apt install build-essential g++ -y
     sudo apt install libboost-all-dev -y
     sudo apt install libssl-dev -y
@@ -169,10 +166,8 @@ int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(
 
 ## External Libraries Used
 
-<cuda.h>
-<cuda_runtime.h>
-"secp256k1.h"
-"parallel_hashmap/phmap.h"
+"secp256k1.h" ```Lucas Leblanc```
+"parallel_hashmap/phmap.h" ```Gregory Popovitch```
 
 ## Contributing
 
