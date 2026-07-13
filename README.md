@@ -165,7 +165,7 @@ int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(
 
 --t: Number of CPU threads/cores used to run the program.
 
---snaptime: Interval between each progress save.
+--snaptime: Interval between each progress save, ```--snaptime 0``` don't save anything.
 
 ## External Libraries Used
 
