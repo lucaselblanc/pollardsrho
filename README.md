@@ -119,8 +119,8 @@ int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(
 2. Install the necessary libraries:
     ```bash
     sudo apt update
-    sudo apt install build-essential g++ -y
-    sudo apt install libboost-all-dev -y
+    sudo apt install build-essential -y
+    sudo apt install boost-headers -y
     sudo apt install libssl-dev -y
     ```
 
