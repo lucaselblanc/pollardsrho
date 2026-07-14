@@ -749,40 +749,132 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
 
     std::string header = "\033[96m[!] Loading Walkers... \033[0m";
 
-    for (int i = 0; !resumed_snapoint && i < WALKERS; i++) {
-        walkers_state[i].rng.seed(std::random_device{}() ^ (uint64_t)i);
-        walkers_state[i].buffers = nullptr;
+    if (!resumed_snapoint)
+{
+    unsigned int load_threads = std::min<unsigned int>(cores, WALKERS);
 
-        if (i % 2 == 0) {
-            walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
-            walkers_state[i].b = uint256_t{};
-        } else {
-            walkers_state[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, walkers_state[i].rng);
-            walkers_state[i].b = uint256_t{};
-            walkers_state[i].b.limbs[0] = 1;
+    std::vector<std::thread> load_workers;
+    load_workers.reserve(load_threads);
+
+    std::atomic<int> loaded_count{0};
+
+    auto load_worker = [&](int start, int end)
+    {
+        for (int i = start; i < end; i++)
+        {
+            walkers_state[i].rng.seed(
+                std::random_device{}() ^ 
+                (uint64_t)i
+            );
+
+            walkers_state[i].buffers = nullptr;
+
+            if (i % 2 == 0) {
+                walkers_state[i].a = rng_mersenne_twister(
+                    min_scalar,
+                    max_scalar,
+                    key_range,
+                    walkers_state[i].rng
+                );
+                walkers_state[i].b = uint256_t{};
+            } 
+            else {
+                walkers_state[i].a = rng_mersenne_twister(
+                    uint256_t{0},
+                    stepSize,
+                    key_range / 2,
+                    walkers_state[i].rng
+                );
+
+                walkers_state[i].b = uint256_t{};
+                walkers_state[i].b.limbs[0] = 1;
+            }
+
+            walkers_state[i].walk_id = i;
+            walkers_state[i].snapshot_steps = 0;
+
+            memset(walkers_state[i].snapshot_x, 0, 32);
+            memset(walkers_state[i].prev_x1, 0, 32);
+            memset(walkers_state[i].prev_x2, 0, 32);
+
+
+            uint64_t a_arr[4];
+            uint256_to_uint64_array(
+                a_arr,
+                walkers_state[i].a
+            );
+
+            ECPointJacobian Ra;
+
+            jacobianScalarMultPhi(
+                &Ra,
+                preCompG,
+                preCompGphi,
+                a_arr,
+                windowSize
+            );
+
+
+            if (i % 2 == 0) {
+                walkers_state[i].R = Ra;
+            } 
+            else {
+                pointAddJacobian(
+                    &walkers_state[i].R,
+                    &Ra,
+                    &target_affine_jac
+                );
+            }
+
+            /*
+            int current = loaded_count.fetch_add(
+                1,
+                std::memory_order_relaxed
+            ) + 1;
+
+
+            if (current % 32 == 0 || current == WALKERS)
+            {
+                static std::mutex loading_mutex;
+
+                std::lock_guard<std::mutex> lock(
+                    loading_mutex
+                );
+
+                loading_bar(
+                    current,
+                    WALKERS,
+                    header
+                );
+            }
+            */
         }
+    };
 
-        walkers_state[i].walk_id = i;
-        walkers_state[i].snapshot_steps = 0;
-        memset(walkers_state[i].snapshot_x, 0, 32);
-        memset(walkers_state[i].prev_x1, 0, 32);
-        memset(walkers_state[i].prev_x2, 0, 32);
 
-        uint64_t a_arr[4];
-        uint256_to_uint64_array(a_arr, walkers_state[i].a);
-        ECPointJacobian Ra;
-        jacobianScalarMultPhi(&Ra, preCompG, preCompGphi, a_arr, windowSize);
+    int chunk = WALKERS / load_threads;
 
-        if (i % 2 == 0) {
-            walkers_state[i].R = Ra;
-        } else {
-            pointAddJacobian(&walkers_state[i].R, &Ra, &target_affine_jac);
-        }
+    for (unsigned int t = 0; t < load_threads; t++)
+    {
+        int start = t * chunk;
+        int end = (t == load_threads - 1)
+                    ? WALKERS
+                    : start + chunk;
 
-        if (i % 32 == 0 || i == WALKERS - 1) {
-            loading_bar(i + 1, WALKERS, header);
-        }
+        load_workers.emplace_back(
+            load_worker,
+            start,
+            end
+        );
     }
+
+
+    for (auto& th : load_workers)
+    {
+        if (th.joinable())
+            th.join();
+    }
+}
 
     for (auto& walker : walkers_state) {
         if (walker.buffers == nullptr) walker.buffers = new Buffers();
