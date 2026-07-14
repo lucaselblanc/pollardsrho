@@ -1129,6 +1129,126 @@ int main(int argc, char* argv[]) {
     int walkers;
     int dp = -1;
     std::string snapoint_path;
+    int snaptime_sec = 20;
+
+    if (argc == 1) {
+        std::cout << "The Parameters Cannot Be Empty!" << std::endl;
+        return 1;
+    }
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        if (arg == "--pubkey" && i + 1 < argc) {
+            pub_key_hex = argv[++i];
+        } else if (arg == "--keyrange" && i + 1 < argc) {
+            key_range = std::stoi(argv[++i]);
+        } else if (arg == "--walkers" && i + 1 < argc) {
+            walkers = std::stoi(argv[++i]);
+        } else if (arg == "--dp" && i + 1 < argc) {
+            dp = std::stoi(argv[++i]);
+        } else if (arg == "--snaptime" && i + 1 < argc) {
+            snaptime_sec = std::stoi(argv[++i]);
+        } else if (arg == "--t" && i + 1 < argc) {
+            cores = std::stoi(argv[++i]);
+        }
+    }
+
+    if (pub_key_hex.length() != 66) {
+        std::cerr << RED << "[ERROR] Invalid Public Key Length." << RESET << std::endl;
+        return 1;
+    }
+
+    if (dp <= 0 || dp > static_cast<int>(sizeof(int32_t) * CHAR_BIT)) {
+        std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
+        dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT)));
+    }
+
+    if (snapoint_path.empty()) {
+        snapoint_path = pub_key_hex + ".saved";
+    }
+
+    init_secp256k1(key_range);
+
+    constexpr int TOTAL_RUNS = 1000;
+
+    long double sum_kfactor = 0.0L;
+    std::vector<long double> k_values;
+    k_values.reserve(TOTAL_RUNS);
+
+    for (int run = 0; run < TOTAL_RUNS; run++) {
+
+        std::cout << CYAN 
+                  << "\n[RUN " << (run + 1) << "/" << TOTAL_RUNS << "]"
+                  << RESET << std::endl;
+
+        uint256_t found_key = prho(
+            pub_key_hex,
+            key_range,
+            walkers,
+            dp,
+            snapoint_path,
+            snaptime_sec
+        );
+
+        long double current_k = kFactor;
+
+        k_values.push_back(current_k);
+        sum_kfactor += current_k;
+
+        std::cout << GREEN 
+                  << "[Collision " << (run + 1) << "] "
+                  << RESET
+                  << "K-Factor: "
+                  << PINK
+                  << std::fixed 
+                  << std::setprecision(8)
+                  << (double)current_k
+                  << RESET
+                  << std::endl;
+    }
+
+    long double average_k = sum_kfactor / TOTAL_RUNS;
+
+    std::cout << "\n"
+              << BLUE << "---------------------------------------------------------------------------"
+              << RESET << std::endl;
+
+    std::cout << CYAN 
+              << "[RESULT] Average K-Factor (" 
+              << TOTAL_RUNS 
+              << " runs): "
+              << RESET
+              << PINK
+              << std::fixed
+              << std::setprecision(8)
+              << (double)average_k
+              << RESET
+              << std::endl;
+
+    std::cout << BLUE << "---------------------------------------------------------------------------"
+              << RESET << std::endl;
+
+
+    delete[] preCompG;
+    delete[] preCompGphi;
+    delete[] preCompH;
+    delete[] preCompHphi;
+    delete[] jacNorm;
+    delete[] jacNormH;
+    delete[] jacEndo;
+    delete[] jacEndoH;
+
+    return 0;
+}
+
+/*
+int main(int argc, char* argv[]) {
+    std::string pub_key_hex;
+    int key_range;
+    int walkers;
+    int dp = -1;
+    std::string snapoint_path;
 
     if (argc == 1) {
         std::cout << "The Parameters Cannot Be Empty!" << std::endl;
@@ -1258,3 +1378,4 @@ int main(int argc, char* argv[]) {
     delete[] jacEndoH;
     return 0;
 }
+*/
