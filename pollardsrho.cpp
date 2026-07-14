@@ -64,7 +64,7 @@ struct MurmurHash3 {
 struct DPEntry {
     uint256_t a;
     uint256_t b;
-    uint64_t x;
+    uint64_t x[4];
 };
 
 using DPTable = phmap::parallel_flat_hash_map<uint64_t, std::vector<DPEntry>, MurmurHash3, phmap::priv::hash_default_eq<uint64_t>, std::allocator<std::pair<const uint64_t, std::vector<DPEntry>>>, 8, std::mutex >;
@@ -749,38 +749,72 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
 
     std::string header = "\033[96m[!] Loading Walkers... \033[0m";
 
-    for (int i = 0; !resumed_snapoint && i < WALKERS; i++) {
-        walkers_state[i].rng.seed(std::random_device{}() ^ (uint64_t)i);
-        walkers_state[i].buffers = nullptr;
+    if (!resumed_snapoint)
+    {
+        unsigned int load_threads = std::min<unsigned int>(cores, WALKERS);
 
-        if (i % 2 == 0) {
-            walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
-            walkers_state[i].b = uint256_t{};
-        } else {
-            walkers_state[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, walkers_state[i].rng);
-            walkers_state[i].b = uint256_t{};
-            walkers_state[i].b.limbs[0] = 1;
+        std::vector<std::thread> load_workers;
+        load_workers.reserve(load_threads);
+        std::atomic<int> loaded_count{0};
+
+        auto load_worker = [&](int start, int end)
+        {
+            for (int i = start; i < end; i++)
+            {
+                walkers_state[i].rng.seed(std::random_device{}() ^ (uint64_t)i);
+                walkers_state[i].buffers = nullptr;
+
+                if (i % 2 == 0) {
+                    walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
+                    walkers_state[i].b = uint256_t{};
+                }
+                else {
+                    walkers_state[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, walkers_state[i].rng);
+                    walkers_state[i].b = uint256_t{};
+                    walkers_state[i].b.limbs[0] = 1;
+                }
+
+                walkers_state[i].walk_id = i;
+                walkers_state[i].snapshot_steps = 0;
+
+                memset(walkers_state[i].snapshot_x, 0, 32);
+                memset(walkers_state[i].prev_x1, 0, 32);
+                memset(walkers_state[i].prev_x2, 0, 32);
+
+                uint64_t a_arr[4];
+                uint256_to_uint64_array(a_arr, walkers_state[i].a);
+
+                ECPointJacobian Ra;
+                jacobianScalarMultPhi(&Ra, preCompG, preCompGphi, a_arr, windowSize);
+
+
+                if (i % 2 == 0) {
+                    walkers_state[i].R = Ra;
+                }
+                else {
+                    pointAddJacobian(&walkers_state[i].R, &Ra, &target_affine_jac);
+                }
+
+                int current = loaded_count.fetch_add(1, std::memory_order_relaxed) + 1;
+                if (current % 32 == 0 || current == WALKERS) {
+                    static std::mutex loading_mutex;
+                    std::lock_guard<std::mutex> lock(loading_mutex);
+                    loading_bar(current, WALKERS, header);
+                }
+            }
+        };
+
+        int chunk = WALKERS / load_threads;
+        for (unsigned int t = 0; t < load_threads; t++)
+        {
+            int start = t * chunk;
+            int end = (t == load_threads - 1) ? WALKERS : start + chunk;
+            load_workers.emplace_back(load_worker, start, end);
         }
 
-        walkers_state[i].walk_id = i;
-        walkers_state[i].snapshot_steps = 0;
-        memset(walkers_state[i].snapshot_x, 0, 32);
-        memset(walkers_state[i].prev_x1, 0, 32);
-        memset(walkers_state[i].prev_x2, 0, 32);
-
-        uint64_t a_arr[4];
-        uint256_to_uint64_array(a_arr, walkers_state[i].a);
-        ECPointJacobian Ra;
-        jacobianScalarMultPhi(&Ra, preCompG, preCompGphi, a_arr, windowSize);
-
-        if (i % 2 == 0) {
-            walkers_state[i].R = Ra;
-        } else {
-            pointAddJacobian(&walkers_state[i].R, &Ra, &target_affine_jac);
-        }
-
-        if (i % 32 == 0 || i == WALKERS - 1) {
-            loading_bar(i + 1, WALKERS, header);
+        for (auto& th : load_workers)
+        {
+            if (th.joinable()) { th.join(); }
         }
     }
 
@@ -923,7 +957,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                         dp_table.lazy_emplace_l(aff_batch[i].x[0], [&](auto& bucket) {
                             auto& dps = bucket.second;
                             for (const auto& entry : dps) {
-                                if (entry.x == aff_batch[i].x[1]) {
+                                if (entry.x[1] == aff_batch[i].x[1] && entry.x[2] == aff_batch[i].x[2] && entry.x[3] == aff_batch[i].x[3]) {
                                     bool same_state = (compare_uint256(w->a, entry.a) == 0) && (compare_uint256(w->b, entry.b) == 0);
                                     if (!same_state) {
                                         found_dp = entry;
@@ -934,14 +968,14 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                             }
                             if(!cl) {
                                 DPEntry new_entry;
-                                new_entry.x = aff_batch[i].x[1];
+                                std::memcpy(new_entry.x, aff_batch[i].x, sizeof(new_entry.x));
                                 new_entry.a = w->a;
                                 new_entry.b = w->b;
                                 dps.push_back(new_entry);
                             }
                         }, [&](auto bucket) {
                             DPEntry entry;
-                            entry.x = aff_batch[i].x[1];
+                            std::memcpy(entry.x, aff_batch[i].x, sizeof(entry.x));
                             entry.a = w->a;
                             entry.b = w->b;
                             bucket(aff_batch[i].x[0], std::vector<DPEntry>{entry});
