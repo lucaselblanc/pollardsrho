@@ -1246,24 +1246,46 @@ int main(int argc, char* argv[]) {
 
     long double average_k = sum_kfactor / TOTAL_RUNS;
 
+    std::sort(k_values.begin(), k_values.end());
+
+    long double median_k;
+
+    if (TOTAL_RUNS % 2 == 0) {
+        median_k = (k_values[TOTAL_RUNS / 2 - 1] + k_values[TOTAL_RUNS / 2]) / 2.0L;
+    } else {
+        median_k = k_values[TOTAL_RUNS / 2];
+    }
+
     std::cout << "\n"
-              << BLUE << "---------------------------------------------------------------------------"
-              << RESET << std::endl;
+          << BLUE << "---------------------------------------------------------------------------"
+          << RESET << std::endl;
 
-    std::cout << CYAN 
-              << "[RESULT] Average K-Factor (" 
-              << TOTAL_RUNS 
-              << " runs): "
-              << RESET
-              << PINK
-              << std::fixed
-              << std::setprecision(8)
-              << (double)average_k
-              << RESET
-              << std::endl;
+std::cout << CYAN 
+          << "[RESULT] Average K-Factor (" 
+          << TOTAL_RUNS 
+          << " runs): "
+          << RESET
+          << PINK
+          << std::fixed
+          << std::setprecision(8)
+          << (double)average_k
+          << RESET
+          << std::endl;
 
-    std::cout << BLUE << "---------------------------------------------------------------------------"
-              << RESET << std::endl;
+std::cout << CYAN 
+          << "[RESULT] Median K-Factor (" 
+          << TOTAL_RUNS 
+          << " runs): "
+          << RESET
+          << GREEN
+          << std::fixed
+          << std::setprecision(8)
+          << (double)median_k
+          << RESET
+          << std::endl;
+
+std::cout << BLUE << "---------------------------------------------------------------------------"
+          << RESET << std::endl;
 
 
     delete[] preCompG;
