@@ -795,6 +795,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                     pointAddJacobian(&walkers_state[i].R, &Ra, &target_affine_jac);
                 }
 
+                /*
                 int current = loaded_count.fetch_add(1, std::memory_order_relaxed) + 1;
                 if (current % 32 == 0 || current == WALKERS) {
                     static std::mutex loading_mutex;
@@ -802,6 +803,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                     loading_bar(current, WALKERS, header);
                 }
             }
+            */
         };
 
         int chunk = WALKERS / load_threads;
