@@ -802,8 +802,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                     std::lock_guard<std::mutex> lock(loading_mutex);
                     loading_bar(current, WALKERS, header);
                 }
-            }
             */
+            }
         };
 
         int chunk = WALKERS / load_threads;
