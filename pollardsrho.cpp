@@ -579,14 +579,27 @@ int compare_uint256(const uint256_t& a, const uint256_t& b) {
     return 0;
 }
 
-uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max_scalar, int key_range, std::mt19937_64& rng) {
+uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max_scalar, std::mt19937_64& rng) {
     uint256_t r{};
     uint256_t range = sub_uint256(max_scalar, min_scalar);
     uint256_t one = {1, 0, 0, 0};
     range = add_uint256(range, one);
 
-    int max_limb_idx = (key_range - 1) / 64;
-    int bits_in_last_limb = key_range % 64;
+    int actual_bit_len = 0;
+    for (int i = 3; i >= 0; i--) {
+        if (range.limbs[i] != 0) {
+            uint64_t v = range.limbs[i];
+            int b = 0;
+            while (v) { b++; v >>= 1; }
+            actual_bit_len = i * 64 + b;
+            break;
+        }
+    }
+
+    if (actual_bit_len == 0) return min_scalar;
+
+    int max_limb_idx = (actual_bit_len - 1) / 64;
+    int bits_in_last_limb = actual_bit_len % 64;
 
     do {
         for (int i = 0; i < 4; i++) r.limbs[i] = rng();
@@ -696,7 +709,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
     stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
 
     for (int i = 0; i < N_STEPS; i++) {
-        localStepTable[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, salt);
+        localStepTable[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, salt);
         localStepTable[i].b = uint256_t{};
         uint64_t a_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
@@ -731,11 +744,100 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
         }
 
         key_range = dyn_key_range;
-	    WALKERS = dyn_walkers;
-	    DP_BITS = dyn_dp_bits;
+        WALKERS = dyn_walkers;
+        DP_BITS = dyn_dp_bits;
+
         total_iters.store(restored_iters, std::memory_order_relaxed);
         total_cycles.store(restored_cycles, std::memory_order_relaxed);
     }
+
+    int a_shift = 0;
+    while ((1ULL << (a_shift + 1)) <= std::max<uint32_t>(1, WALKERS / 2)) a_shift++;
+    int s_bit = (key_range - 1) - a_shift;
+    if (s_bit < 0) s_bit = 0;
+    uint256_t S{};
+    if (s_bit < 256) S.limbs[s_bit / 64] = 1ULL << (s_bit % 64);
+    else { S.limbs[0] = ~0ULL; S.limbs[1] = ~0ULL; S.limbs[2] = ~0ULL; S.limbs[3] = ~0ULL; }
+
+    uint256_t min_dp_dist{};
+    int dp_dist_bit = (key_range / 2) + DP_BITS + 1;
+    if (dp_dist_bit < 256) min_dp_dist.limbs[dp_dist_bit / 64] = 1ULL << (dp_dist_bit % 64);
+    else { min_dp_dist.limbs[0] = ~0ULL; min_dp_dist.limbs[1] = ~0ULL; min_dp_dist.limbs[2] = ~0ULL; min_dp_dist.limbs[3] = ~0ULL; }
+
+    uint256_t S2 = S;
+    scalarAdd(S2.limbs, S2.limbs, S.limbs);
+    uint256_t S3 = S2;
+    scalarAdd(S3.limbs, S3.limbs, S.limbs);
+
+    uint256_t a_dist = (compare_uint256(S2, min_dp_dist) > 0) ? S2 : min_dp_dist;
+    uint256_t b_dist = (compare_uint256(S3, min_dp_dist) > 0) ? S3 : min_dp_dist;
+    uint256_t b_delta{};
+    int b_length = std::max<int>(1, WALKERS / 2);
+    int b_shift = 0;
+    int temp = b_length;
+    while (temp >>= 1) b_shift++;
+    int base_step_bit = key_range / 2;
+    int delta_bit = base_step_bit - b_shift;
+
+    if (delta_bit >= key_range) delta_bit = key_range - 1;
+    if (delta_bit < 0) delta_bit = 0;
+
+    b_delta.limbs[delta_bit / 64] = 1ULL << (delta_bit % 64);
+    uint256_t b_offset{};
+
+    std::vector<uint256_t> a_bases(WALKERS);
+    std::vector<uint256_t> a_edge(WALKERS);
+    for(int i = 0; i < WALKERS; i++) {
+        if (i % 2 == 0) {
+            int j = i / 2;
+            uint256_t offset_S{};
+            for(int k = 0; k < j; k++) scalarAdd(offset_S.limbs, offset_S.limbs, S.limbs);
+            uint256_t base_a = min_scalar;
+            scalarAdd(base_a.limbs, base_a.limbs, offset_S.limbs);
+            a_bases[i] = base_a;
+            uint256_t edge = base_a;
+            scalarAdd(edge.limbs, edge.limbs, a_dist.limbs);
+            a_edge[i] = edge;
+        } else {
+            a_bases[i] = b_offset;
+            scalarAdd(b_offset.limbs, b_offset.limbs, b_delta.limbs);
+        }
+    }
+
+    auto reset = [&](WalkState* w, bool a) {
+        w->rng.seed(std::random_device{}() ^ (uint64_t)w->walk_id ^ std::chrono::high_resolution_clock::now().time_since_epoch().count());
+
+        if (a) {
+            uint256_t base_a = a_bases[w->walk_id];
+            uint256_t max_a = base_a;
+            scalarAdd(max_a.limbs, max_a.limbs, S.limbs);
+            if (compare_uint256(max_a, max_scalar) > 0) max_a = max_scalar;
+            if (compare_uint256(base_a, max_a) > 0) base_a = max_a;
+            w->a = rng_mersenne_twister(base_a, max_a, w->rng);
+            w->b = uint256_t{};
+        } else {
+            w->a = a_bases[w->walk_id];
+            w->b = uint256_t{};
+            w->b.limbs[0] = 1;
+        }
+
+        w->snapshot_steps = 0;
+        memset(w->snapshot_x, 0, 32);
+        memset(w->prev_x1, 0, 32);
+        memset(w->prev_x2, 0, 32);
+
+        uint64_t a_arr[4];
+        uint256_to_uint64_array(a_arr, w->a);
+
+        ECPointJacobian Ra;
+        jacobianScalarMultPhi(&Ra, preCompG, preCompGphi, a_arr, windowSize);
+
+        if (a) {
+            w->R = Ra;
+        } else {
+            pointAddJacobian(&w->R, &Ra, &target_affine_jac);
+        }
+    };
 
     std::cout << CYAN << "Started at: " << RESET << PINK << std::put_time(&start_tm, "%H:%M:%S") << RESET << std::endl;
     std::cout << CYAN << "Threads: " << RESET << PINK << cores << RESET << std::endl;
@@ -746,7 +848,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
     std::cout << CYAN << "Max Range: " << RESET << gradient_zeros(uint256_to_hex(max_scalar), DARK_PINK, PINK) << std::endl;
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET;
     std::cout << "\n\n\n\n";
-
     std::string header = "\033[96m[!] Loading Walkers... \033[0m";
 
     if (!resumed_snapoint)
@@ -765,11 +866,16 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                 walkers_state[i].buffers = nullptr;
 
                 if (i % 2 == 0) {
-                    walkers_state[i].a = rng_mersenne_twister(min_scalar, max_scalar, key_range, walkers_state[i].rng);
+                    uint256_t base_a = a_bases[i];
+                    uint256_t max_a = base_a;
+                    scalarAdd(max_a.limbs, max_a.limbs, S.limbs);
+                    if (compare_uint256(max_a, max_scalar) > 0) max_a = max_scalar;
+                    if (compare_uint256(base_a, max_a) > 0) base_a = max_a;
+                    walkers_state[i].a = rng_mersenne_twister(base_a, max_a, walkers_state[i].rng);
                     walkers_state[i].b = uint256_t{};
                 }
                 else {
-                    walkers_state[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, key_range / 2, walkers_state[i].rng);
+                    walkers_state[i].a = a_bases[i];
                     walkers_state[i].b = uint256_t{};
                     walkers_state[i].b.limbs[0] = 1;
                 }
@@ -787,22 +893,12 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                 ECPointJacobian Ra;
                 jacobianScalarMultPhi(&Ra, preCompG, preCompGphi, a_arr, windowSize);
 
-
                 if (i % 2 == 0) {
                     walkers_state[i].R = Ra;
                 }
                 else {
                     pointAddJacobian(&walkers_state[i].R, &Ra, &target_affine_jac);
                 }
-
-                /*
-                int current = loaded_count.fetch_add(1, std::memory_order_relaxed) + 1;
-                if (current % 32 == 0 || current == WALKERS) {
-                    static std::mutex loading_mutex;
-                    std::lock_guard<std::mutex> lock(loading_mutex);
-                    loading_bar(current, WALKERS, header);
-                }
-            */
             }
         };
 
@@ -865,6 +961,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
             snapoint_cv.wait(lock, [&]() {
                 return snapoint_paused >= snapoint_thread_count || !search_in_progress.load(std::memory_order_acquire);
             });
+
             if (!search_in_progress.load(std::memory_order_acquire)) {
                 snapoint_requested = false;
                 lock.unlock();
@@ -889,9 +986,7 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
             lock.unlock();
             snapoint_cv.notify_all();
             lock.lock();
-            snapoint_cv.wait(lock, [&]() {
-                return snapoint_paused == 0;
-            });
+            snapoint_cv.wait(lock, [&]() { return snapoint_paused == 0; });
         }
         snapoint_cv.notify_all();
         return ok;
@@ -948,6 +1043,17 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                     w->snapshot_steps++;
                     if ((w->snapshot_steps & (w->snapshot_steps - 1)) == 0) {
                         memcpy(w->snapshot_x, aff_batch[i].x, 32);
+                    }
+
+                    uint256_t current_edge = (w->walk_id % 2 == 0) ? a_edge[w->walk_id] : b_dist;
+
+                    if (compare_uint256(w->a, current_edge) > 0) {
+                        reset(w, (w->walk_id % 2 == 0));
+                        ECPointAffine new_aff;
+                        jacobianToAffine(&new_aff, &w->R);
+                        aff_batch[i] = new_aff;
+                        jac_batch[i] = w->R;
+                        continue;
                     }
 
                     if (!DP(aff_batch[i].x, DP_BITS)) continue;
@@ -1100,7 +1206,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
     std::cout << "\n" << std::endl;
     std::cout << CYAN << "Total duration: " << RESET << PINK << std::setw(2) << std::setfill('0') << duration.count() / 3600 << ":" << std::setw(2) << std::setfill('0') << (duration.count() % 3600) / 60 << ":" << std::setw(2) << std::setfill('0') << duration.count() % 60 << RESET;
     std::cout << "\n";
-
     return k;
 }
 
