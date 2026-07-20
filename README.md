@@ -103,6 +103,10 @@ int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(
 
  The expected time complexity of Pollard's Rho Lambda algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the steps is restricted to O(√k) through an artificial cyclic subgroup, keeps the probabilistic window restricted to the range. Given secp256k1, this translates to approximately O(√range), as predicted by the birthday paradox for random walks over a finite group.
 
+#### Average k-Factor
+
+ The Theoretical Average k-Factor expected for the like lambda algorithm outlined in the paper: ```P. C. Van Oorschot & M. J. Wiener (1999) - Parallel Collision Search with Cryptanalytic Applications``` is ```E(ops) ≈ 2.0✓W``` considering the statistical bad luck of the tail. This implementation achieves the expected theoretical overall average and yields k-Factor medians < 2.0√W and < 1.0√W in statistical lucks.
+
 ## Prerequisites
 
 - g++
