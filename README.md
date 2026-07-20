@@ -110,6 +110,18 @@ int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(
 
  ​Due to the nature of the search, it may be possible to obtain solutions with a k-factor < 2.0. These represent scenarios of extreme statistical luck solving the ECDLP within a distance of just 1S. This rare "sniper" event requires three specific conditions to align: the type 2 walker drops extremely close to the private key, immediately merges with a type 1 trail, and quickly triggers a Distinguished Point (DP). While rarer than standard 2S or 3S convergences, the architecture fully capitalizes on these optimal drops when they occur.
 
+##Academic References:
+
+J. M. Pollard (1978) - Monte Carlo methods for index computation (mod p).
+
+P. C. Van Oorschot & M. J. Wiener (1999) - Parallel Collision Search with Cryptanalytic Applications.
+                                                                                
+Peter L. Montgomery (1987) - Speeding the Pollard and Elliptic Curve Methods of Factorization.
+
+Richard P. Brent (1980) - An improved Monte Carlo factorization algorithm.
+                                      
+SECG - SEC 2 (2010): Recommended Elliptic Curve Domain Parameters (secp256k1 specification).
+
 ## Prerequisites
 
 - g++
